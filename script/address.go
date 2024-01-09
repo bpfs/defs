@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math/big"
 
+	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -24,11 +25,25 @@ func marshalPubKey(pubKey ecdsa.PublicKey) []byte {
 // hashPubKey 对公钥执行SHA256和RIPEMD-160哈希。
 // 参数 pubKeyBytes 是公钥的字节表示。
 // 返回公钥的哈希值。
-func hashPubKey(pubKeyBytes []byte) []byte {
-	sha256Hash := sha256.Sum256(pubKeyBytes)
-	ripemd160Hasher := ripemd160.New()
-	ripemd160Hasher.Write(sha256Hash[:])
-	return ripemd160Hasher.Sum(nil)
+func HashPubKey(pubKey []byte) []byte {
+	// 使用SHA256算法对公钥进行哈希
+	publicSHA256 := sha256.Sum256(pubKey)
+
+	// 创建一个RIPEMD160的哈希器
+	RIPEMD160Hasher := ripemd160.New()
+
+	// 将SHA256哈希的结果写入RIPEMD160哈希器
+	_, err := RIPEMD160Hasher.Write(publicSHA256[:])
+	// 如果有写入错误，则抛出panic
+	if err != nil {
+		logrus.Panic(err)
+	}
+
+	// 计算RIPEMD160哈希的结果
+	publicRIPEMD160 := RIPEMD160Hasher.Sum(nil)
+
+	// 返回RIPEMD160哈希的结果
+	return publicRIPEMD160
 }
 
 // DecodeBase58Check 对Base58Check编码的字符串进行解码。
@@ -117,7 +132,7 @@ func GetPubKeyHash(addressStr string) ([]byte, error) {
 // 返回公钥哈希和可能发生的错误。
 func GetPubKeyHashFromPrivKey(ownerPriv *ecdsa.PrivateKey) ([]byte, error) {
 	pubKeyBytes := marshalPubKey(ownerPriv.PublicKey)
-	pubKeyHash := hashPubKey(pubKeyBytes)
+	pubKeyHash := HashPubKey(pubKeyBytes)
 	return pubKeyHash, nil
 }
 
@@ -126,7 +141,7 @@ func GetPubKeyHashFromPrivKey(ownerPriv *ecdsa.PrivateKey) ([]byte, error) {
 // 返回地址和可能发生的错误。
 func GetAddressFromPrivKey(ownerPriv *ecdsa.PrivateKey) (string, error) {
 	pubKeyBytes := marshalPubKey(ownerPriv.PublicKey)
-	pubKeyHash := hashPubKey(pubKeyBytes)
+	pubKeyHash := HashPubKey(pubKeyBytes)
 
 	versionedPayload := append([]byte{0x00}, pubKeyHash...)
 	address := base58CheckEncode(versionedPayload)
