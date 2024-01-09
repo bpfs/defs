@@ -22,7 +22,7 @@ import (
 // HandleAddSearchRequestPubSub 处理新增搜索请求的订阅消息
 func HandleAddSearchRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSub, db *sqlites.SqliteDB, res *streams.RequestMessage) {
 	// 新建文件存储
-	fs, err := afero.NewFileStore(filepath.Join(paths.SlicePath, p2p.Host().ID().String()))
+	fs, err := afero.NewFileStore(filepath.Join(paths.GetSlicePath(), p2p.Host().ID().String()))
 	if err != nil {
 		return
 	}

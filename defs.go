@@ -2,7 +2,6 @@ package defs
 
 import (
 	"context"
-	"os"
 
 	"github.com/bpfs/defs/core"
 	"github.com/bpfs/defs/opts"
@@ -45,11 +44,11 @@ func Open(opt *opts.Options, p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSub) (*FS,
 		return nil, err
 	}
 	// 2. 本地文件夹
-	if err := initDirectories(); err != nil {
+	if err := paths.InitDirectories(opt.GetRootPath()); err != nil {
 		return nil, err
 	}
 	// 3. 本地数据库
-	db, err := sqlites.NewSqliteDB(paths.BusinessDbPath, opts.DbFile)
+	db, err := sqlites.NewSqliteDB(paths.GetBusinessDbPath(), opts.DbFile)
 	if err != nil {
 		return nil, err
 	}
@@ -145,25 +144,25 @@ func globalInit(fs *FS) fx.Option {
 }
 
 // initDirectories 确保所有预定义的文件夹都存在
-func initDirectories() error {
-	// 所有需要检查的目录
-	directories := []string{
-		paths.Files,        // 文件目录
-		paths.Logs,         // 日志目录
-		paths.UploadPath,   // 上传目录
-		paths.SlicePath,    // 切片目录
-		paths.DownloadPath, // 下载目录
-	}
+// func initDirectories(opt *opts.Options) error {
+// 	// 所有需要检查的目录
+// 	directories := []string{
+// 		paths.Files,        // 文件目录
+// 		paths.Logs,         // 日志目录
+// 		paths.UploadPath,   // 上传目录
+// 		paths.SlicePath,    // 切片目录
+// 		paths.DownloadPath, // 下载目录
+// 	}
 
-	// 遍历每个目录并确保它存在
-	for _, dir := range directories {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
-		}
-	}
+// 	// 遍历每个目录并确保它存在
+// 	for _, dir := range directories {
+// 		if err := os.MkdirAll(dir, 0755); err != nil {
+// 			return err
+// 		}
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // DownloadChan 获取用于刷新下载的通道
 func (fs *FS) DownloadChan() chan *core.DownloadChan {

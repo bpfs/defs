@@ -57,7 +57,7 @@ func DefaultOptions() *Options {
 		minSliceSize:    1 << 10,                     // 1KB
 		shardSize:       1 << 19,                     // 512KB
 		parityRatio:     0.3,                         // 30%
-		rootPath:        paths.RootPath,              // 默认根路径
+		rootPath:        paths.GetRootPath(),         // 默认根路径
 		downloadPath:    paths.DefaultDownloadPath(), // 默认下载路径
 		maxRetries:      5,                           // 最大重试次数
 		retryInterval:   50 * time.Second,            // 重试间隔为50秒

@@ -11,22 +11,92 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// 全局变量来存储根路径
+var rootPath = ObtainRootPath() // 默认值
+
+// initDirectories 确保所有预定义的文件夹都存在
+func InitDirectories(path string) error {
+	if path != "" {
+		rootPath = path
+	} else {
+		rootPath = filepath.Join(ObtainRootPath(), "defsdata")
+	}
+
+	// 所有需要检查的目录
+	directories := []string{
+		GetFilesPath(), // 文件目录
+		GetDBPath(),    // 日志目录
+		GetLogsPath(),  // 上传目录
+	}
+
+	// 遍历每个目录并确保它存在
+	for _, dir := range directories {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// GetRootPath 返回根路径
+func GetRootPath() string {
+	return filepath.Join(rootPath, "defsdata")
+}
+
+// GetFilesPath 返回文件目录路径
+func GetFilesPath() string {
+	return filepath.Join(GetRootPath(), "files")
+}
+
+// GetDBPath 返回数据库目录路径
+func GetDBPath() string {
+	return filepath.Join(GetRootPath(), "db")
+}
+
+// GetLogsPath 返回日志目录路径
+func GetLogsPath() string {
+	return filepath.Join(GetRootPath(), "logs")
+}
+
+// GetUploadPath 返回上传目录路径
+func GetUploadPath() string {
+	return filepath.Join(GetRootPath(), "uploads")
+}
+
+// GetSlicePath 返回切片目录路径
+func GetSlicePath() string {
+	return filepath.Join(GetRootPath(), "slices")
+}
+
+// GetDownloadPath 返回下载目录路径
+func GetDownloadPath() string {
+	return filepath.Join(GetRootPath(), "downloads")
+}
+
+// GetBusinessDbPath 返回业务db目录路径
+func GetBusinessDbPath() string {
+	return filepath.Join(GetRootPath(), "businessdbs")
+}
+
+//////////////////
+
 // 路径管理器
 // TODO: 待优化
-var (
-	RootPath = filepath.Join(ObtainRootPath(), "defsdata")
+// var (
+// 	RootPath = filepath.Join(ObtainRootPath(), "defsdata")
 
-	// 二级目录
-	Files = filepath.Join(RootPath, "files") // 文件目录
-	DB    = filepath.Join(RootPath, "db")    // 数据库目录
-	Logs  = filepath.Join(RootPath, "logs")  // 日志目录
+// 	// 二级目录
+// 	Files = filepath.Join(RootPath, "files") // 文件目录
+// 	DB    = filepath.Join(RootPath, "db")    // 数据库目录
+// 	Logs  = filepath.Join(RootPath, "logs")  // 日志目录
 
-	// 三级目录
-	UploadPath     = filepath.Join(Files, "uploads")   // 上传目录
-	SlicePath      = filepath.Join(Files, "slices")    // 切片目录
-	DownloadPath   = filepath.Join(Files, "downloads") // 下载目录
-	BusinessDbPath = filepath.Join(DB, "businessdbs")  // 业务db目录
-)
+// 	// 三级目录
+// 	UploadPath     = filepath.Join(Files, "uploads")   // 上传目录
+// 	SlicePath      = filepath.Join(Files, "slices")    // 切片目录
+// 	DownloadPath   = filepath.Join(Files, "downloads") // 下载目录
+// 	BusinessDbPath = filepath.Join(DB, "businessdbs")  // 业务db目录
+// )
 
 // 获取根目录
 func ObtainRootPath() string {

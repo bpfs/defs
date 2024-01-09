@@ -154,7 +154,7 @@ func RegisterFileSliceUploadEvent(
 			// 开启本地存储
 			if !opt.GetLocalStorage() {
 				// 新建文件存储
-				fs, err := afero.NewFileStore(paths.UploadPath)
+				fs, err := afero.NewFileStore(paths.GetUploadPath())
 				if err == nil {
 					// for _, v := range pool.GetAllPieceHashes(fileID) {
 					// 	if err := fs.Delete(fileID, v); err != nil { // 删除文件

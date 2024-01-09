@@ -167,7 +167,7 @@ func SendFileSliceToNetwork(opt *opts.Options, p2p *dep2p.DeP2P, uploadChan chan
 	network.StreamMutex.Lock()
 
 	// 新建文件存储
-	fs, err := afero.NewFileStore(paths.UploadPath)
+	fs, err := afero.NewFileStore(paths.GetUploadPath())
 	if err != nil {
 		return err
 	}
@@ -278,7 +278,7 @@ func createFileWith(pool *pool.MemoryPool, registry *eventbus.EventRegistry, cac
 	}
 
 	// 检查并用文件的哈希值创建文件夹
-	fpath := path.Join(paths.UploadPath, fileInfo.GetFileID())
+	fpath := path.Join(paths.GetUploadPath(), fileInfo.GetFileID())
 	if err := util.CheckAndMkdir(fpath); err != nil {
 		return err
 	}

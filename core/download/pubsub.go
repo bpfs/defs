@@ -36,7 +36,7 @@ import (
 // HandleFileDownloadRequestPubSub 处理文件下载请求的订阅消息
 func HandleFileDownloadRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSub, res *streams.RequestMessage) {
 	// 新建文件存储
-	fs, err := afero.NewFileStore(filepath.Join(paths.SlicePath, p2p.Host().ID().String()))
+	fs, err := afero.NewFileStore(filepath.Join(paths.GetSlicePath(), p2p.Host().ID().String()))
 	if err != nil {
 		return
 	}
@@ -280,7 +280,7 @@ func SendDownloadRequestContents(pool *pool.MemoryPool, p2p *dep2p.DeP2P, pubsub
 
 // ProcessDownloadResponseContent 处理文件下载响应内容
 func ProcessDownloadResponseContent(p2p *dep2p.DeP2P, db *sqlites.SqliteDB, downloadChan chan *core.DownloadChan, registry *eventbus.EventRegistry, pool *pool.MemoryPool, payload *FileDownloadResponseContentPayload) {
-	fs, err := afero.NewFileStore(paths.DownloadPath)
+	fs, err := afero.NewFileStore(paths.GetDownloadPath())
 	if err != nil {
 		logrus.Errorf("创建文件存储失败:\t%v", err)
 		return

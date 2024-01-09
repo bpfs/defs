@@ -17,7 +17,7 @@ import (
 // HandleFileDownloadResponsePubSub 处理文件删除响应的订阅消息
 func HandleFileDeleteRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSub, res *streams.RequestMessage) {
 	// 新建文件存储
-	fs, err := afero.NewFileStore(filepath.Join(paths.SlicePath, p2p.Host().ID().String()))
+	fs, err := afero.NewFileStore(filepath.Join(paths.GetSlicePath(), p2p.Host().ID().String()))
 	if err != nil {
 		return
 	}

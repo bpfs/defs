@@ -22,7 +22,7 @@ import (
 // HandleFileUploadRequestPubSub 处理文件上传请求的订阅消息
 func HandleFileUploadRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSub, res *streams.RequestMessage) {
 	// 新建文件存储
-	fs, err := afero.NewFileStore(paths.SlicePath)
+	fs, err := afero.NewFileStore(paths.GetSlicePath())
 	if err != nil {
 		return
 	}

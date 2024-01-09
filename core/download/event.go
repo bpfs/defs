@@ -151,7 +151,7 @@ func RegisterFileDownloadCheckEvent(
 		}
 
 		// 新建文件存储
-		fs, err := afero.NewFileStore(paths.DownloadPath)
+		fs, err := afero.NewFileStore(paths.GetDownloadPath())
 		if err != nil {
 			logrus.Errorf("创建文件存储失败:\t%v", err)
 			return err
@@ -432,7 +432,7 @@ func recoverDataFromSlices(fs *afero.FileStore, p2p *dep2p.DeP2P, pool *pool.Mem
 
 // readAllShards 读取所有片段数据
 func readAllShards(fs *afero.FileStore, opt *opts.Options, p2p *dep2p.DeP2P, pool *pool.MemoryPool, task *pool.DownloadTask) ([][]byte, error) {
-	subDir := filepath.Join(p2p.Host().ID().Pretty(), task.FileID) // 设置子目录
+	subDir := filepath.Join(p2p.Host().ID().String(), task.FileID) // 设置子目录
 	shards := make([][]byte, task.TotalPieces)
 	for i := range shards {
 		if pieceInfo, ok := task.PieceInfo[i]; ok {

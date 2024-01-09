@@ -18,6 +18,7 @@ require (
 	cloud.google.com/go/storage v1.35.1
 	github.com/cespare/xxhash v1.1.0
 	github.com/dgryski/go-farm v0.0.0-20190423205320-6a90982ecee2
+	github.com/google/uuid v1.5.0
 	github.com/googleapis/google-cloud-go-testing v0.0.0-20210719221736-1c9a4c676720
 	github.com/klauspost/cpuid/v2 v2.2.5
 	github.com/pkg/sftp v1.13.6
@@ -58,7 +59,6 @@ require (
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20230821062121-407c9e7a662f // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
-	github.com/google/uuid v1.5.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect

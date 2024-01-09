@@ -95,7 +95,7 @@ func (sp *StreamProtocol) HandleStreamFileSliceUploadStream(req *streams.Request
 	// }
 
 	// 新建文件存储
-	fs, err := afero.NewFileStore(paths.SlicePath)
+	fs, err := afero.NewFileStore(paths.GetSlicePath())
 	if err != nil {
 		logrus.Errorf("创建新建文件存储失败:%v ", err)
 		return err
