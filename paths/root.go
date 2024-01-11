@@ -16,12 +16,12 @@ var rootPath = ObtainRootPath() // 默认值
 
 // initDirectories 确保所有预定义的文件夹都存在
 func InitDirectories(path string) error {
-	if path != "" {
-		rootPath = path
-	} else {
-		rootPath = filepath.Join(ObtainRootPath(), "defsdata")
-	}
 
+	if path != "" {
+		rootPath = filepath.Join(path, "defsdata")
+	} else {
+		rootPath = filepath.Join(rootPath, "defsdata")
+	}
 	// 所有需要检查的目录
 	directories := []string{
 		GetFilesPath(), // 文件目录
@@ -41,7 +41,7 @@ func InitDirectories(path string) error {
 
 // GetRootPath 返回根路径
 func GetRootPath() string {
-	return filepath.Join(rootPath, "defsdata")
+	return rootPath
 }
 
 // GetFilesPath 返回文件目录路径
@@ -61,22 +61,22 @@ func GetLogsPath() string {
 
 // GetUploadPath 返回上传目录路径
 func GetUploadPath() string {
-	return filepath.Join(GetRootPath(), "uploads")
+	return filepath.Join(GetFilesPath(), "uploads")
 }
 
 // GetSlicePath 返回切片目录路径
 func GetSlicePath() string {
-	return filepath.Join(GetRootPath(), "slices")
+	return filepath.Join(GetFilesPath(), "slices")
 }
 
 // GetDownloadPath 返回下载目录路径
 func GetDownloadPath() string {
-	return filepath.Join(GetRootPath(), "downloads")
+	return filepath.Join(GetFilesPath(), "downloads")
 }
 
 // GetBusinessDbPath 返回业务db目录路径
 func GetBusinessDbPath() string {
-	return filepath.Join(GetRootPath(), "businessdbs")
+	return filepath.Join(GetDBPath(), "businessdbs")
 }
 
 //////////////////

@@ -73,6 +73,7 @@ func HandleFileDownloadRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSu
 
 	slicesLoop:
 		for _, sliceHash := range slices {
+			availableIndex := 0
 			sliceFile, err := fs.OpenFile(payload.FileID, sliceHash)
 			if err != nil {
 				logrus.Errorf("%s 打开文件失败:\t%v", sliceHash, err)
@@ -122,7 +123,7 @@ func HandleFileDownloadRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSu
 					if err != nil {
 						continue slicesLoop
 					}
-					responseChecklistPayload.AvailableSlices[int(index)] = sliceHash
+					availableIndex = int(index)
 				case "SHARED":
 					shared, err := util.FromBytes[bool](result.Data)
 					if err != nil {
@@ -171,6 +172,7 @@ func HandleFileDownloadRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSu
 					}
 				}
 			}
+			responseChecklistPayload.AvailableSlices[availableIndex] = sliceHash
 		}
 
 		// 发送响应清单

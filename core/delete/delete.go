@@ -7,8 +7,8 @@ import (
 	"github.com/bpfs/defs/core/config"
 	"github.com/bpfs/defs/core/network"
 	"github.com/bpfs/defs/core/sqlite"
-	"github.com/bpfs/defs/script"
 	"github.com/bpfs/defs/sqlites"
+	"github.com/bpfs/defs/wallet"
 	"github.com/bpfs/dep2p"
 	"github.com/bpfs/dep2p/pubsub"
 )
@@ -34,7 +34,7 @@ func Delete(
 		return fmt.Errorf("文件不存在")
 	}
 
-	pubKeyHash, err := script.GetPubKeyHashFromPrivKey(ownerPriv) // 从ECDSA私钥中提取公钥哈希
+	pubKeyHash, err := wallet.GetPubKeyHashFromPrivKey(ownerPriv) // 从ECDSA私钥中提取公钥哈希
 	if err != nil {
 		return err
 	}

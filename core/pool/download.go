@@ -338,3 +338,10 @@ func (pool *MemoryPool) DeleteDownloadTask(fileID string) {
 	defer pool.Mu.Unlock()
 	delete(pool.DownloadTasks, fileID)
 }
+
+// ClearDownloadTask 清空文件的下载任务
+func (pool *MemoryPool) ClearDownloadTask() {
+	pool.Mu.Lock()
+	defer pool.Mu.Unlock()
+	pool.DownloadTasks = make(map[string]*DownloadTask)
+}

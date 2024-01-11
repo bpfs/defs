@@ -19,10 +19,10 @@ import (
 	"github.com/bpfs/defs/opts"
 	"github.com/bpfs/defs/paths"
 	"github.com/bpfs/defs/ristretto"
-	"github.com/bpfs/defs/script"
 	"github.com/bpfs/defs/segment"
 	"github.com/bpfs/defs/sqlites"
 	"github.com/bpfs/defs/util/tempfile"
+	"github.com/bpfs/defs/wallet"
 
 	"github.com/bpfs/dep2p"
 	"github.com/bpfs/dep2p/kbucket"
@@ -69,7 +69,7 @@ func Upload(
 			return nil, fmt.Errorf("文件所有者的私钥不可为空")
 		}
 	}
-	pubKeyHash, err := script.GetPubKeyHashFromPrivKey(ownerPriv) // 从ECDSA私钥中提取公钥哈希
+	pubKeyHash, err := wallet.GetPubKeyHashFromPrivKey(ownerPriv) // 从ECDSA私钥中提取公钥哈希
 	if err != nil {
 		return nil, err
 	}
@@ -127,10 +127,12 @@ func Upload(
 		return nil, err
 	}
 
-	// 创建文件处理函数
-	if err := createFileWith(pool, registry, cache, fileInfo, "", "", nil, dataShards, parityShards); err != nil {
-		return nil, err
-	}
+	go func() {
+		// 创建文件处理函数
+		if err := createFileWith(pool, registry, cache, fileInfo, "", "", nil, dataShards, parityShards); err != nil {
+			logrus.Printf("上传失败%v", err)
+		}
+	}()
 
 	return &struct {
 		FileID     string    // 文件的唯一标识
