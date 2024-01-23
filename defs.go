@@ -9,7 +9,6 @@ import (
 	"github.com/bpfs/defs/core/cache"
 	"github.com/bpfs/defs/core/pool"
 	"github.com/bpfs/defs/core/registry"
-	"github.com/bpfs/defs/core/search"
 	"github.com/bpfs/defs/core/sqlite"
 	"github.com/bpfs/defs/eventbus"
 	"github.com/bpfs/defs/paths"
@@ -30,7 +29,7 @@ type FS struct {
 	db           *sqlites.SqliteDB       // sqlite数据库服务
 	uploadChan   chan *core.UploadChan   // 用于刷新上传的通道
 	downloadChan chan *core.DownloadChan // 用于刷新下载的通道
-	searchChan   chan *search.SearchChan // 用于刷新搜索的通道
+	searchChan   chan *core.SearchChan   // 用于刷新搜索的通道
 
 	registry *eventbus.EventRegistry // 事件总线
 	cache    *ristretto.Cache        // 缓存实例
@@ -137,8 +136,8 @@ func globalInit(fs *FS) fx.Option {
 			return make(chan *core.DownloadChan)
 		},
 		// 初始化搜索通道
-		func() chan *search.SearchChan {
-			return make(chan *search.SearchChan)
+		func() chan *core.SearchChan {
+			return make(chan *core.SearchChan)
 		},
 	)
 }
@@ -170,7 +169,7 @@ func (fs *FS) DownloadChan() chan *core.DownloadChan {
 }
 
 // SearchChan 用于刷新搜索的通道
-func (fs *FS) SearchChan() chan *search.SearchChan {
+func (fs *FS) SearchChan() chan *core.SearchChan {
 	return fs.searchChan
 }
 
