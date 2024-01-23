@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"path/filepath"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ func readFile(opt *opts.Options, cache *ristretto.Cache, file afero.File, pubKey
 	if f, err := file.Stat(); err == nil {
 		size := f.Size()
 		if size > opt.GetMaxBufferSize() {
-			return nil, nil, fmt.Errorf("文件的大小 %d 不可大于 %d", size, opt.GetMaxBufferSize())
+			return nil, nil, fmt.Errorf("文件的大小 %s 不可大于 %s", convertInt64(size), convertInt64(opt.GetMaxBufferSize()))
 		}
 
 		fileInfo.BuildName(f.Name())                                            // 文件的基本名称
@@ -72,4 +73,15 @@ func readFile(opt *opts.Options, cache *ristretto.Cache, file afero.File, pubKey
 	fmt.Printf("脚本反汇编:\t%s\n", disasm)
 
 	return fileInfo, fileHash, nil
+}
+
+// convertInt64 字节转单位
+func convertInt64(num int64) string {
+	bytes := float64(num)
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", num)
+	}
+	exp := math.Floor(math.Log(bytes) / math.Log(1024))
+	units := []string{"B", "KB", "MB", "GB", "TB", "PB", "EB"}
+	return fmt.Sprintf("%.1f %s", bytes/math.Pow(1024, exp), units[int(exp)])
 }

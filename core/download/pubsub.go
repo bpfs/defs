@@ -73,6 +73,7 @@ func HandleFileDownloadRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSu
 
 	slicesLoop:
 		for _, sliceHash := range slices {
+			logrus.Printf("原始切片hash%s", sliceHash)
 			availableIndex := 0
 			sliceFile, err := fs.OpenFile(payload.FileID, sliceHash)
 			if err != nil {
@@ -96,6 +97,16 @@ func HandleFileDownloadRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSu
 					// 出现任何错误，立即继续下一个 sliceHash
 					continue slicesLoop
 				}
+				indexSegment, exists := segmentResults["INDEX"]
+				if !exists {
+					// 出现任何错误，立即继续下一个 sliceHash
+					continue slicesLoop
+				}
+				index, err := util.FromBytes[int32](indexSegment.Data)
+				if err != nil {
+					continue slicesLoop
+				}
+				availableIndex = int(index)
 
 				switch segmentType {
 				case "FILEID":
@@ -119,11 +130,11 @@ func HandleFileDownloadRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSu
 						continue slicesLoop
 					}
 				case "INDEX":
-					index, err := util.FromBytes[int32](result.Data)
-					if err != nil {
-						continue slicesLoop
-					}
-					availableIndex = int(index)
+					// index, err := util.FromBytes[int32](result.Data)
+					// if err != nil {
+					// 	continue slicesLoop
+					// }
+					// availableIndex = int(index)
 				case "SHARED":
 					shared, err := util.FromBytes[bool](result.Data)
 					if err != nil {
@@ -151,6 +162,8 @@ func HandleFileDownloadRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSu
 							switch s {
 							case "FILEKEY":
 								responseChecklistPayload.FileKey = string(r.Data)
+								logrus.Printf("第%d片,切片hash为:%s加入成功", availableIndex, sliceHash)
+								responseChecklistPayload.AvailableSlices[availableIndex] = sliceHash
 							case md5Hash:
 								// 验证用户的公钥哈希
 								expiryUnix, err := util.FromBytes[int64](r.Data)
@@ -162,17 +175,24 @@ func HandleFileDownloadRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSu
 								if time.Now().After(expiry) {
 									continue slicesLoop
 								}
+								logrus.Printf("第%d片,切片hash为:%s加入成功", availableIndex, sliceHash)
+								responseChecklistPayload.AvailableSlices[availableIndex] = sliceHash
 							}
+
 						}
+
 					} else {
 						// 验证脚本中所有者的公钥哈希
 						if !script.VerifyScriptPubKeyHash(segmentResults["P2PKHSCRIPT"].Data, payload.UserPubHash) {
 							continue slicesLoop
 						}
+						logrus.Printf("第%d片,切片hash为:%s加入成功", availableIndex, sliceHash)
+						responseChecklistPayload.AvailableSlices[availableIndex] = sliceHash
 					}
 				}
+
 			}
-			responseChecklistPayload.AvailableSlices[availableIndex] = sliceHash
+
 		}
 
 		// 发送响应清单
@@ -226,14 +246,15 @@ func HandleFileDownloadResponsePubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubS
 		ProcessDownloadResponseChecklist(pool, db, p2p, pubsub, payload, receiver)
 
 	case "content":
+
 		payload := new(FileDownloadResponseContentPayload)
 		if err := util.DecodeFromBytes(res.Payload, payload); err != nil {
 			logrus.Errorf("[HandleFileDownloadResponsePubSub] 解码失败:\t%v", err)
 			return
 		}
-
+		logrus.Printf("收到第%d片,切片hash为%s内容", payload.Index, payload.SliceHash)
 		// 处理文件下载响应内容
-		ProcessDownloadResponseContent(p2p, db, downloadChan, registry, pool, payload)
+		go ProcessDownloadResponseContent(p2p, db, downloadChan, registry, pool, payload)
 	}
 }
 
@@ -258,7 +279,9 @@ func ProcessDownloadResponseChecklist(pool *pool.MemoryPool, db *sqlites.SqliteD
 // SendDownloadRequestContents 发送文件下载请求（内容）
 func SendDownloadRequestContents(pool *pool.MemoryPool, p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSub, payload *FileDownloadResponseChecklistPayload, receiver peer.ID) {
 	// 获取未完成的下载片段的哈希值
+
 	pieceHashes := pool.GetIncompleteDownloadPieces(payload.FileID)
+
 	for _, hash := range pieceHashes {
 		for availableIndex, availableHash := range payload.AvailableSlices { // 本地存储的文件片段信息
 			if hash == availableHash {
@@ -309,6 +332,7 @@ func ProcessDownloadResponseContent(p2p *dep2p.DeP2P, db *sqlites.SqliteDB, down
 		task, exists := pool.DownloadTasks[string(payload.FileID)]
 		if !exists {
 			logrus.Errorf("下载任务不存在: %s", string(payload.FileID))
+			return
 		}
 		// 向下载通道发送信息
 		SendDownloadInfo(downloadChan, payload.FileID, payload.SliceHash, task.TotalPieces, payload.Index)

@@ -168,12 +168,12 @@ func HandleFileEditRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSub, d
 			}
 			modTime := time.Unix(modTimeUnix, 0) // 从 Unix 时间戳还原为 time.Time
 
-			uploadTimeUnix, err := util.FromBytes[int64](segmentResults["MODTIME"].Data)
+			uploadTimeUnix, err := util.FromBytes[int64](segmentResults["UPLOADTIME"].Data)
 			if err != nil {
 				continue
 			}
 			uploadTime := time.Unix(uploadTimeUnix, 0) // 从 Unix 时间戳还原为 time.Time
-
+			logrus.Printf("修改共享成功%s", sliceHash)
 			// 如果取消应该把共享的数据删除
 			if !payload.Shared {
 				// 删除
@@ -187,8 +187,8 @@ func HandleFileEditRequestPubSub(p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSub, d
 					string(segmentResults["NAME"].Data), // 文件的名称
 					size,                                // 文件的长度
 					len(xref.XrefTable),                 // Xref表中段的数量
-					modTime,                             // 上传时间
-					uploadTime,                          // 修改时间
+					uploadTime,                          // 上传时间
+					modTime,                             // 修改时间
 				); err != nil {
 					continue
 				}

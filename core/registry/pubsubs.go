@@ -31,7 +31,7 @@ type RegisterPubsubProtocolInput struct {
 	DB           *sqlites.SqliteDB       // sqlite数据库服务
 	UploadChan   chan *core.UploadChan   // 用于刷新上传的通道
 	DownloadChan chan *core.DownloadChan // 用于刷新下载的通道
-	SearchChan   chan *search.SearchChan // 用于刷新搜索的通道
+	SearchChan   chan *core.SearchChan   // 用于刷新搜索的通道
 
 	Registry *eventbus.EventRegistry // 事件总线
 	Cache    *ristretto.Cache        // 缓存实例

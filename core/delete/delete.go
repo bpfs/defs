@@ -34,6 +34,18 @@ func Delete(
 		return fmt.Errorf("文件不存在")
 	}
 
+	// 1、删除本地数据库
+	if err := sqlite.DeleteFileDatabase(db, fileID); err != nil {
+		return fmt.Errorf("删除文件失败")
+	}
+	// 2、删除本地切片数据库
+	if err := sqlite.DeleteSlicesDatabase(db, fileID); err != nil {
+		return fmt.Errorf("删除本地切片失败")
+	}
+	// 3、删除共享库
+	if err := sqlite.DeleteSharedDatabase(db, fileID); err != nil {
+		return fmt.Errorf("删除文件共享失败")
+	}
 	pubKeyHash, err := wallet.GetPubKeyHashFromPrivKey(ownerPriv) // 从ECDSA私钥中提取公钥哈希
 	if err != nil {
 		return err

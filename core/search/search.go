@@ -19,17 +19,6 @@ type FileAddSearchRequestPayload struct {
 	UserPubHash []byte // 用户的公钥哈希
 }
 
-// 搜索响应
-type SearchChan struct {
-	MD5        string    // 请求值的MD5哈希
-	FileID     string    // 文件的唯一标识
-	Name       string    // 文件的名称
-	Size       int64     // 文件的长度(以字节为单位)
-	UploadTime time.Time // 上传时间
-	ModTime    time.Time // 修改时间(非文件修改时间)
-	Xref       int64     // Xref表中段的数量
-}
-
 // AddSearch 新增搜索
 func AddSearch(
 	p2p *dep2p.DeP2P, // DeP2P网络主机

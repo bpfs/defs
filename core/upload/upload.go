@@ -190,6 +190,10 @@ func SendFileSliceToNetwork(opt *opts.Options, p2p *dep2p.DeP2P, uploadChan chan
 		return err
 	}
 
+	if res == nil {
+		logrus.Errorf("sendNode 错误:\t%v\n", err)
+		return err
+	}
 	logrus.Print("[响应数据]")
 	logrus.Printf("Code:\t%d\n", res.Code)
 	logrus.Printf("Msg:\t\t%s\n", res.Msg)

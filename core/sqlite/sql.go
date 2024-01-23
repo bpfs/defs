@@ -42,6 +42,17 @@ func UpdateFileDatabaseStatus(db *sqlites.SqliteDB, fileID string, operates, sta
 	return nil
 }
 
+// DeleteFileDatabase 删除文件数据
+func DeleteFileDatabase(db *sqlites.SqliteDB, fileID string) error {
+	conditions := []string{"fileID = ?"}
+	args := []interface{}{fileID}
+
+	if err := db.Delete("files", conditions, args); err != nil {
+		return errors.New("数据库操作失败")
+	}
+	return nil
+}
+
 // InsertSlicesDatabase 插入文件片段数据
 func InsertSlicesDatabase(db *sqlites.SqliteDB, fileID, sliceHash string, current, status int) error {
 	data := map[string]interface{}{
@@ -55,6 +66,17 @@ func InsertSlicesDatabase(db *sqlites.SqliteDB, fileID, sliceHash string, curren
 		return fmt.Errorf("数据库操作失败")
 	}
 
+	return nil
+}
+
+// DeleteSlicesDatabase 删除文件片段数据
+func DeleteSlicesDatabase(db *sqlites.SqliteDB, fileID string) error {
+	conditions := []string{"fileID = ?"}
+	args := []interface{}{fileID}
+
+	if err := db.Delete("slices", conditions, args); err != nil {
+		return errors.New("数据库操作失败")
+	}
 	return nil
 }
 
@@ -184,7 +206,7 @@ func DeleteSharedDatabase(db *sqlites.SqliteDB, fileID string) error {
 }
 
 // SelectSharedDatabaseStatus 查询指定文件的片段数据对象信息
-func SelectSharedDatabaseStatus(db *sqlites.SqliteDB, name string) (*sql.Rows, error) {
+func SelectSharedByFileIDDatabaseStatus(db *sqlites.SqliteDB, name string) (*sql.Rows, error) {
 	columns := []string{
 		"fileID",     // 文件的唯一标识
 		"name",       // 文件的名称
@@ -193,8 +215,25 @@ func SelectSharedDatabaseStatus(db *sqlites.SqliteDB, name string) (*sql.Rows, e
 		"modTime",    // 修改时间
 		"xref",       // Xref表中段的数量
 	}
-	conditions := []string{"name=?"} // 查询条件
-	args := []interface{}{name}      // 查询条件对应的值
+	conditions := []string{"fileID=?"} // 查询条件
+	args := []interface{}{name}        // 查询条件对应的值
+
+	return db.Select("shared", columns, conditions, args, 0, 0, "")
+}
+
+// SelectSharedDatabaseStatus 查询指定文件的片段数据对象信息
+func SelectSharedByNameDatabaseStatus(db *sqlites.SqliteDB, name string) (*sql.Rows, error) {
+	columns := []string{
+		"fileID",     // 文件的唯一标识
+		"name",       // 文件的名称
+		"size",       // 文件的长度
+		"uploadTime", // 上传时间
+		"modTime",    // 修改时间
+		"xref",       // Xref表中段的数量
+	}
+
+	conditions := []string{"name like ? "}                       // 查询条件
+	args := []interface{}{fmt.Sprintf("%s%s%s", "%", name, "%")} // 查询条件对应的值
 
 	return db.Select("shared", columns, conditions, args, 0, 0, "")
 }

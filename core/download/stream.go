@@ -60,7 +60,7 @@ func (sp *StreamProtocol) HandleFileDownloadResponseStream(req *streams.RequestM
 			logrus.Errorf("[HandleFileDownloadResponseStream] 解码失败:\t%v", err)
 			return err
 		}
-
+		logrus.Printf("收到第%d片,切片hash为%s内容", payload.Index, payload.SliceHash)
 		// 处理文件下载响应内容
 		go ProcessDownloadResponseContent(sp.P2P, sp.DB, sp.DownloadChan, sp.Registry, sp.Pool, payload)
 	}
