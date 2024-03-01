@@ -80,7 +80,7 @@ func ExtractPubKeyFromP2PKScriptToECDSA(p2pkScript []byte) (*ecdsa.PublicKey, er
 	}
 	pubKeyBytes := p2pkScript[1 : len(p2pkScript)-1] // 移除OP_CHECKSIG
 
-	fmt.Printf("提取的公钥字节: %x\n", pubKeyBytes) // 打印公钥字节
+	// fmt.Printf("提取的公钥字节: %x\n", pubKeyBytes) // 打印公钥字节
 
 	x, y := elliptic.Unmarshal(elliptic.P256(), pubKeyBytes)
 	if x == nil || y == nil {
@@ -116,6 +116,17 @@ func ExtractPubKeyFromP2PKScriptToRSA(p2pkScript []byte) (*rsa.PublicKey, error)
 	}
 
 	return rsaPub, nil
+}
+
+// ExtractPubKeyHashFromScript 从P2PKH提取公钥哈希
+func ExtractPubKeyHashFromScript(script []byte) ([]byte, error) {
+	// 解析脚本，这里假设脚本格式正确
+	if len(script) < 25 { // 简单检查，因为P2PKH脚本应该正好是25字节
+		return nil, fmt.Errorf("script too short")
+	}
+	// 按照P2PKH脚本的结构，公钥哈希应该从第三个元素开始，长度为20
+	pubKeyHash := script[3:23] // 索引从0开始，因此第三个元素的索引是2，但是这里OP_HASH160之后
+	return pubKeyHash, nil
 }
 
 // 反汇编脚本并以易读的格式返回

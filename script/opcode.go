@@ -299,7 +299,7 @@ func opcodeCheckSig(op *opcode, data []byte, vm *Engine) error {
 //
 // Stack transformation: [... x1 x2] -> [... bool] -> [...]
 func opcodeEqualVerify(op *opcode, data []byte, vm *Engine) error {
-	err := opcodeEqual(op, data, vm)
+	err := opcodeEqual(vm)
 	if err == nil {
 		err = abstractVerify(op, vm)
 	}
@@ -309,7 +309,7 @@ func opcodeEqualVerify(op *opcode, data []byte, vm *Engine) error {
 // opcodeEqual 删除数据堆栈的前 2 项，将它们作为原始字节进行比较，并将结果（编码为布尔值）推回堆栈。
 //
 // Stack transformation: [... x1 x2] -> [... bool]
-func opcodeEqual(op *opcode, data []byte, vm *Engine) error {
+func opcodeEqual(vm *Engine) error {
 	a, err := vm.dstack.PopByteArray()
 	if err != nil {
 		return err
