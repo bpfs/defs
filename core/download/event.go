@@ -328,7 +328,7 @@ func recoverDataFromSlices(fs *afero.FileStore, p2p *dep2p.DeP2P, pool *pool.Mem
 		}
 
 		// 从文件存储中读取所有切片
-		shards, err := readAllShards(fs, opt, p2p, pool, task)
+		shards, err := readAllShards(fs, p2p, task)
 		if err != nil {
 			task.Mu.Unlock()
 			if task.MergeCounter > 1 {
@@ -431,7 +431,7 @@ func recoverDataFromSlices(fs *afero.FileStore, p2p *dep2p.DeP2P, pool *pool.Mem
 }
 
 // readAllShards 读取所有片段数据
-func readAllShards(fs *afero.FileStore, opt *opts.Options, p2p *dep2p.DeP2P, pool *pool.MemoryPool, task *pool.DownloadTask) ([][]byte, error) {
+func readAllShards(fs *afero.FileStore, p2p *dep2p.DeP2P, task *pool.DownloadTask) ([][]byte, error) {
 	subDir := filepath.Join(p2p.Host().ID().String(), task.FileID) // 设置子目录
 	shards := make([][]byte, task.TotalPieces)
 	for i := range shards {

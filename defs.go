@@ -30,6 +30,11 @@ type FS struct {
 	uploadChan   chan *core.UploadChan   // 用于刷新上传的通道
 	downloadChan chan *core.DownloadChan // 用于刷新下载的通道
 	searchChan   chan *core.SearchChan   // 用于刷新搜索的通道
+	serviceChan  chan *core.ServiceChan  // 状态通道，用于服务端存储通知
+	clientChan   chan *core.ClientChan   // 状态通道，用于客户端存储通知
+	// 文件上传/下载事件
+	// 文件片段事件
+	// 文件共享事件
 
 	registry *eventbus.EventRegistry // 事件总线
 	cache    *ristretto.Cache        // 缓存实例
@@ -88,6 +93,8 @@ func Open(opt *opts.Options, p2p *dep2p.DeP2P, pubsub *pubsub.DeP2PPubSub) (*FS,
 		&fs.uploadChan,
 		&fs.downloadChan,
 		&fs.searchChan,
+		&fs.serviceChan,
+		&fs.clientChan,
 		&fs.registry,
 		&fs.cache,
 		&fs.pool,
@@ -139,6 +146,14 @@ func globalInit(fs *FS) fx.Option {
 		func() chan *core.SearchChan {
 			return make(chan *core.SearchChan)
 		},
+		// 初始服务端存储通知
+		func() chan *core.ServiceChan {
+			return make(chan *core.ServiceChan, 1000)
+		},
+		// 初始化客户端存储通知
+		func() chan *core.ServiceChan {
+			return make(chan *core.ServiceChan, 500)
+		},
 	)
 }
 
@@ -176,6 +191,16 @@ func (fs *FS) SearchChan() chan *core.SearchChan {
 // UploadChan 获取用于刷新上传的通道
 func (fs *FS) UploadChan() chan *core.UploadChan {
 	return fs.uploadChan
+}
+
+// ServiceChan 获取用于服务端存的通知
+func (fs *FS) ServiceChan() chan *core.ServiceChan {
+	return fs.serviceChan
+}
+
+// ClientChan 获取用于客户端存储的通知
+func (fs *FS) ClientChan() chan *core.ClientChan {
+	return fs.clientChan
 }
 
 // Ctx 获取全局上下文

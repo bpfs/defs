@@ -32,6 +32,8 @@ type StreamProtocol struct {
 	DB           *sqlites.SqliteDB       // sqlite数据库服务
 	UploadChan   chan *core.UploadChan   // 用于刷新上传的通道
 	DownloadChan chan *core.DownloadChan // 用于刷新下载的通道
+	ServiceChan  chan *core.ServiceChan  // 状态通道，用于服务端存储通知
+	ClientChan   chan *core.ClientChan   // 状态通道，用于客户端存储通知
 
 	Registry *eventbus.EventRegistry // 事件总线
 	Cache    *ristretto.Cache        // 缓存实例
@@ -76,8 +78,27 @@ func (sp *StreamProtocol) HandleStreamFileSliceUploadStream(req *streams.Request
 		}
 	}
 
-	fileID := segmentResults["FILEID"].Data     // 读取文件的唯一标识
-	sliceId := segmentResults["SLICEHASH"].Data // 读取文件片段的哈希值
+	fileID := segmentResults["FILEID"].Data             // 读取文件的唯一标识
+	sliceId := segmentResults["SLICEHASH"].Data         // 读取文件片段的哈希值
+	sliceTableData := segmentResults["SLICETABLE"].Data // 读取文件片段的哈希表
+	indexData := segmentResults["INDEX"].Data           // 读取文件片段的索引
+
+	var sliceTable map[int]core.HashTable
+	if err := util.DecodeFromBytes(sliceTableData, &sliceTable); err != nil {
+		return err
+	}
+	var totalPieces int
+	for _, v := range sliceTable {
+		if !v.IsRsCodes {
+			totalPieces++
+		}
+	}
+
+	index32, err := util.FromBytes[int32](indexData)
+	if err != nil {
+		return err
+	}
+	index := int(index32)
 
 	// ReadSegment 从文件读取段 FILEID
 	// fileID, err := segment.ReadSegmentToFile(tmpFile, "FILEID", xref)
@@ -108,12 +129,43 @@ func (sp *StreamProtocol) HandleStreamFileSliceUploadStream(req *streams.Request
 		logrus.Error("存储接收内容失败, error:", err)
 		return fmt.Errorf("请求无法处理")
 	}
+
+	if sp.P2P.DHT().Mode() == dep2p.ModeServer { // 服务端
+		go SendServiceInfo(sp.ServiceChan, string(fileID), string(sliceId), totalPieces, index, sp.P2P.Host().ID().String())
+	} else {
+		go SendClientInfo(sp.ClientChan, string(fileID), string(sliceId), totalPieces, index, sp.P2P.Host().ID().String())
+	}
+
 	// 组装响应数据
 	res.Code = 200                                 // 响应代码
 	res.Msg = "成功"                                 // 响应消息
 	res.Data = []byte(sp.P2P.Host().ID().String()) // 响应数据(主机地址)
 
 	return nil
+}
+
+// SendServiceInfo 向服务端发送信息
+func SendServiceInfo(serviceChans chan *core.ServiceChan, fileID, sliceHash string, totalPieces, index int, peerIDs string) {
+	serviceInfo := &core.ServiceChan{
+		FileID:      fileID,      // 文件的唯一标识(外部标识)
+		SliceHash:   sliceHash,   // 文件片段的哈希值(外部标识)
+		TotalPieces: totalPieces, // 文件总片数
+		Index:       index,       // 文件片段的索引(该片段在文件中的顺序位置)
+		Pid:         peerIDs,     // 节点ID
+	}
+	serviceChans <- serviceInfo
+}
+
+// SendClientInfo 向客户端发送信息
+func SendClientInfo(clientChans chan *core.ClientChan, fileID, sliceHash string, totalPieces, index int, peerIDs string) {
+	clientInfo := &core.ClientChan{
+		FileID:      fileID,      // 文件的唯一标识(外部标识)
+		SliceHash:   sliceHash,   // 文件片段的哈希值(外部标识)
+		TotalPieces: totalPieces, // 文件总片数
+		Index:       index,       // 文件片段的索引(该片段在文件中的顺序位置)
+		Pid:         peerIDs,     // 节点ID
+	}
+	clientChans <- clientInfo
 }
 
 func CreateTempFile(payload []byte) (file *os.File, err error) {

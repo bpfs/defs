@@ -68,6 +68,24 @@ type SearchChan struct {
 	Xref       int64     // Xref表中段的数量
 }
 
+// ServiceChan 状态通道，用于服务端存储通知
+type ServiceChan struct {
+	FileID      string // 文件的唯一标识(外部标识)
+	SliceHash   string // 文件片段的哈希值(外部标识)
+	TotalPieces int    // 文件总片数
+	Index       int    // 文件片段的索引(该片段在文件中的顺序位置)
+	Pid         string // 节点ID
+}
+
+// ClientChan 状态通道，用于客户端存储通知
+type ClientChan struct {
+	FileID      string // 文件的唯一标识(外部标识)
+	SliceHash   string // 文件片段的哈希值(外部标识)
+	TotalPieces int    // 文件总片数
+	Index       int    // 文件片段的索引(该片段在文件中的顺序位置)
+	Pid         string // 节点ID
+}
+
 // GetFileID 获取文件的唯一标识
 func (fi *FileInfo) GetFileID() string {
 	return fi.fileID

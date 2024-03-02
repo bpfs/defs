@@ -223,11 +223,11 @@ func SendFileSliceToNetwork(opt *opts.Options, p2p *dep2p.DeP2P, uploadChan chan
 // SendUploadInfo 向上传通道发送信息
 func SendUploadInfo(uploadChans chan *core.UploadChan, fileID, sliceHash string, totalPieces, index int, peerIDs []string) {
 	uploadInfo := &core.UploadChan{
-		FileID:      fileID,
-		SliceHash:   sliceHash,
-		TotalPieces: totalPieces,
-		Index:       index,
-		Pid:         peerIDs,
+		FileID:      fileID,      // 文件的唯一标识(外部标识)
+		SliceHash:   sliceHash,   // 文件片段的哈希值(外部标识)
+		TotalPieces: totalPieces, // 文件总片数
+		Index:       index,       // 文件片段的索引(该片段在文件中的顺序位置)
+		Pid:         peerIDs,     // 节点ID
 	}
 	uploadChans <- uploadInfo
 }
