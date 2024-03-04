@@ -32,8 +32,7 @@ type StreamProtocol struct {
 	DB           *sqlites.SqliteDB       // sqlite数据库服务
 	UploadChan   chan *core.UploadChan   // 用于刷新上传的通道
 	DownloadChan chan *core.DownloadChan // 用于刷新下载的通道
-	ServiceChan  chan *core.ServiceChan  // 状态通道，用于服务端存储通知
-	ClientChan   chan *core.ClientChan   // 状态通道，用于客户端存储通知
+	StorageChan  chan *core.StorageChan  // 用于存储奖励的通知
 
 	Registry *eventbus.EventRegistry // 事件总线
 	Cache    *ristretto.Cache        // 缓存实例
@@ -130,11 +129,8 @@ func (sp *StreamProtocol) HandleStreamFileSliceUploadStream(req *streams.Request
 		return fmt.Errorf("请求无法处理")
 	}
 
-	if sp.P2P.DHT().Mode() == dep2p.ModeServer { // 服务端
-		go SendServiceInfo(sp.ServiceChan, string(fileID), string(sliceId), totalPieces, index, sp.P2P.Host().ID().String())
-	} else {
-		go SendClientInfo(sp.ClientChan, string(fileID), string(sliceId), totalPieces, index, sp.P2P.Host().ID().String())
-	}
+	// 向存储奖励通道发送信息
+	go SendStorageInfo(sp.StorageChan, string(fileID), string(sliceId), totalPieces, index, sp.P2P.Host().ID().String())
 
 	// 组装响应数据
 	res.Code = 200                                 // 响应代码
@@ -144,28 +140,16 @@ func (sp *StreamProtocol) HandleStreamFileSliceUploadStream(req *streams.Request
 	return nil
 }
 
-// SendServiceInfo 向服务端发送信息
-func SendServiceInfo(serviceChans chan *core.ServiceChan, fileID, sliceHash string, totalPieces, index int, peerIDs string) {
-	serviceInfo := &core.ServiceChan{
+// SendStorageInfo 向存储奖励通道发送信息
+func SendStorageInfo(storageChans chan *core.StorageChan, fileID, sliceHash string, totalPieces, index int, peerIDs string) {
+	storageInfo := &core.StorageChan{
 		FileID:      fileID,      // 文件的唯一标识(外部标识)
 		SliceHash:   sliceHash,   // 文件片段的哈希值(外部标识)
 		TotalPieces: totalPieces, // 文件总片数
 		Index:       index,       // 文件片段的索引(该片段在文件中的顺序位置)
 		Pid:         peerIDs,     // 节点ID
 	}
-	serviceChans <- serviceInfo
-}
-
-// SendClientInfo 向客户端发送信息
-func SendClientInfo(clientChans chan *core.ClientChan, fileID, sliceHash string, totalPieces, index int, peerIDs string) {
-	clientInfo := &core.ClientChan{
-		FileID:      fileID,      // 文件的唯一标识(外部标识)
-		SliceHash:   sliceHash,   // 文件片段的哈希值(外部标识)
-		TotalPieces: totalPieces, // 文件总片数
-		Index:       index,       // 文件片段的索引(该片段在文件中的顺序位置)
-		Pid:         peerIDs,     // 节点ID
-	}
-	clientChans <- clientInfo
+	storageChans <- storageInfo
 }
 
 func CreateTempFile(payload []byte) (file *os.File, err error) {
