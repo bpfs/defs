@@ -27,6 +27,7 @@ type RegisterStreamProtocolInput struct {
 	DB           *sqlites.SqliteDB       // sqlite数据库服务
 	UploadChan   chan *core.UploadChan   // 用于刷新上传的通道
 	DownloadChan chan *core.DownloadChan // 用于刷新下载的通道
+	StorageChan  chan *core.StorageChan  // 用于存储奖励的通知
 
 	Registry *eventbus.EventRegistry // 事件总线
 	Cache    *ristretto.Cache        // 缓存实例
@@ -44,6 +45,7 @@ func RegisterStreamProtocol(lc fx.Lifecycle, input RegisterStreamProtocolInput) 
 		DB:           input.DB,
 		UploadChan:   input.UploadChan,
 		DownloadChan: input.DownloadChan,
+		StorageChan:  input.StorageChan,
 		Registry:     input.Registry,
 		Cache:        input.Cache,
 		Pool:         input.Pool,
