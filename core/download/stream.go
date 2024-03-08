@@ -80,5 +80,6 @@ func SendDownloadInfo(downloadChans chan *core.DownloadChan, fileID, sliceHash s
 		TotalPieces: totalPieces,
 		Index:       index,
 	}
+	logrus.Printf("下载通道数据传输中%v", downloadInfo)
 	downloadChans <- downloadInfo
 }
