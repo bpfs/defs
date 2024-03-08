@@ -165,8 +165,6 @@ type FileUploadRequestCheckPayload struct {
 // totalPieces	文件片段的总量
 // current		当前序列
 func SendFileSliceToNetwork(opt *opts.Options, p2p *dep2p.DeP2P, uploadChan chan *core.UploadChan, registry *eventbus.EventRegistry, cache *ristretto.Cache, pm *pool.MemoryPool, fileID, sliceHash string, totalPieces, current int) error {
-	// 在流操作之前获取互斥锁
-	network.StreamMutex.Lock()
 
 	// 新建文件存储
 	fs, err := afero.NewFileStore(paths.GetUploadPath())
@@ -229,6 +227,7 @@ func SendUploadInfo(uploadChans chan *core.UploadChan, fileID, sliceHash string,
 		Index:       index,       // 文件片段的索引(该片段在文件中的顺序位置)
 		Pid:         peerIDs,     // 节点ID
 	}
+	logrus.Printf("上传通道数据传输中%v", uploadInfo)
 	uploadChans <- uploadInfo
 }
 
@@ -259,7 +258,8 @@ func sendSlice(opt *opts.Options, p2p *dep2p.DeP2P, sliceHash string, sliceByte 
 		if i < 0 {
 			i = 0
 		}
-
+		// 在流操作之前获取互斥锁
+		network.StreamMutex.Lock()
 		// 向指定的节点发流消息
 		responseByte, err := network.SendStream(p2p, config.StreamFileSliceUploadProtocol, "", receiverPeers[i], sliceByte)
 		if err != nil {

@@ -64,6 +64,8 @@ func (sp *StreamProtocol) HandleStreamFileSliceUploadStream(req *streams.Request
 	segmentTypes := []string{
 		"FILEID",
 		"SLICEHASH",
+		"SLICETABLE",
+		"INDEX",
 	}
 	segmentResults, _, err := segment.ReadFileSegments(tmpFile, segmentTypes)
 	if err != nil {
