@@ -2,7 +2,6 @@ package upload
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -40,54 +39,57 @@ type StreamProtocol struct {
 }
 
 // HandleStreamFileSliceUploadStream 处理文件片段上传的流消息
-func (sp *StreamProtocol) HandleStreamFileSliceUploadStream(req *streams.RequestMessage, res *streams.ResponseMessage) error {
-	/////////////////////// 以后要改进 ///////////////////////
-	// TODO:先用临时文件的形式
+func (sp *StreamProtocol) HandleStreamFileSliceUploadStream(req *streams.RequestMessage, res *streams.ResponseMessage) (int32, string) {
+	// 尝试从请求负载中解码出文件片段的内容
 	payload := new([]byte)
 	if err := util.DecodeFromBytes(req.Payload, payload); err != nil {
 		logrus.Errorf("[HandleStreamFileSliceUploadStream] 解码失败:\t%v", err)
-		return err
+		// 返回400状态码和错误描述信息，表示请求负载解码失败
+		return 400, "解码请求负载失败"
 	}
 
+	// 创建一个临时文件来存储接收到的文件片段内容
 	tmpFile, err := CreateTempFile(*payload)
 	if err != nil {
 		logrus.Errorf("创建临时文件失败:%v", err)
-		return err
+		// 返回500状态码和错误描述信息，表示创建临时文件失败
+		return 500, "创建临时文件失败"
 	}
 
-	// 最后删除临时文件
+	// 确保在函数返回前删除临时文件
 	defer func() {
 		os.Remove(tmpFile.Name())
 		tmpFile.Close()
 	}()
 
-	segmentTypes := []string{
-		"FILEID",
-		"SLICEHASH",
-		"SLICETABLE",
-		"INDEX",
-	}
+	// 定义需要从文件中读取的段类型
+	segmentTypes := []string{"FILEID", "SLICEHASH", "SLICETABLE", "INDEX"}
+	// 读取这些段的内容
 	segmentResults, _, err := segment.ReadFileSegments(tmpFile, segmentTypes)
 	if err != nil {
-		return err
+		return 500, "读取文件段失败"
 	}
 
-	// 检查并提取每个段的数据
+	// 检查每个读取段的结果是否有错误
 	for _, result := range segmentResults {
 		if result.Error != nil {
-			return result.Error
+			return 400, "读取文件段中存在错误"
 		}
 	}
 
-	fileID := segmentResults["FILEID"].Data             // 读取文件的唯一标识
-	sliceId := segmentResults["SLICEHASH"].Data         // 读取文件片段的哈希值
-	sliceTableData := segmentResults["SLICETABLE"].Data // 读取文件片段的哈希表
-	indexData := segmentResults["INDEX"].Data           // 读取文件片段的索引
+	// 解析出各个段的具体数据
+	fileID := segmentResults["FILEID"].Data
+	sliceId := segmentResults["SLICEHASH"].Data
+	sliceTableData := segmentResults["SLICETABLE"].Data
+	indexData := segmentResults["INDEX"].Data
 
+	// 解码片段哈希表
 	var sliceTable map[int]core.HashTable
 	if err := util.DecodeFromBytes(sliceTableData, &sliceTable); err != nil {
-		return err
+		return 400, "解码片段哈希表失败"
 	}
+
+	// 计算总片段数
 	var totalPieces int
 	for _, v := range sliceTable {
 		if !v.IsRsCodes {
@@ -95,51 +97,37 @@ func (sp *StreamProtocol) HandleStreamFileSliceUploadStream(req *streams.Request
 		}
 	}
 
+	// 解码索引
 	index32, err := util.FromBytes[int32](indexData)
 	if err != nil {
-		return err
+		return 400, "解码索引失败"
 	}
 	index := int(index32)
 
-	// ReadSegment 从文件读取段 FILEID
-	// fileID, err := segment.ReadSegmentToFile(tmpFile, "FILEID", xref)
-	// if err != nil {
-	// 	logrus.Errorf("从文件加载 FILEID 表失败:%v", err)
-
-	// 	return err
-	// }
-
-	// ReadSegment 从文件读取段 SLICEID
-	// sliceId, err := segment.ReadSegmentToFile(tmpFile, "SLICEHASH", xref)
-	// if err != nil {
-	// 	logrus.Errorf("从文件加载 SLICEHASH 表失败:%v", err)
-	// 	return err
-	// }
-
-	// 新建文件存储
+	// 创建文件存储服务
 	fs, err := afero.NewFileStore(paths.GetSlicePath())
 	if err != nil {
-		logrus.Errorf("创建新建文件存储失败:%v ", err)
-		return err
+		logrus.Errorf("创建文件存储服务失败:%v ", err)
+		return 500, "创建文件存储服务失败"
 	}
-	// 子目录当前主机+文件hash
-	subDir := filepath.Join(sp.P2P.Host().ID().String(), string(fileID)) // 设置子目录
 
-	// 写入本地文件
+	// 设置文件存储的子目录
+	subDir := filepath.Join(sp.P2P.Host().ID().String(), string(fileID))
+
+	// 将文件片段内容写入本地存储
 	if err := fs.Write(subDir, string(sliceId), *payload); err != nil {
 		logrus.Error("存储接收内容失败, error:", err)
-		return fmt.Errorf("请求无法处理")
+		return 500, "存储接收内容失败"
 	}
 
-	// 向存储奖励通道发送信息
+	// 异步向存储奖励通道发送信息
 	go SendStorageInfo(sp.StorageChan, string(fileID), string(sliceId), totalPieces, index, sp.P2P.Host().ID().String())
 
-	// 组装响应数据
-	res.Code = 200                                 // 响应代码
-	res.Msg = "成功"                                 // 响应消息
-	res.Data = []byte(sp.P2P.Host().ID().String()) // 响应数据(主机地址)
+	// 设置成功的响应消息
+	res.Data = []byte(sp.P2P.Host().ID().String()) // 响应数据（主机地址）
 
-	return nil
+	// 返回200状态码和成功消息
+	return 200, "成功"
 }
 
 // SendStorageInfo 向存储奖励通道发送信息
