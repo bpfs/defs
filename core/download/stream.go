@@ -34,12 +34,13 @@ type StreamProtocol struct {
 }
 
 // HandleFileDownloadResponseStream 处理文件下载响应的流消息
-func (sp *StreamProtocol) HandleFileDownloadResponseStream(req *streams.RequestMessage, res *streams.ResponseMessage) error {
-
+func (sp *StreamProtocol) HandleFileDownloadResponseStream(req *streams.RequestMessage, res *streams.ResponseMessage) (int32, string) {
+	// 尝试从请求消息中解析发送方的Peer ID
 	receiver, err := peer.Decode(req.Message.Sender)
 	if err != nil {
 		logrus.Errorf("解析peerid失败:\t%v", err)
-		return err
+		// 解析Peer ID失败，返回相应的状态码和错误消息
+		return 400, "解析Peer ID失败"
 	}
 
 	switch req.Message.Type {
@@ -47,29 +48,33 @@ func (sp *StreamProtocol) HandleFileDownloadResponseStream(req *streams.RequestM
 		payload := new(FileDownloadResponseChecklistPayload)
 		if err := util.DecodeFromBytes(req.Payload, payload); err != nil {
 			logrus.Errorf("[HandleFileDownloadResponseStream] 解码失败:\t%v", err)
-			return err
+			// 解码请求负载失败，返回相应的状态码和错误消息
+			return 400, "解码文件下载响应清单负载失败"
 		}
 
-		// 处理文件下载响应清单
-		// ProcessDownloadResponseChecklist(sp.pool, sp.db, sp.p2p, sp.pubsub, payload, receiver)
+		// 异步处理文件下载响应清单
 		go ProcessDownloadResponseChecklist(sp.Pool, sp.DB, sp.P2P, sp.PubSub, payload, receiver)
 
 	case "content":
 		payload := new(FileDownloadResponseContentPayload)
 		if err := util.DecodeFromBytes(req.Payload, payload); err != nil {
 			logrus.Errorf("[HandleFileDownloadResponseStream] 解码失败:\t%v", err)
-			return err
+			// 解码请求负载失败，返回相应的状态码和错误消息
+			return 400, "解码文件下载响应内容负载失败"
 		}
 		logrus.Printf("收到第%d片,切片hash为%s内容", payload.Index, payload.SliceHash)
-		// 处理文件下载响应内容
+		// 异步处理文件下载响应内容
 		go ProcessDownloadResponseContent(sp.P2P, sp.DB, sp.DownloadChan, sp.Registry, sp.Pool, payload)
+
+	default:
+		return 6404, "非法入侵尝试"
 	}
-	// 组装响应数据
-	res.Code = 200                                 // 响应代码
-	res.Msg = "成功"                                 // 响应消息
+
+	// 操作成功，设置响应码和消息
 	res.Data = []byte(sp.P2P.Host().ID().String()) // 响应数据(主机地址)
 
-	return nil
+	// 返回成功状态码和消息
+	return 200, "成功"
 }
 
 // SendDownloadInfo 向下载通道发送信息
