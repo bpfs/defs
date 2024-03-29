@@ -3,7 +3,7 @@ module github.com/bpfs/defs
 go 1.20
 
 require (
-	github.com/bpfs/dep2p v0.0.6
+	github.com/bpfs/dep2p v0.0.8
 	github.com/libp2p/go-libp2p v0.30.0
 	github.com/libp2p/go-libp2p-pubsub v0.9.3
 	github.com/mattn/go-sqlite3 v1.14.19
