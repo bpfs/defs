@@ -8,6 +8,7 @@ import (
 
 	"github.com/bpfs/defs/debug"
 	"github.com/bpfs/defs/util"
+	"github.com/bpfs/defs/wallets"
 	"github.com/sirupsen/logrus"
 )
 
@@ -32,7 +33,7 @@ type DownloadTaskSerializable struct {
 //   - *DownloadTaskSerializable: 可序列化的 DownloadTask 结构体
 func (task *DownloadTask) ToSerializable() (*DownloadTaskSerializable, error) {
 	// 将ECDSA私钥序列化为字节
-	privKeyBytes, err := util.MarshalPrivateKey(task.OwnerPriv)
+	privKeyBytes, err := wallets.MarshalPrivateKey(task.OwnerPriv)
 	if err != nil {
 		logrus.Errorf("[%s]将ECDSA私钥序列化为字节失败: %v", debug.WhereAmI(), err)
 		return nil, err
@@ -58,7 +59,7 @@ func (task *DownloadTask) ToSerializable() (*DownloadTaskSerializable, error) {
 //   - serializable: *DownloadTaskSerializable 可序列化的 DownloadTask 结构体
 func (task *DownloadTask) FromSerializable(serializable *DownloadTaskSerializable) error {
 	// 将字节序列反序列化为ECDSA私钥
-	privateKey, err := util.UnmarshalPrivateKey(serializable.OwnerPriv)
+	privateKey, err := wallets.UnmarshalPrivateKey(serializable.OwnerPriv)
 	if err != nil {
 		logrus.Errorf("[%s]将字节序列反序列化为ECDSA私钥 失败: %v", debug.WhereAmI(), err)
 		return err
