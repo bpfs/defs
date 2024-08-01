@@ -36,7 +36,7 @@ type Options struct {
 	parityShards        int64             // 奇偶校验片段的数量
 	shardSize           int64             // 文件片段的大小
 	parityRatio         float64           // 奇偶校验片段占比(根据文件大小计算并向上取整)
-	defaultOwnerPriv    *ecdh.PrivateKey // 默认所有者私钥(ECDSA 椭圆曲线数字签名算法)
+	defaultOwnerPriv    *ecdsa.PrivateKey // 默认所有者私钥(ECDSA 椭圆曲线数字签名算法)
 	defaultFileKey      string            // 默认文件密钥(AES 对称加密算法)
 	rootPath            string            // 文件根路径
 	downloadPath        string            // 下载路径
@@ -127,7 +127,7 @@ func (opt *Options) GetSizeAndRatioOptions() (int64, float64, bool) {
 }
 
 // GetDefaultOwnerPriv 获取默认所有者的私钥
-func (opt *Options) GetDefaultOwnerPriv() *ecdh.PrivateKey {
+func (opt *Options) GetDefaultOwnerPriv() *ecdsa.PrivateKey {
 	return opt.defaultOwnerPriv
 }
 
@@ -284,7 +284,7 @@ func (opt *Options) BuildRoutingTableLow(low int64) {
 }
 
 // BuildDefaultOwnerPriv 设置默认所有者的私钥
-func (opt *Options) BuildDefaultOwnerPriv(ownerPriv *ecdh.PrivateKey) {
+func (opt *Options) BuildDefaultOwnerPriv(ownerPriv *ecdsa.PrivateKey) {
 	opt.defaultOwnerPriv = ownerPriv
 }
 

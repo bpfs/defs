@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/bpfs/defs/debug"
 	"github.com/bpfs/defs/sign/rsa"
 	"github.com/bpfs/defs/wallets"
 	"github.com/sirupsen/logrus"
@@ -82,13 +83,17 @@ func TestPayToPubKeyScriptECDSA(t *testing.T) {
 	}
 
 	// 获取公钥的字节表示
-	pubKeyBytes := elliptic.Marshal(privateKey.Curve, privateKey.PublicKey.X, privateKey.PublicKey.Y)
-	logrus.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
+	publicKeyEcdh, err := privateKey.PublicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return
+	}
+	logrus.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(publicKeyEcdh.Bytes()))
 
 	// 构建P2PK脚本
 	script, err := NewScriptBuilder().
 		// AddOp(OP_DUP).AddOp(OP_HASH160).
-		AddData(pubKeyBytes). // 直接添加公钥
+		AddData(publicKeyEcdh.Bytes()). // 直接添加公钥
 		// AddOp(OP_EQUALVERIFY).AddOp(OP_CHECKSIG). // 添加检查签名操作
 		AddOp(OP_CHECKSIG). // 添加检查签名操作
 		Script()
@@ -116,8 +121,12 @@ func TestPayToPubKeyScriptECDSA(t *testing.T) {
 	logrus.Println("公钥 X 坐标:", pubKey.X.Text(16))
 	logrus.Println("公钥 Y 坐标:", pubKey.Y.Text(16))
 
-	pubKeyBytes2 := elliptic.Marshal(pubKey.Curve, pubKey.X, pubKey.Y)
-	logrus.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes2))
+	publicKeyEcdh2, err := pubKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return
+	}
+	logrus.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(publicKeyEcdh2.Bytes()))
 }
 func TestPayToPubKeyHashScriptECDSA(t *testing.T) {
 	// 生成一个新的ECDSA私钥
@@ -127,12 +136,17 @@ func TestPayToPubKeyHashScriptECDSA(t *testing.T) {
 	}
 
 	// 获取公钥的字节表示
-	pubKeyBytes := elliptic.Marshal(privateKey.Curve, privateKey.PublicKey.X, privateKey.PublicKey.Y)
-	logrus.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
+	publicKeyEcdh, err := privateKey.PublicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return
+	}
+
+	logrus.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(publicKeyEcdh.Bytes()))
 
 	// pubKeyHash := wallets.HashPubKey(pubKeyBytes)
 	// 通过公钥字节生成公钥哈希
-	pubKeyHash, ok := wallets.PublicKeyBytesToPublicKeyHash(pubKeyBytes)
+	pubKeyHash, ok := wallets.PublicKeyBytesToPublicKeyHash(publicKeyEcdh.Bytes())
 	if !ok {
 		t.Fatalf("通过公钥字节生成公钥哈希: %v", err)
 	}
@@ -207,7 +221,7 @@ func TestPayToPubKeyHashScriptRSA(t *testing.T) {
 }
 
 // ExtractPubKeyFromP2PKScript 从P2PK脚本中提取公钥
-// func ExtractPubKeyFromP2PKScript(p2pkScript []byte) (*ecdh.PublicKey, error) {
+// func ExtractPubKeyFromP2PKScript(p2pkScript []byte) (*ecdsa.PublicKey, error) {
 // 	// 检查脚本是否以OP_CHECKSIG结尾
 // 	if len(p2pkScript) < 2 || p2pkScript[len(p2pkScript)-1] != 0xAC { // OP_CHECKSIG的十六进制代码是0xAC
 // 		return nil, fmt.Errorf("无效的P2PK脚本")
@@ -232,7 +246,7 @@ func TestPayToPubKeyHashScriptRSA(t *testing.T) {
 // 		return nil, fmt.Errorf("无法解析公钥")
 // 	}
 
-// 	return &ecdh.PublicKey{
+// 	return &ecdsa.PublicKey{
 // 		Curve: elliptic.P256(),
 // 		X:     x,
 // 		Y:     y,
@@ -248,8 +262,12 @@ func TestCompressAndDecompressPubKey(t *testing.T) {
 	}
 
 	// 获取公钥的字节表示
-	pubKeyBytes := elliptic.Marshal(privateKey.Curve, privateKey.PublicKey.X, privateKey.PublicKey.Y)
-	logrus.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
+	publicKeyEcdh, err := privateKey.PublicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return
+	}
+	logrus.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(publicKeyEcdh.Bytes()))
 
 	originalPubKey := &privateKey.PublicKey
 
@@ -264,8 +282,12 @@ func TestCompressAndDecompressPubKey(t *testing.T) {
 	}
 
 	// 解压公钥的字节表示
-	decompressedPubKeyBytes := elliptic.Marshal(privateKey.Curve, privateKey.PublicKey.X, privateKey.PublicKey.Y)
-	logrus.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(decompressedPubKeyBytes))
+	decompressedPubKeyEcdh, err := privateKey.PublicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return
+	}
+	logrus.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(decompressedPubKeyEcdh.Bytes()))
 
 	// 比较原始公钥和解压后的公钥
 	if !reflect.DeepEqual(originalPubKey, decompressedPubKey) {

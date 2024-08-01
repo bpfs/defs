@@ -117,7 +117,7 @@ func main() {
 	// 你可以同时测试上传+下载，也可以单独测试上传后，结束再测试下载
 	// 如果你将上传和下载分开测试，注意需要将 第行 的"file.FileID"修改为文件ID，如果测试的是"BPFS 白皮书.pdf"，复制下面的那行即可；如果测试的是自己的文件，可在上传的打印日志里复制
 
-	/**
+	// /**
 
 	time.Sleep(60 * time.Second) // 延时20秒
 
@@ -138,9 +138,9 @@ func main() {
 	logrus.Printf("UploadTime:\t%v\n", file.UploadTime)
 	logrus.Print("===== 测试方法 =====\n\n")
 
-	*/
+	// */
 
-	/**
+	// /**
 
 	time.Sleep(60 * time.Second) // 延时60秒
 
@@ -151,7 +151,7 @@ func main() {
 	}
 	logrus.Printf("下载任务开启\t%s\n\n", download.TaskID)
 
-	*/
+	// */
 
 	// logrus.Printf("开始更新名字任务\t%s\n\n", file.FileID)
 
@@ -401,7 +401,7 @@ func buildPubSub() []libp2ppubsub.Option {
 	return pubsubOptions
 }
 
-func GenerateECDSAKeyPair(password []byte, salt []byte, iterations, keyLength int, useSHA512 bool) (*ecdh.PrivateKey, []byte, error) {
+func GenerateECDSAKeyPair(password []byte, salt []byte, iterations, keyLength int, useSHA512 bool) (*ecdsa.PrivateKey, []byte, error) {
 	curve := elliptic.P256() // 根据需要选择合适的曲线
 
 	// 选择合适的哈希函数
@@ -421,8 +421,8 @@ func GenerateECDSAKeyPair(password []byte, salt []byte, iterations, keyLength in
 	masterKey, _ := bip32.NewMasterKey(key) //?????? 如果不使用启动host会报错
 
 	// 生成私钥
-	privateKey := &ecdh.PrivateKey{
-		PublicKey: ecdh.PublicKey{
+	privateKey := &ecdsa.PrivateKey{
+		PublicKey: ecdsa.PublicKey{
 			Curve: curve,
 		},
 		D: new(big.Int).SetBytes(masterKey.Key),

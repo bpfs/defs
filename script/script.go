@@ -78,7 +78,7 @@ func VerifyScriptPubKeyHash(script, pubKeyHash []byte) bool {
 }
 
 // ExtractPubKeyFromP2PKScriptToECDSA 从P2PK脚本中提取ECDSA公钥
-func ExtractPubKeyFromP2PKScriptToECDSA(p2pkScript []byte) (*ecdh.PublicKey, error) {
+func ExtractPubKeyFromP2PKScriptToECDSA(p2pkScript []byte) (*ecdsa.PublicKey, error) {
 	if len(p2pkScript) < 2 || p2pkScript[len(p2pkScript)-1] != 0xAC { // 检查OP_CHECKSIG
 		return nil, fmt.Errorf("无效的P2PK脚本")
 	}
@@ -91,7 +91,7 @@ func ExtractPubKeyFromP2PKScriptToECDSA(p2pkScript []byte) (*ecdh.PublicKey, err
 		return nil, fmt.Errorf("无法解析公钥")
 	}
 
-	return &ecdh.PublicKey{
+	return &ecdsa.PublicKey{
 		Curve: elliptic.P256(),
 		X:     x,
 		Y:     y,
@@ -195,7 +195,7 @@ func DisassembleScript(script []byte) string {
 }
 
 // 获取压缩公钥
-func CompressPubKey(pubKey *ecdh.PublicKey) []byte {
+func CompressPubKey(pubKey *ecdsa.PublicKey) []byte {
 	// 获取公钥的X坐标
 	xBytes := pubKey.X.Bytes()
 
@@ -212,7 +212,7 @@ func CompressPubKey(pubKey *ecdh.PublicKey) []byte {
 }
 
 // 从压缩公钥解压
-func DecompressPubKey(curve elliptic.Curve, compressedPubKey []byte) (*ecdh.PublicKey, error) {
+func DecompressPubKey(curve elliptic.Curve, compressedPubKey []byte) (*ecdsa.PublicKey, error) {
 	if len(compressedPubKey) != 33 {
 		return nil, errors.New("invalid compressed public key length")
 	}
@@ -228,7 +228,7 @@ func DecompressPubKey(curve elliptic.Curve, compressedPubKey []byte) (*ecdh.Publ
 		return nil, err
 	}
 
-	return &ecdh.PublicKey{Curve: curve, X: x, Y: y}, nil
+	return &ecdsa.PublicKey{Curve: curve, X: x, Y: y}, nil
 }
 
 func decompressY(curve elliptic.Curve, x *big.Int, odd bool) (*big.Int, error) {
