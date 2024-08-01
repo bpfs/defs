@@ -207,7 +207,7 @@ func TestPayToPubKeyHashScriptRSA(t *testing.T) {
 }
 
 // ExtractPubKeyFromP2PKScript 从P2PK脚本中提取公钥
-// func ExtractPubKeyFromP2PKScript(p2pkScript []byte) (*ecdsa.PublicKey, error) {
+// func ExtractPubKeyFromP2PKScript(p2pkScript []byte) (*ecdh.PublicKey, error) {
 // 	// 检查脚本是否以OP_CHECKSIG结尾
 // 	if len(p2pkScript) < 2 || p2pkScript[len(p2pkScript)-1] != 0xAC { // OP_CHECKSIG的十六进制代码是0xAC
 // 		return nil, fmt.Errorf("无效的P2PK脚本")
@@ -232,7 +232,7 @@ func TestPayToPubKeyHashScriptRSA(t *testing.T) {
 // 		return nil, fmt.Errorf("无法解析公钥")
 // 	}
 
-// 	return &ecdsa.PublicKey{
+// 	return &ecdh.PublicKey{
 // 		Curve: elliptic.P256(),
 // 		X:     x,
 // 		Y:     y,

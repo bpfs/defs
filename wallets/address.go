@@ -14,12 +14,12 @@ import (
 
 // PrivateKeyToPublicKeyHash 通过私钥生成公钥哈希
 // 参数:
-//   - privateKey (*ecdsa.PrivateKey): 私钥
+//   - privateKey (*ecdh.PrivateKey): 私钥
 //
 // 返回值:
 //   - []byte: 公钥哈希
 //   - bool: 是否成功
-func PrivateKeyToPublicKeyHash(privateKey *ecdsa.PrivateKey) ([]byte, bool) {
+func PrivateKeyToPublicKeyHash(privateKey *ecdh.PrivateKey) ([]byte, bool) {
 	if privateKey == nil {
 		logrus.Errorf("[%s] 私钥不能为空", debug.WhereAmI())
 		return nil, false
@@ -30,12 +30,12 @@ func PrivateKeyToPublicKeyHash(privateKey *ecdsa.PrivateKey) ([]byte, bool) {
 
 // PrivateKeyToAddress 通过私钥生成钱包地址
 // 参数:
-//   - privateKey (*ecdsa.PrivateKey): 私钥
+//   - privateKey (*ecdh.PrivateKey): 私钥
 //
 // 返回值:
 //   - string: 钱包地址
 //   - bool: 是否成功
-func PrivateKeyToAddress(privateKey *ecdsa.PrivateKey) (string, bool) {
+func PrivateKeyToAddress(privateKey *ecdh.PrivateKey) (string, bool) {
 	if privateKey == nil {
 		logrus.Errorf("[%s] 私钥不能为空", debug.WhereAmI())
 		return "", false
@@ -46,12 +46,12 @@ func PrivateKeyToAddress(privateKey *ecdsa.PrivateKey) (string, bool) {
 
 // PublicKeyToPublicKeyHash 通过公钥生成公钥哈希
 // 参数:
-//   - publicKey (ecdsa.PublicKey): 公钥
+//   - publicKey (ecdh.PublicKey): 公钥
 //
 // 返回值:
 //   - []byte: 公钥哈希
 //   - bool: 是否成功
-func PublicKeyToPublicKeyHash(publicKey ecdsa.PublicKey) ([]byte, bool) {
+func PublicKeyToPublicKeyHash(publicKey ecdh.PublicKey) ([]byte, bool) {
 	pubKeyBytes := MarshalPublicKey(publicKey)
 	if !IsValidPublicKey(pubKeyBytes) {
 		logrus.Errorf("[%s] 无效的公钥", debug.WhereAmI())
@@ -62,12 +62,12 @@ func PublicKeyToPublicKeyHash(publicKey ecdsa.PublicKey) ([]byte, bool) {
 
 // PublicKeyToAddress 通过公钥生成钱包地址
 // 参数:
-//   - publicKey (ecdsa.PublicKey): 公钥
+//   - publicKey (ecdh.PublicKey): 公钥
 //
 // 返回值:
 //   - string: 钱包地址
 //   - bool: 是否成功
-func PublicKeyToAddress(publicKey ecdsa.PublicKey) (string, bool) {
+func PublicKeyToAddress(publicKey ecdh.PublicKey) (string, bool) {
 	pubKeyBytes := MarshalPublicKey(publicKey)
 	return PublicKeyBytesToAddress(pubKeyBytes)
 }

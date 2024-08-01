@@ -24,12 +24,12 @@ import (
 // GenerateTaskID 生成任务ID
 // 使用时间戳、私钥和随机数生成一个唯一的taskID
 // 参数:
-//   - ownerPriv *ecdsa.PrivateKey: 所有者的私钥
+//   - ownerPriv *ecdh.PrivateKey: 所有者的私钥
 //
 // 返回值:
 //   - string: 生成的taskID
 //   - error: 处理过程中发生的任何错误
-func GenerateTaskID(ownerPriv *ecdsa.PrivateKey) (string, error) {
+func GenerateTaskID(ownerPriv *ecdh.PrivateKey) (string, error) {
 	now := time.Now()
 	randBigInt, err := rand.Int(rand.Reader, big.NewInt(1000000))
 	if err != nil {

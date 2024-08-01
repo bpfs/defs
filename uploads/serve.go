@@ -37,7 +37,7 @@ type UploadSuccessInfo struct {
 //   - p2p: *dep2p.DeP2P 网络主机。
 //   - pubsub: *pubsub.DeP2PPubSub 网络订阅。
 //   - path: string 文件路径。
-//   - ownerPriv: *ecdsa.PrivateKey 所有者的私钥。
+//   - ownerPriv: *ecdh.PrivateKey 所有者的私钥。
 //
 // 返回值：
 //   - *UploadSuccessInfo: 文件上传成功后的返回信息。
@@ -48,7 +48,7 @@ func (manager *UploadManager) NewUpload(
 	p2p *dep2p.DeP2P, // 网络主机
 	pubsub *pubsub.DeP2PPubSub, // 网络订阅
 	path string, // 文件路径
-	ownerPriv *ecdsa.PrivateKey, // 所有者的私钥
+	ownerPriv *ecdh.PrivateKey, // 所有者的私钥
 ) (*UploadSuccessInfo, error) {
 	path = strings.TrimSpace(path) // 删除了所有前导和尾随空格
 	if path == "" {

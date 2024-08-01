@@ -28,12 +28,12 @@ type FileMeta struct {
 // NewFileMeta 创建并初始化一个新的 FileMeta 实例，提供文件的基本元数据信息。
 // 参数：
 //   - file: afero.File 文件对象。
-//   - privateKey: *ecdsa.PrivateKey ECDSA 私钥，用于生成文件ID。
+//   - privateKey: *ecdh.PrivateKey ECDSA 私钥，用于生成文件ID。
 //
 // 返回值：
 //   - *FileMeta: 新创建的 FileMeta 实例，包含文件的基本元数据。
 //   - error: 如果发生错误，返回错误信息。
-func NewFileMeta(file afero.File, privateKey *ecdsa.PrivateKey) (*FileMeta, error) {
+func NewFileMeta(file afero.File, privateKey *ecdh.PrivateKey) (*FileMeta, error) {
 	// 获取文件信息
 	fileInfo, err := file.Stat()
 	if err != nil {

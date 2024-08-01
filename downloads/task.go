@@ -57,7 +57,7 @@ type DownloadTask struct {
 	File         *DownloadFile     // 待下载的文件信息
 	TotalPieces  int               // 文件总片数（数据片段和纠删码片段的总数）
 	DataPieces   int               // 数据片段的数量
-	OwnerPriv    *ecdsa.PrivateKey // 所有者的私钥
+	OwnerPriv    *ecdh.PrivateKey // 所有者的私钥
 	Secret       []byte            // 文件加密密钥
 	UserPubHash  []byte            // 用户的公钥哈希
 	Progress     util.BitSet       // 下载任务的进度，表示为0到100之间的百分比
@@ -95,12 +95,12 @@ type DownloadTask struct {
 //   - mu: *sync.Mutex 互斥锁用于保护状态。
 //   - taskID: string 任务的唯一标识符。
 //   - fileID: string 待下载的文件信息。
-//   - ownerPriv: *ecdsa.PrivateKey 所有者的私钥。
+//   - ownerPriv: *ecdh.PrivateKey 所有者的私钥。
 //
 // 返回值：
 //   - *DownloadTask: 新创建的DownloadTask实例。
 //   - error: 如果发生错误，返回错误信息。
-func NewDownloadTask(ctx context.Context, taskID string, fileID string, ownerPriv *ecdsa.PrivateKey) (*DownloadTask, error) {
+func NewDownloadTask(ctx context.Context, taskID string, fileID string, ownerPriv *ecdh.PrivateKey) (*DownloadTask, error) {
 	// 使用私钥和文件校验和生成秘密
 	secret, err := util.GenerateSecretFromPrivateKeyAndChecksum(ownerPriv, []byte(fileID))
 	if err != nil {

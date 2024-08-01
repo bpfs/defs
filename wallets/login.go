@@ -285,12 +285,12 @@ func (w *Wallet) LogoutWallet() error {
 // ImportWallet 导入钱包
 // 参数:
 //   - mnemonic ([]byte): 助记词
-//   - privateKey (*ecdsa.PrivateKey): 私钥
+//   - privateKey (*ecdh.PrivateKey): 私钥
 //   - passwordHash ([16]byte): 密码的MD5哈希
 //
 // 返回值:
 //   - error: 如果导入失败
-func (w *Wallet) ImportWallet(mnemonic []byte, privateKey *ecdsa.PrivateKey, passwordHash [16]byte) error {
+func (w *Wallet) ImportWallet(mnemonic []byte, privateKey *ecdh.PrivateKey, passwordHash [16]byte) error {
 	w.Lock()
 	defer w.Unlock()
 

@@ -401,7 +401,7 @@ func buildPubSub() []libp2ppubsub.Option {
 	return pubsubOptions
 }
 
-func GenerateECDSAKeyPair(password []byte, salt []byte, iterations, keyLength int, useSHA512 bool) (*ecdsa.PrivateKey, []byte, error) {
+func GenerateECDSAKeyPair(password []byte, salt []byte, iterations, keyLength int, useSHA512 bool) (*ecdh.PrivateKey, []byte, error) {
 	curve := elliptic.P256() // 根据需要选择合适的曲线
 
 	// 选择合适的哈希函数
@@ -421,8 +421,8 @@ func GenerateECDSAKeyPair(password []byte, salt []byte, iterations, keyLength in
 	masterKey, _ := bip32.NewMasterKey(key) //?????? 如果不使用启动host会报错
 
 	// 生成私钥
-	privateKey := &ecdsa.PrivateKey{
-		PublicKey: ecdsa.PublicKey{
+	privateKey := &ecdh.PrivateKey{
+		PublicKey: ecdh.PublicKey{
 			Curve: curve,
 		},
 		D: new(big.Int).SetBytes(masterKey.Key),

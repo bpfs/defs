@@ -45,7 +45,7 @@ type UploadTask struct {
 // taskID 为任务的唯一标识符。
 // file 为待上传的文件信息。
 // maxConcurrency 为任务允许的最大并发上传数。
-func NewUploadTask(ctx context.Context, opt *opts.Options, mu *sync.Mutex, scheme *shamir.ShamirScheme, taskID string, file afero.File, ownerPriv *ecdsa.PrivateKey) (*UploadTask, error) {
+func NewUploadTask(ctx context.Context, opt *opts.Options, mu *sync.Mutex, scheme *shamir.ShamirScheme, taskID string, file afero.File, ownerPriv *ecdh.PrivateKey) (*UploadTask, error) {
 	// 创建并初始化一个新的UploadFile实例
 	f, err := NewUploadFile(opt, ownerPriv, file, scheme)
 	if err != nil {

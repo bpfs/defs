@@ -11,12 +11,12 @@ import (
 
 // MarshalPrivateKey 将ECDSA私钥序列化为字节表示
 // 参数:
-//   - privateKey (*ecdsa.PrivateKey): 输入的ECDSA私钥
+//   - privateKey (*ecdh.PrivateKey): 输入的ECDSA私钥
 //
 // 返回值:
 //   - []byte: 私钥的字节序列
 //   - error: 失败时的错误信息
-func MarshalPrivateKey(privateKey *ecdsa.PrivateKey) ([]byte, error) {
+func MarshalPrivateKey(privateKey *ecdh.PrivateKey) ([]byte, error) {
 	//	if privateKey == nil || privateKey.D == nil {
 	if privateKey == nil {
 		err := errors.New("无效的私钥")
@@ -37,9 +37,9 @@ func MarshalPrivateKey(privateKey *ecdsa.PrivateKey) ([]byte, error) {
 //   - privKeyBytes ([]byte): 私钥的字节表示
 //
 // 返回值:
-//   - *ecdsa.PrivateKey: 反序列化后的ECDSA私钥
+//   - *ecdh.PrivateKey: 反序列化后的ECDSA私钥
 //   - error: 失败时的错误信息
-func UnmarshalPrivateKey(privKeyBytes []byte) (*ecdsa.PrivateKey, error) {
+func UnmarshalPrivateKey(privKeyBytes []byte) (*ecdh.PrivateKey, error) {
 	if len(privKeyBytes) == 0 {
 		err := errors.New("无效的私钥字节")
 		logrus.Errorf("[%s] 无效的私钥字节: %v", utils.WhereAmI(), err)

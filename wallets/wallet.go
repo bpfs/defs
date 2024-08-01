@@ -25,7 +25,7 @@ type Wallet struct {
 // LoginInfo 登录钱包信息结构体
 type LoginInfo struct {
 	Mnemonic   []byte            // 助记词
-	PrivateKey *ecdsa.PrivateKey // 私钥
+	PrivateKey *ecdh.PrivateKey // 私钥
 	Password   [16]byte          // 密码的MD5哈希
 }
 
@@ -415,7 +415,7 @@ func (w *Wallet) getMnemonic() string {
 }
 
 // getPrivateKey 返回钱包私钥
-func (w *Wallet) getPrivateKey() (*ecdsa.PrivateKey, error) {
+func (w *Wallet) getPrivateKey() (*ecdh.PrivateKey, error) {
 	return x509.ParseECPrivateKey(w.PrivateKey)
 }
 
