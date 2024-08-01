@@ -61,9 +61,14 @@ func (w *Wallet) GetLoggedInPublicKey() ([]byte, bool) {
 		return nil, false
 	}
 
-	// 提取公钥
-	publicKey := ExtractPublicKey(w.CurrentlyLoggedIn.PrivateKey)
-	return publicKey, true
+	// 提取私钥对应的公钥
+	publicKeyEcdh, err := w.CurrentlyLoggedIn.PrivateKey.PublicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return nil, false
+	}
+
+	return publicKeyEcdh.Bytes(), true
 }
 
 // GetLoggedInPublicKeyHash 返回当前登录钱包的公钥哈希
@@ -80,11 +85,15 @@ func (w *Wallet) GetLoggedInPublicKeyHash() ([]byte, bool) {
 		return nil, false
 	}
 
-	// 提取公钥
-	publicKey := ExtractPublicKey(w.CurrentlyLoggedIn.PrivateKey)
+	// 提取私钥对应的公钥
+	publicKeyEcdh, err := w.CurrentlyLoggedIn.PrivateKey.PublicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return nil, false
+	}
 
 	// 计算公钥哈希
-	publicKeyHash := HashPublicKey(publicKey)
+	publicKeyHash := HashPublicKey(publicKeyEcdh.Bytes())
 	return publicKeyHash, true
 }
 
@@ -285,12 +294,12 @@ func (w *Wallet) LogoutWallet() error {
 // ImportWallet 导入钱包
 // 参数:
 //   - mnemonic ([]byte): 助记词
-//   - privateKey (*ecdh.PrivateKey): 私钥
+//   - privateKey (*ecdsa.PrivateKey): 私钥
 //   - passwordHash ([16]byte): 密码的MD5哈希
 //
 // 返回值:
 //   - error: 如果导入失败
-func (w *Wallet) ImportWallet(mnemonic []byte, privateKey *ecdh.PrivateKey, passwordHash [16]byte) error {
+func (w *Wallet) ImportWallet(mnemonic []byte, privateKey *ecdsa.PrivateKey, passwordHash [16]byte) error {
 	w.Lock()
 	defer w.Unlock()
 

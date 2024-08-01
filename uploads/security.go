@@ -2,7 +2,6 @@ package uploads
 
 import (
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"encoding/hex"
 	"fmt"
 
@@ -19,13 +18,13 @@ import (
 type FileSecurity struct {
 	Secret        []byte            // 文件加密密钥
 	EncryptionKey [][]byte          // 文件加密密钥，用于在上传过程中保证文件数据的安全
-	PrivateKey    *ecdh.PrivateKey // 文件签名密钥
+	PrivateKey    *ecdsa.PrivateKey // 文件签名密钥
 	P2PKHScript   []byte            // P2PKH 脚本，用于区块链场景中验证文件所有者的身份
 	P2PKScript    []byte            // P2PK 脚本，用于区块链场景中进行文件验签操作
 }
 
 // NewFileSecurity 创建并初始化一个新的FileSecurity实例，封装了文件的安全和权限相关的信息
-func NewFileSecurity(privKey *ecdh.PrivateKey, file afero.File, scheme *shamir.ShamirScheme, secret []byte) (*FileSecurity, error) {
+func NewFileSecurity(privKey *ecdsa.PrivateKey, file afero.File, scheme *shamir.ShamirScheme, secret []byte) (*FileSecurity, error) {
 	// 生成份额
 	shares, err := scheme.GenerateShares(secret)
 	if err != nil {
@@ -37,13 +36,16 @@ func NewFileSecurity(privKey *ecdh.PrivateKey, file afero.File, scheme *shamir.S
 	}
 
 	// 生成并设置输入的公钥哈希。
-	publicKey := privKey.PublicKey
-	publicKeyBytes := elliptic.Marshal(publicKey.Curve, publicKey.X, publicKey.Y)
+	publicKeyEcdh, err := privKey.PublicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return nil, err
+	}
 
 	// 构建P2PK脚本
 	p2pk, err := script.NewScriptBuilder().
-		AddData(publicKeyBytes).   // 直接添加公钥
-		AddOp(script.OP_CHECKSIG). // 添加检查签名操作
+		AddData(publicKeyEcdh.Bytes()). // 直接添加公钥
+		AddOp(script.OP_CHECKSIG).      // 添加检查签名操作
 		Script()
 	if err != nil {
 		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)

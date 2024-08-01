@@ -53,7 +53,7 @@ func GetFileChecksum(file afero.File) ([]byte, error) {
 }
 
 // GenerateSecretFromPrivateKeyAndChecksum 使用私钥和文件校验和生成秘密
-func GenerateSecretFromPrivateKeyAndChecksum(ownerPriv *ecdh.PrivateKey, checksum []byte) ([]byte, error) {
+func GenerateSecretFromPrivateKeyAndChecksum(ownerPriv *ecdsa.PrivateKey, checksum []byte) ([]byte, error) {
 	// 私钥的D值转换为字节序列
 	privateKeyBytes := ownerPriv.D.Bytes()
 

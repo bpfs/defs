@@ -10,7 +10,7 @@ import (
 )
 
 // SignData 使用ECDSA私钥为数据签名
-func SignData(privateKey *ecdh.PrivateKey, data []byte) ([]byte, error) {
+func SignData(privateKey *ecdsa.PrivateKey, data []byte) ([]byte, error) {
 	hashed := sha256.Sum256(data)
 
 	r, s, err := ecdsa.Sign(rand.Reader, privateKey, hashed[:])
@@ -28,7 +28,7 @@ func SignData(privateKey *ecdh.PrivateKey, data []byte) ([]byte, error) {
 }
 
 // VerifySignature 使用ECDSA公钥验证数据的签名
-func VerifySignature(publicKey *ecdh.PublicKey, data []byte, signature []byte) (bool, error) {
+func VerifySignature(publicKey *ecdsa.PublicKey, data []byte, signature []byte) (bool, error) {
 	hashed := sha256.Sum256(data)
 
 	r, s, err := unmarshalECDSASignature(signature)

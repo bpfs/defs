@@ -10,7 +10,6 @@ import (
 	"github.com/bpfs/defs/debug"
 	"github.com/bpfs/defs/opts"
 	"github.com/bpfs/defs/util"
-	"github.com/bpfs/defs/wallets"
 	"github.com/sirupsen/logrus"
 )
 
@@ -28,12 +27,12 @@ type FileMeta struct {
 // NewFileMeta 创建并初始化一个新的 FileMeta 实例，提供文件的基本元数据信息。
 // 参数：
 //   - file: afero.File 文件对象。
-//   - privateKey: *ecdh.PrivateKey ECDSA 私钥，用于生成文件ID。
+//   - privateKey: *ecdsa.PrivateKey ECDSA 私钥，用于生成文件ID。
 //
 // 返回值：
 //   - *FileMeta: 新创建的 FileMeta 实例，包含文件的基本元数据。
 //   - error: 如果发生错误，返回错误信息。
-func NewFileMeta(file afero.File, privateKey *ecdh.PrivateKey) (*FileMeta, error) {
+func NewFileMeta(file afero.File, privateKey *ecdsa.PrivateKey) (*FileMeta, error) {
 	// 获取文件信息
 	fileInfo, err := file.Stat()
 	if err != nil {
@@ -59,9 +58,14 @@ func NewFileMeta(file afero.File, privateKey *ecdh.PrivateKey) (*FileMeta, error
 	}
 
 	// 提取私钥对应的公钥
-	publicKeyBytes := wallets.ExtractPublicKey(privateKey)
+	publicKeyEcdh, err := privateKey.PublicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return nil, err
+	}
+
 	// 将公钥和校验和拼接生成文件ID
-	combined := append(publicKeyBytes, checksum...)
+	combined := append(publicKeyEcdh.Bytes(), checksum...)
 	// 使用校验和生成文件的唯一标识
 	fileID, err := util.GenerateFileID(combined)
 	if err != nil {

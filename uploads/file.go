@@ -29,14 +29,14 @@ type UploadFile struct {
 // NewUploadFile 创建并初始化一个新的 UploadFile 实例。
 // 参数：
 //   - opt: *opts.Options 文件存储选项。
-//   - ownerPriv: *ecdh.PrivateKey 文件所有者的私钥。
+//   - ownerPriv: *ecdsa.PrivateKey 文件所有者的私钥。
 //   - file: afero.File 文件对象。
 //   - scheme: *shamir.ShamirScheme Shamir 秘钥共享方案。
 //
 // 返回值：
 //   - *UploadFile: 新创建的 UploadFile 实例。
 //   - error: 如果发生错误，返回错误信息。
-func NewUploadFile(opt *opts.Options, ownerPriv *ecdh.PrivateKey, file afero.File, scheme *shamir.ShamirScheme) (*UploadFile, error) {
+func NewUploadFile(opt *opts.Options, ownerPriv *ecdsa.PrivateKey, file afero.File, scheme *shamir.ShamirScheme) (*UploadFile, error) {
 	// 生成FileMeta实例
 	fileMeta, err := NewFileMeta(file, ownerPriv)
 	if err != nil {

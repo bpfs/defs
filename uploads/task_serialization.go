@@ -8,6 +8,7 @@ import (
 
 	"github.com/bpfs/defs/debug"
 	"github.com/bpfs/defs/util"
+	"github.com/bpfs/defs/wallets"
 	"github.com/sirupsen/logrus"
 )
 
@@ -39,7 +40,7 @@ type FileSecuritySerializable struct {
 //   - *UploadTaskSerializable: 可序列化的 UploadTask 结构体
 //   - error: 如果发生错误，返回错误信息
 func (task *UploadTask) ToSerializable() (*UploadTaskSerializable, error) {
-	privKeyBytes, err := util.MarshalPrivateKey(task.File.Security.PrivateKey)
+	privKeyBytes, err := wallets.MarshalPrivateKey(task.File.Security.PrivateKey)
 	if err != nil {
 		logrus.Errorf("[%s]将ECDSA私钥序列化为字节失败: %v", debug.WhereAmI(), err)
 		return nil, err
@@ -85,7 +86,7 @@ func (task *UploadTask) FromSerializable(serializable *UploadTaskSerializable) e
 		return fmt.Errorf("file security is nil")
 	}
 
-	privateKey, err := util.UnmarshalPrivateKey(serializable.FileSecurity.PrivateKey)
+	privateKey, err := wallets.UnmarshalPrivateKey(serializable.FileSecurity.PrivateKey)
 	if err != nil {
 		logrus.Errorf("[%s]反序列化ECDSA私钥时失败: %v", debug.WhereAmI(), err)
 		return err

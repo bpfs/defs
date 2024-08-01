@@ -196,7 +196,7 @@ func compressAndEncrypt(pk, data []byte) ([]byte, error) {
 // index,           // 分片索引
 // segmentChecksum, // 分片的校验和
 // encryptedData,	// 文件片段的内容(加密)
-func generateSignature(privateKey *ecdh.PrivateKey, fileId []byte,
+func generateSignature(privateKey *ecdsa.PrivateKey, fileId []byte,
 	contentType []byte,
 	checksum []byte,
 	sliceTable []byte,

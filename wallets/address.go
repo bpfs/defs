@@ -14,45 +14,67 @@ import (
 
 // PrivateKeyToPublicKeyHash 通过私钥生成公钥哈希
 // 参数:
-//   - privateKey (*ecdh.PrivateKey): 私钥
+//   - privateKey (*ecdsa.PrivateKey): 私钥
 //
 // 返回值:
 //   - []byte: 公钥哈希
 //   - bool: 是否成功
-func PrivateKeyToPublicKeyHash(privateKey *ecdh.PrivateKey) ([]byte, bool) {
+func PrivateKeyToPublicKeyHash(privateKey *ecdsa.PrivateKey) ([]byte, bool) {
 	if privateKey == nil {
 		logrus.Errorf("[%s] 私钥不能为空", debug.WhereAmI())
 		return nil, false
 	}
-	publicKey := ExtractPublicKey(privateKey)
-	return HashPublicKey(publicKey), true
+
+	// 提取私钥对应的公钥
+	publicKeyEcdh, err := privateKey.PublicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return nil, false
+	}
+
+	return HashPublicKey(publicKeyEcdh.Bytes()), true
 }
 
 // PrivateKeyToAddress 通过私钥生成钱包地址
 // 参数:
-//   - privateKey (*ecdh.PrivateKey): 私钥
+//   - privateKey (*ecdsa.PrivateKey): 私钥
 //
 // 返回值:
 //   - string: 钱包地址
 //   - bool: 是否成功
-func PrivateKeyToAddress(privateKey *ecdh.PrivateKey) (string, bool) {
+func PrivateKeyToAddress(privateKey *ecdsa.PrivateKey) (string, bool) {
 	if privateKey == nil {
 		logrus.Errorf("[%s] 私钥不能为空", debug.WhereAmI())
 		return "", false
 	}
-	publicKey := ExtractPublicKey(privateKey)
-	return PublicKeyBytesToAddress(publicKey)
+
+	// 提取私钥对应的公钥
+	publicKeyEcdh, err := privateKey.PublicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return "", false
+	}
+
+	return PublicKeyBytesToAddress(publicKeyEcdh.Bytes())
 }
 
 // PublicKeyToPublicKeyHash 通过公钥生成公钥哈希
 // 参数:
-//   - publicKey (ecdh.PublicKey): 公钥
+//   - publicKey (ecdsa.PublicKey): 公钥
 //
 // 返回值:
 //   - []byte: 公钥哈希
 //   - bool: 是否成功
-func PublicKeyToPublicKeyHash(publicKey ecdh.PublicKey) ([]byte, bool) {
-	pubKeyBytes := MarshalPublicKey(publicKey)
+func PublicKeyToPublicKeyHash(publicKey ecdsa.PublicKey) ([]byte, bool) {
+	// 提取私钥对应的公钥
+	publicKeyEcdh, err := publicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return nil, false
+	}
+
+	pubKeyBytes := publicKeyEcdh.Bytes()
+
 	if !IsValidPublicKey(pubKeyBytes) {
 		logrus.Errorf("[%s] 无效的公钥", debug.WhereAmI())
 		return nil, false
@@ -62,14 +84,20 @@ func PublicKeyToPublicKeyHash(publicKey ecdh.PublicKey) ([]byte, bool) {
 
 // PublicKeyToAddress 通过公钥生成钱包地址
 // 参数:
-//   - publicKey (ecdh.PublicKey): 公钥
+//   - publicKey (ecdsa.PublicKey): 公钥
 //
 // 返回值:
 //   - string: 钱包地址
 //   - bool: 是否成功
-func PublicKeyToAddress(publicKey ecdh.PublicKey) (string, bool) {
-	pubKeyBytes := MarshalPublicKey(publicKey)
-	return PublicKeyBytesToAddress(pubKeyBytes)
+func PublicKeyToAddress(publicKey ecdsa.PublicKey) (string, bool) {
+	// 提取私钥对应的公钥
+	publicKeyEcdh, err := publicKey.ECDH()
+	if err != nil {
+		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		return "", false
+	}
+
+	return PublicKeyBytesToAddress(publicKeyEcdh.Bytes())
 }
 
 // PublicKeyBytesToPublicKeyHash 通过公钥字节生成公钥哈希
