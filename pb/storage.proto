@@ -1,0 +1,186 @@
+syntax = "proto3";
+
+package pb;
+
+// FileSegmentStorageSql 表示文件片段的存储结构,用于持久化存储文件片段及其元数据()
+message FileSegmentStorageSql {
+  // 文件唯一标识,由文件内容和所有者私钥生成的SHA256哈希值
+  string file_id = 1;
+  // 文件原始名称,不包含扩展名
+  string name = 2;
+  // 文件扩展名,不包含点号(.)
+  string extension = 3;
+  // 文件总大小,单位:字节
+  int64 size = 4;
+  // MIME类型,用于标识文件格式,如"application/pdf"
+  string content_type = 5;
+  // 文件内容的SHA256哈希值,用于校验文件完整性
+  bytes sha256_hash = 6;
+  // 文件首次上传的Unix时间戳
+  int64 upload_time = 7;
+  // P2PKH脚本,用于验证文件所有者身份
+  // @gotags: badgerhold:"index"
+  bytes p2pkh_script = 8;
+  // P2PK脚本,用于文件签名验证
+  bytes p2pk_script = 9;
+  // 文件分片哈希表,key为分片索引,value为分片的哈希信息
+  bytes slice_table = 10;
+  // 当前片段的唯一标识,由file_id和segment_index生成
+  string segment_id = 11;
+  // 当前片段在文件中的索引位置,从0开始
+  int64 segment_index = 12;
+  // 当前片段的CRC32校验和
+  uint32 crc32_checksum = 13;
+  // 当前片段的加密后内容
+  bytes segment_content = 14;
+  // 用于解密segment_content的AES密钥
+  bytes encryption_key = 15;
+  // 文件所有者对片段内容的数字签名
+  bytes signature = 16;
+  // 是否允许其他节点访问该片段
+  bool shared = 17;
+  // 片段的版本号,用于版本控制
+  string version = 18;
+}
+
+// FileSegmentStorage 表示文件片段的存储结构,用于持久化存储文件片段及其元数据
+message FileSegmentStorage {
+  // 文件唯一标识,由文件内容和所有者私钥生成的SHA256哈希值
+  // @gotags: badgerhold:"index"
+  string file_id = 1;
+  // 文件原始名称,不包含扩展名
+  // @gotags: badgerhold:"index" 
+  string name = 2;
+  // 文件扩展名,不包含点号(.)
+  string extension = 3;
+  // 文件总大小,单位:字节
+  int64 size = 4;
+  // MIME类型,用于标识文件格式,如"application/pdf"
+  string content_type = 5;
+  // 文件内容的SHA256哈希值,用于校验文件完整性
+  bytes sha256_hash = 6;
+  // 文件首次上传的Unix时间戳
+  int64 upload_time = 7;
+  // P2PKH脚本,用于验证文件所有者身份
+  // @gotags: badgerhold:"index"
+  bytes p2pkh_script = 8;
+  // P2PK脚本,用于文件签名验证
+  bytes p2pk_script = 9;
+  // 文件分片哈希表,key为分片索引,value为分片的哈希信息
+  map<int64, HashTable> slice_table = 10;
+  // 当前片段的唯一标识,由file_id和segment_index生成
+  // @gotags: badgerhold:"key"
+  string segment_id = 11;
+  // 当前片段在文件中的索引位置,从0开始
+  int64 segment_index = 12;
+  // 当前片段的CRC32校验和
+  uint32 crc32_checksum = 13;
+  // 当前片段的加密后内容
+  bytes segment_content = 14;
+  // 用于解密segment_content的AES密钥
+  bytes encryption_key = 15;
+  // 文件所有者对片段内容的数字签名
+  bytes signature = 16;
+  // 是否允许其他节点访问该片段
+  bool shared = 17;
+  // 片段的版本号,用于版本控制
+  string version = 18;
+}
+
+// SignatureData 定义生成数字签名时需要签名的数据字段
+message SignatureData {  
+  // 文件唯一标识,由文件内容和所有者私钥生成的SHA256哈希值
+  string file_id = 1;
+  // MIME类型,用于标识文件格式
+  string content_type = 2;
+  // 文件内容的SHA256哈希值,用于校验文件完整性
+  bytes sha256_hash = 3;
+  // 文件所有分片的哈希信息列表
+  repeated HashTable slice_table = 4;
+  // 当前片段的唯一标识
+  string segment_id = 5;
+  // 当前片段在文件中的索引位置
+  int64 segment_index = 6;
+  // 当前片段的CRC32校验和
+  uint32 crc32_checksum = 7;
+  // 当前片段的加密后内容
+  bytes encrypted_data = 8;
+}
+
+// FileMeta 定义文件的基本元数据
+message FileMeta {
+  // 文件原始名称,不包含扩展名
+  string name = 1;
+  // 文件扩展名,不包含点号(.)
+  string extension = 2;
+  // 文件总大小,单位:字节
+  int64 size = 3;
+  // MIME类型,用于标识文件格式
+  string content_type = 4;
+  // 文件内容的SHA256哈希值,用于校验文件完整性
+  bytes sha256_hash = 5;
+  // 文件最后修改的Unix时间戳
+  int64 modified_at = 6;
+}
+
+// HashTable 定义文件分片的校验信息
+message HashTable {
+  // 当前片段的唯一标识,由file_id和segment_index生成
+  string segment_id = 1;
+  // 当前片段在文件中的索引位置,从0开始
+  int64 segment_index = 2;
+  // 分片的CRC32校验和
+  uint32 crc32_checksum = 3;
+  // 是否为纠删码冗余分片
+  bool is_rs_codes = 4;
+}
+
+// RequestSetFileSegmentPubSub 请求设置共享文件
+message RequestSetFileSegmentPubSub {
+  // 文件唯一标识，用于在系统内部唯一区分文件
+  string file_id = 1;
+  // 所有者的公钥哈希，用于身份验证和访问控制
+  bytes pubkey_hash = 2;
+  // 请求者的 AddrInfo，包含节点 ID 和地址信息
+  bytes addr_info = 3;
+  // 是否开启共享，true表示开启共享，false表示关闭共享
+  bool enable_sharing = 4;
+}
+
+// RequestRenameFileSegmentPubSub 请求重命名文件
+message RequestRenameFileSegmentPubSub {
+  // 文件唯一标识，用于在系统内部唯一区分文件
+  string file_id = 1;
+  // 所有者的公钥哈希，用于身份验证和访问控制
+  bytes pubkey_hash = 2;
+  // 请求者的 AddrInfo，包含节点 ID 和地址信息
+  bytes addr_info = 3;
+  // 新的文件名
+  string new_name = 4;
+}
+
+// RequestSearchFileSegmentPubSub 请求检索文件
+message RequestSearchFileSegmentPubSub {
+  // 文件唯一标识，用于在系统内部唯一区分文件
+  string file_id = 1;
+  // 文件原始名称,不包含扩展名
+  string name = 2;
+  // 请求者的 AddrInfo，包含节点 ID 和地址信息
+  bytes addr_info = 3;
+}
+
+// ResponseSearchFileSegmentPubSub 检索文件的响应
+message ResponseSearchFileSegmentPubSub {
+  // 文件唯一标识
+  string file_id = 1;
+  // 文件原始名称
+  string name = 2;
+  // 文件扩展名
+  string extension = 3;
+  // 文件总大小
+  int64 size = 4;
+  // MIME类型
+  string content_type = 5;
+  // 文件上传时间
+  int64 upload_time = 6;
+}
