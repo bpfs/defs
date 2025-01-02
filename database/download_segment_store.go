@@ -367,3 +367,27 @@ func (s *DownloadSegmentStore) FindSegmentContent(segmentID string) ([]byte, err
 	}
 	return record.SegmentContent, nil
 }
+
+// GetDownloadSegmentBySegmentID 根据片段ID获取下载片段记录
+// 参数:
+//   - segmentID: string 片段的唯一标识符
+//
+// 返回值:
+//   - *pb.UploadSegmentRecord: 获取到的上传片段记录
+//   - bool: 记录是否存在
+//   - error: 如果发生系统错误返回错误信息，记录不存在则返回nil
+func (s *DownloadSegmentStore) GetDownloadSegmentBySegmentID(segmentID string) (*pb.DownloadSegmentRecord, bool, error) {
+	var segment pb.DownloadSegmentRecord
+
+	// 从数据库中获取指定segmentID的片段记录
+	err := s.store.Get(segmentID, &segment)
+	if err != nil {
+		if err == badgerhold.ErrNotFound {
+			return nil, false, nil
+		}
+		logger.Errorf("根据片段ID获取上传片段记录失败: %v", err)
+		return nil, false, err
+	}
+
+	return &segment, true, nil
+}

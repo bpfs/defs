@@ -166,6 +166,18 @@ func (m *UploadManager) TriggerUpload(taskID string) error {
 		return err
 	}
 
+	// 创建存储实例
+	uploadFileStore := database.NewUploadFileStore(m.db.BadgerDB)
+
+	// 1. 更新文件状态为完成
+	if err := uploadFileStore.UpdateUploadFileStatus(
+		taskID,
+		pb.UploadStatus_UPLOAD_STATUS_UPLOADING,
+		time.Now().Unix(),
+	); err != nil {
+		logger.Errorf("更新文件状态失败: taskID=%s, err=%v", taskID, err)
+		return err
+	}
 	// 使用 select 语句来避免阻塞,尝试将任务ID发送到上传通道
 	select {
 	case m.uploadChan <- taskID:
@@ -420,6 +432,7 @@ func (m *UploadManager) GetAllUploadFilesSummaries() ([]*pb.UploadFilesSummaries
 		summary := &pb.UploadFilesSummaries{
 			TaskId:       task.TaskID(),                          // 任务ID
 			Name:         fileRecord.FileMeta.Name,               // 文件名称
+			Extension:    fileRecord.FileMeta.Extension,          // 文件扩展名
 			TotalSize:    fileRecord.FileMeta.Size_ + paritySize, // 文件总大小（包括原始文件和奇偶校验片段）
 			UploadStatus: fileRecord.Status,                      // 上传状态
 			Progress:     progress,                               // 上传进度

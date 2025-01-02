@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/bpfs/defs/database"
@@ -263,6 +264,20 @@ func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) 
 			default:
 			}
 
+			// 创建片段存储实例
+			store := database.NewDownloadSegmentStore(t.db)
+
+			// 获取片段记录
+			segment, exists, err := store.GetDownloadSegmentBySegmentID(segmentID)
+			if err != nil {
+				logger.Errorf("获取片段记录失败: segmentID=%s, err=%v", segmentID, err)
+				return err
+			}
+			if !exists {
+				logger.Warnf("片段记录不存在: segmentID=%s", segmentID)
+				continue
+			}
+
 			// 构造片段内容请求
 			request := &pb.SegmentContentRequest{
 				TaskId:     t.taskId,              // 任务唯一标识
@@ -313,6 +328,28 @@ func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) 
 			}
 
 			logger.Infof("成功接收片段: peerID=%s, segmentID=%s", peerID, response.SegmentId)
+
+			progress, err := t.GetProgress()
+			if err != nil {
+				logger.Errorf("获取进度失败: %v", err)
+				continue
+			}
+			// 发送成功后通知片段完成
+			t.NotifySegmentStatus(&pb.DownloadChan{
+				TaskId:           t.taskId,                          // 设置任务ID
+				IsComplete:       progress == 100,                   // 检查是否所有分片都已完成
+				DownloadProgress: progress,                          // 获取当前上传进度(0-100)
+				TotalShards:      int64(len(fileRecord.SliceTable)), // 设置总分片数
+				SegmentId:        response.SegmentId,                // 设置分片ID
+				SegmentIndex:     response.SegmentIndex,             // 设置分片索引
+				SegmentSize:      segment.Size_,                     // 设置分片大小
+				IsRsCodes:        segment.IsRsCodes,                 // 设置是否使用纠删码
+				NodeId:           peerID.String(),                   // 设置存储节点ID
+				DownloadTime:     time.Now().Unix(),                 // 设置当前时间戳
+			})
+			// 去判断下进度
+			go t.checkProress(fileRecord.SliceTable)
+
 		}
 	}
 
@@ -320,6 +357,32 @@ func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) 
 	// return t.ForceSegmentVerify()
 	// 在 handleNodeDispatch() 中强制触发片段验证
 	return nil
+}
+
+// 判断进度
+func (t *DownloadTask) checkProress(sliceTable map[int64]*pb.HashTable) {
+	downloadSegmentStore := database.NewDownloadSegmentStore(t.db)
+	// 获取已完成的片段
+	completedSegments, err := downloadSegmentStore.FindByTaskIDAndStatus(
+		t.taskId,
+		pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED,
+	)
+	if err != nil {
+		logger.Errorf("获取已完成片段失败: taskID=%s, err=%v", t.taskId, err)
+		return
+	}
+	completedCount := len(completedSegments)
+
+	// 获取所需的数据片段数量
+	requiredShards := getRequiredDataShards(sliceTable)
+
+	if completedCount >= requiredShards {
+		if err := t.ForceSegmentMerge(); err != nil {
+			logger.Errorf("强制触发片段合并 合并已下载的文件片段: taskID=%s, err=%v", t.taskId, err)
+			return
+		}
+		return
+	}
 }
 
 // handleSegmentVerify 处理片段验证
@@ -369,7 +432,11 @@ func (t *DownloadTask) handleSegmentVerify() error {
 	requiredShards := getRequiredDataShards(fileRecord.SliceTable)
 
 	if completedCount >= requiredShards {
-		return t.mergeDownloadedSegments()
+		if err := t.ForceSegmentMerge(); err != nil {
+			logger.Errorf("强制触发片段合并 合并已下载的文件片段: taskID=%s, err=%v", t.taskId, err)
+			return err
+		}
+		return nil
 	}
 
 	// 如果完成数量不等于总片段数，说明存在未下载的片段
@@ -382,7 +449,7 @@ func (t *DownloadTask) handleSegmentVerify() error {
 
 	// 如果完成数量等于总片段数，说明所有片段都已下载完成
 	logger.Infof("所有片段下载完成，触发文件合并处理: taskID=%s", t.taskId)
-	return t.mergeDownloadedSegments()
+	return t.ForceSegmentMerge()
 }
 
 // handleSegmentMerge 处理片段合并
@@ -428,6 +495,7 @@ func (t *DownloadTask) handleSegmentMerge() error {
 	for index := range fileRecord.SliceTable {
 		for _, v := range segments {
 			if v.SegmentIndex == index {
+
 				shards[index] = v.SegmentContent
 				shardsPresent++
 				break
@@ -460,7 +528,7 @@ func (t *DownloadTask) handleSegmentMerge() error {
 	defer tempFile.Close()
 
 	// 使用JoinFile方法将分片合并为完整文件
-	if err := rs.Join(tempFile, shards, int(fileRecord.Size())); err != nil {
+	if err := rs.Join(tempFile, shards, int(fileRecord.FileMeta.Size_)); err != nil {
 		os.Remove(fileRecord.TempStorage)
 		logger.Errorf("合并分片失败: %v", err)
 		return err
@@ -526,7 +594,13 @@ func (t *DownloadTask) handleFileFinalize() error {
 	}
 
 	logger.Infof("文件下载完成: taskID=%s", t.taskId)
-
+	// 发送成功后通知片段完成
+	t.NotifySegmentStatus(&pb.DownloadChan{
+		TaskId:           t.taskId,          // 设置任务ID
+		IsComplete:       true,              // 检查是否所有分片都已完成
+		DownloadProgress: 100,               // 获取当前上传进度(0-100)
+		DownloadTime:     time.Now().Unix(), // 设置当前时间戳
+	})
 	return nil
 }
 
@@ -629,4 +703,34 @@ func (t *DownloadTask) handleDelete() error {
 	}
 
 	return nil
+}
+
+// generateUniqueFilePath 生成唯一文件路径
+// 参数:
+//   - basePath: 基础文件路径
+//   - extension: 文件扩展名
+//
+// 返回值:
+//   - string: 生成的唯一文件路径
+//
+// 功能:
+//   - 检查文件是否已存在
+//   - 如果存在则在文件名后添加递增数字
+//   - 生成不冲突的文件路径
+func generateUniqueFilePath(basePath, extension string) string {
+	// 获取基础路径(不含扩展名)
+	basePathWithoutExt := strings.TrimSuffix(basePath, "."+extension)
+	finalPath := fmt.Sprintf("%s.%s", basePathWithoutExt, extension)
+
+	// 检查文件是否存在
+	counter := 1
+	for {
+		if _, err := os.Stat(finalPath); os.IsNotExist(err) {
+			// 文件不存在，可以使用这个路径
+			return finalPath
+		}
+		// 文件存在，生成新的文件名
+		finalPath = fmt.Sprintf("%s_%d.%s", basePathWithoutExt, counter, extension)
+		counter++
+	}
 }

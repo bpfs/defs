@@ -361,12 +361,26 @@ func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) er
 			logger.Infof("成功发送片段到节点: peerID=%s, segmentID=%s",
 				peerID, segmentID)
 
+			progress, err := t.GetProgress()
+			if err != nil {
+				logger.Errorf("获取上传进度失败: taskID=%s, err=%v", t.TaskID(), err)
+
+				return err
+			}
+
 			// 发送成功后通知片段完成
-			// t.NotifySegmentStatus(&pb.UploadChan{
-			// 	TaskId:    t.taskId,
-			// 	SegmentId: segmentID,
-			// 	Status:    pb.SegmentUploadStatus_SEGMENT_UPLOAD_STATUS_COMPLETED,
-			// })
+			t.NotifySegmentStatus(&pb.UploadChan{
+				TaskId:         t.taskId,                          // 设置任务ID
+				IsComplete:     progress == 100,                   // 检查是否所有分片都已完成
+				UploadProgress: progress,                          // 获取当前上传进度(0-100)
+				TotalShards:    int64(len(fileRecord.SliceTable)), // 设置总分片数
+				SegmentId:      segment.SegmentId,                 // 设置分片ID
+				SegmentIndex:   segment.SegmentIndex,              // 设置分片索引
+				SegmentSize:    segment.Size_,                     // 设置分片大小
+				IsRsCodes:      segment.IsRsCodes,                 // 设置是否使用纠删码
+				NodeId:         peerID.String(),                   // 设置存储节点ID
+				UploadTime:     time.Now().Unix(),                 // 设置当前时间戳
+			})
 		}
 	}
 

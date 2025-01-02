@@ -202,12 +202,14 @@ message UploadFilesSummaries {
   string task_id = 1;
   // 文件名，显示正在上传的文件名称
   string name = 2;
+    // 文件扩展名，用于识别文件类型
+  string extension = 3;
   // 待上传总大小（字节），包括文件大小和奇偶校验片段大小
-  int64 total_size = 3;
+  int64 total_size = 4;
   // 上传状态，反映当前上传任务的进展情况
-  UploadStatus upload_status = 4;
+  UploadStatus upload_status = 5;
   // 上传进度（百分比），范围0-100，表示已上传的数据量占总数据量的比例
-  int64 progress = 5;
+  int64 progress = 6;
 }
 
 // UploadPubSubDeleteFileSegmentRequest 上传订阅删除文件信息请求

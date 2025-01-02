@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bpfs/defs/bitset"
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/utils/logger"
@@ -254,7 +253,7 @@ func (t *DownloadTask) Delete() error {
 //   - 计算当前下载进度百分比
 //   - 记录进度日志
 //   - 返回进度值
-func (t *DownloadTask) GetProgress() int64 {
+func (t *DownloadTask) GetProgress() (int64, error) {
 	// 创建下载片段存储实例
 	downloadSegmentStore := database.NewDownloadSegmentStore(t.db)
 	downloadFileStore := database.NewDownloadFileStore(t.db)
@@ -263,17 +262,14 @@ func (t *DownloadTask) GetProgress() int64 {
 	fileRecord, exists, err := downloadFileStore.Get(t.taskId)
 	if err != nil || !exists {
 		logger.Errorf("获取文件记录失败: taskID=%s, err=%v", t.taskId, err)
-		return 0
+		return 0, fmt.Errorf("获取文件记录失败")
 	}
 
 	// 获取切片表长度作为总片段数
 	totalSegments := len(fileRecord.SliceTable)
 	if totalSegments == 0 {
-		return 0
+		return 0, fmt.Errorf("获取文件记录失败")
 	}
-
-	// 创建BitSet来跟踪完成状态
-	completedBits := bitset.New(uint(totalSegments))
 
 	// 获取已完成的片段
 	segments, err := downloadSegmentStore.FindByTaskIDAndStatus(
@@ -282,29 +278,21 @@ func (t *DownloadTask) GetProgress() int64 {
 	)
 	if err != nil {
 		logger.Errorf("获取已完成片段失败: taskID=%s, err=%v", t.taskId, err)
-		return 0
+		return 0, err
 	}
 
-	// 标记已完成的片段
-	for _, segment := range segments {
-		if len(segment.SegmentContent) > 0 {
-			completedBits.Set(uint(segment.SegmentIndex))
-		}
-	}
+	// 计算进度百分比
+	progress := int64((float64(len(segments)) / float64(totalSegments)) * 100)
 
-	// 计算完成百分比
-	completedCount := completedBits.Count()
-	progress := int64(float64(completedCount) / float64(totalSegments) * 100)
-
-	// 确保进度在0-100之间
-	if progress < 0 {
-		progress = 0
-	} else if progress > 100 {
+	// 确保进度值在有效范围内
+	if progress > 100 {
 		progress = 100
+	} else if progress < 0 {
+		progress = 0
 	}
 
 	logger.Debugf("下载进度: taskID=%s, 已完成=%d, 总数=%d, 进度=%d%%",
-		t.taskId, completedCount, totalSegments, progress)
+		t.taskId, len(segments), totalSegments, progress)
 
-	return progress
+	return progress, err
 }
