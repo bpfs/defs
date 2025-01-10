@@ -10,13 +10,15 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/peerstore"
-	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/network"
+	"github.com/dep2p/libp2p/core/peer"
+	"github.com/dep2p/libp2p/core/peerstore"
+	"github.com/dep2p/libp2p/core/protocol"
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("net")
 
 // 常量定义
 const (
@@ -26,6 +28,7 @@ const (
 	maxRetries        = 3                       // 最大重试次数
 	initialRetryDelay = 10 * time.Second        // 初始重试延迟
 	maxRetryDelay     = 50 * time.Second        // 最大重试延迟
+	connectTimeout    = 30 * time.Second
 )
 
 // HandshakeMessage 定义握手消息的格式
@@ -44,8 +47,23 @@ type HandshakeMessage struct {
 // 返回值:
 //   - []peer.AddrInfo: 从目标节点获取的其他节点的地址信息列表
 //   - error: 如果握手过程中发生错误则返回错误信息
+//
+// 注意：
+// 1. 连接池中累积了大量失效连接
+// 2. 旧连接没有及时释放导致资源耗尽
+// 3. 连接状态不一致导致新连接建立失败
+//
+// 建议：
+// 1. 定期清理空闲连接
+// 2. 实现心跳机制检测连接活性
+// 3. 添加连接池大小限制
+// 4. 监控并记录连接状态变化
 func Handshake(ctx context.Context, h host.Host, pi peer.AddrInfo) ([]peer.AddrInfo, error) {
 	var lastErr error
+
+	// 创建带超时的上下文
+	connectCtx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
 
 	// 实现指数退避重试逻辑
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -72,8 +90,12 @@ func Handshake(ctx context.Context, h host.Host, pi peer.AddrInfo) ([]peer.AddrI
 				attempt+1, pi.ID, delay)
 		}
 
+		// 每次重试前，确保清理已有连接
+		h.Network().ClosePeer(pi.ID)
+
 		// 尝试建立连接
-		if err := h.Connect(ctx, pi); err != nil {
+		// 问题点1: 当连接失败时，没有显式关闭已建立的连接
+		if err := h.Connect(connectCtx, pi); err != nil {
 			lastErr = err
 			logger.Errorf("连接节点 %s 失败 (尝试 %d/%d): %v", pi.ID, attempt+1, maxRetries, err)
 			continue
@@ -84,9 +106,16 @@ func Handshake(ctx context.Context, h host.Host, pi peer.AddrInfo) ([]peer.AddrI
 		if err != nil {
 			lastErr = err
 			logger.Errorf("打开流失败 (尝试 %d/%d): %v", attempt+1, maxRetries, err)
-			continue
+			h.Network().ClosePeer(pi.ID) // 显式关闭连接
+			continue                     // 问题点2: stream创建失败时，底层连接可能仍然保持
 		}
-		defer stream.Close()
+		defer func() {
+			stream.Close()
+			// 如果发生错误，确保关闭与该节点的连接
+			if lastErr != nil {
+				h.Network().ClosePeer(pi.ID)
+			}
+		}()
 
 		// 3. 构造本地节点的握手消息
 		msg := HandshakeMessage{
@@ -156,7 +185,7 @@ func RegisterHandshakeProtocol(h host.Host) {
 				break
 			}
 			if len(peerInfo.Addrs) > 0 {
-				// 将新发现的节点添加到本���节点存储
+				// 将新发现的节点添加到本地节点存储
 				h.Peerstore().AddAddrs(peerInfo.ID, peerInfo.Addrs, peerstore.PermanentAddrTTL)
 				processedCount++
 			}

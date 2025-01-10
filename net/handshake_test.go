@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/protocol"
-	"github.com/libp2p/go-libp2p/p2p/security/noise"
-	tls "github.com/libp2p/go-libp2p/p2p/security/tls"
+	"github.com/dep2p/libp2p"
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/peer"
+	"github.com/dep2p/libp2p/core/protocol"
+	"github.com/dep2p/libp2p/p2p/security/noise"
+	tls "github.com/dep2p/libp2p/p2p/security/tls"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/require"
 )
