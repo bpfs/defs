@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bpfs/defs/streams"
+	"github.com/bpfs/defs/v2/streams"
 
 	"github.com/dep2p/libp2p/core/host"
 	"github.com/dep2p/libp2p/core/network"

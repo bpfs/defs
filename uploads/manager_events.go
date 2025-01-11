@@ -1,9 +1,8 @@
 package uploads
 
 import (
-	"github.com/bpfs/defs/database"
-	"github.com/bpfs/defs/pb"
-	
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 // ManagerChannelEvents 处理上传管理器的通道事件

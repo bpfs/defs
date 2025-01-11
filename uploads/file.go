@@ -5,12 +5,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/database"
-	"github.com/bpfs/defs/files"
-	"github.com/bpfs/defs/fscfg"
-	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/shamir"
+	"github.com/bpfs/defs/v2/badgerhold"
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/files"
+	"github.com/bpfs/defs/v2/fscfg"
+	"github.com/bpfs/defs/v2/pb"
+	"github.com/bpfs/defs/v2/shamir"
 )
 
 // NewUploadFile 创建并初始化一个新的 UploadFile 实例

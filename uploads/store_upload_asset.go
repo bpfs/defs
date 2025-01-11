@@ -1,10 +1,10 @@
 package uploads
 
 import (
-	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/database"
-	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/script"
+	"github.com/bpfs/defs/v2/badgerhold"
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/pb"
+	"github.com/bpfs/defs/v2/script"
 )
 
 // CreateFileAssetRecord 创建一个新的文件资产记录

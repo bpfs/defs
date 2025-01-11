@@ -4,7 +4,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bpfs/defs/afero"
+	"github.com/bpfs/defs/v2/afero"
 	"github.com/pkg/sftp"
 )
 

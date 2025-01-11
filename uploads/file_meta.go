@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bpfs/defs/files"
-	"github.com/bpfs/defs/fscfg"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/files"
+	"github.com/bpfs/defs/v2/fscfg"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 // NewFileMeta 创建并初始化一个新的 FileMeta 实例，提供文件的基本元数据信息

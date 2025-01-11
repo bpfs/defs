@@ -4,7 +4,7 @@ package uploads
 import (
 	"context"
 
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/pb"
 
 	"github.com/dep2p/pubsub"
 )

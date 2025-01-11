@@ -8,14 +8,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/crypto/gcm"
-	"github.com/bpfs/defs/files"
-	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/reedsolomon"
-	sign "github.com/bpfs/defs/sign/ecdsa"
+	"github.com/bpfs/defs/v2/badgerhold"
+	"github.com/bpfs/defs/v2/crypto/gcm"
+	"github.com/bpfs/defs/v2/files"
+	"github.com/bpfs/defs/v2/pb"
+	"github.com/bpfs/defs/v2/reedsolomon"
+	sign "github.com/bpfs/defs/v2/sign/ecdsa"
 
-	"github.com/bpfs/defs/zip/gzip"
+	"github.com/bpfs/defs/v2/zip/gzip"
 )
 
 // NewFileSegment 创建并初始化一个新的 FileSegment 实例，提供分片的详细信息及其上传状态。

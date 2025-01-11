@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/pb"
 
 	"github.com/dep2p/libp2p/core/peer"
 )

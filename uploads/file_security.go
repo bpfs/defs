@@ -6,9 +6,9 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/bpfs/defs/files"
-	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/script"
+	"github.com/bpfs/defs/v2/files"
+	"github.com/bpfs/defs/v2/pb"
+	"github.com/bpfs/defs/v2/script"
 )
 
 // NewFileSecurity 创建并初始化一个新的FileSecurity实例，封装了文件的安全和权限相关的信息

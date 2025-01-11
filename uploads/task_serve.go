@@ -3,8 +3,8 @@ package uploads
 import (
 	"fmt"
 
-	"github.com/bpfs/defs/database"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 // Start 开始或恢复上传任务

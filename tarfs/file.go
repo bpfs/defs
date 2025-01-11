@@ -8,7 +8,7 @@ import (
 	"sort"
 	"syscall"
 
-	"github.com/bpfs/defs/afero"
+	"github.com/bpfs/defs/v2/afero"
 )
 
 // File 代表 tar 文件系统中的文件结构

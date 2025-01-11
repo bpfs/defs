@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bpfs/defs/afero"
+	"github.com/bpfs/defs/v2/afero"
 )
 
 // Fs 代表一个只读的内存中的 tar 文件系统

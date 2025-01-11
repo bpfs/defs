@@ -3,7 +3,7 @@ package uploads
 import (
 	"fmt"
 
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 // NotifyStatus 通知上传状态

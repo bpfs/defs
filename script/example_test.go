@@ -12,7 +12,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bpfs/defs/sign/rsa"
+	"github.com/bpfs/defs/v2/sign/rsa"
 
 	"golang.org/x/crypto/ripemd160"
 )
