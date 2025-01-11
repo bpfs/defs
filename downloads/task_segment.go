@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bpfs/defs/database"
-	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/reedsolomon"
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/pb"
+	"github.com/bpfs/defs/v2/reedsolomon"
 
-	"github.com/bpfs/defs/utils/network"
+	"github.com/bpfs/defs/v2/utils/network"
 	"github.com/dep2p/libp2p/core/peer"
 	"github.com/dep2p/libp2p/core/protocol"
 )

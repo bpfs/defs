@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bpfs/defs/utils/paths"
+	"github.com/bpfs/defs/v2/utils/paths"
 
 	_ "github.com/mattn/go-sqlite3" // 导入SQLite驱动
 )

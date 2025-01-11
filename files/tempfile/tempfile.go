@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/bpfs/defs/files"
+	"github.com/bpfs/defs/v2/files"
 	logging "github.com/dep2p/log"
 
 	"github.com/pkg/errors"

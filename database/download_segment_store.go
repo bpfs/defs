@@ -3,8 +3,8 @@ package database
 import (
 	"fmt"
 
-	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/badgerhold"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 // DownloadSegmentStore 管理下载片段记录的存储

@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"hash/crc32"
 
-	"github.com/bpfs/defs/crypto/gcm"
-	"github.com/bpfs/defs/files"
-	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/script"
-	ecdsa_ "github.com/bpfs/defs/sign/ecdsa"
+	"github.com/bpfs/defs/v2/crypto/gcm"
+	"github.com/bpfs/defs/v2/files"
+	"github.com/bpfs/defs/v2/pb"
+	"github.com/bpfs/defs/v2/script"
+	ecdsa_ "github.com/bpfs/defs/v2/sign/ecdsa"
 
-	"github.com/bpfs/defs/zip/gzip"
+	"github.com/bpfs/defs/v2/zip/gzip"
 )
 
 // VerifySegmentSignature 验证片段签名

@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bpfs/defs/afero"
-	"github.com/bpfs/defs/fscfg"
+	"github.com/bpfs/defs/v2/afero"
+	"github.com/bpfs/defs/v2/fscfg"
 	logging "github.com/dep2p/log"
 )
 

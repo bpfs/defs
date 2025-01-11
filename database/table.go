@@ -3,7 +3,7 @@ package database
 import (
 	"context"
 
-	"github.com/bpfs/defs/fscfg"
+	"github.com/bpfs/defs/v2/fscfg"
 
 	"go.uber.org/fx"
 )

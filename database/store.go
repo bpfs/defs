@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"path/filepath"
 
-	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/utils/paths"
+	"github.com/bpfs/defs/v2/badgerhold"
+	"github.com/bpfs/defs/v2/utils/paths"
 	logging "github.com/dep2p/log"
 
 	"go.uber.org/fx"

@@ -12,8 +12,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bpfs/defs/afero"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/afero"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 func init() {

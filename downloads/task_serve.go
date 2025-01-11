@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bpfs/defs/database"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 // Start 开始下载任务

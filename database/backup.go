@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 
 	"github.com/dgraph-io/badger/v4"
 )

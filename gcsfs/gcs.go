@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-	"github.com/bpfs/defs/afero"
+	"github.com/bpfs/defs/v2/afero"
 
 	"github.com/googleapis/google-cloud-go-testing/storage/stiface"
 	"google.golang.org/api/option"

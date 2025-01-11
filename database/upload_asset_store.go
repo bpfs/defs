@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/badgerhold"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 // FileAssetStore 处理 FileAssetRecord 的数据库操作

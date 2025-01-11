@@ -8,9 +8,9 @@ import (
 	"runtime" // 导入运行时包
 	"time"    // 导入时间包
 
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 
-	"github.com/bpfs/defs/utils/paths"
+	"github.com/bpfs/defs/v2/utils/paths"
 	"github.com/dgraph-io/badger/v4" // 导入BadgerDB v4版本
 )
 

@@ -1,8 +1,8 @@
 package files
 
 import (
-	"github.com/bpfs/defs/afero"
-	"github.com/bpfs/defs/utils/paths"
+	"github.com/bpfs/defs/v2/afero"
+	"github.com/bpfs/defs/v2/utils/paths"
 	"go.uber.org/fx"
 )
 

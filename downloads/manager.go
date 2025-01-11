@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/bpfs/defs/afero"
-	"github.com/bpfs/defs/database"
-	"github.com/bpfs/defs/fscfg"
-	"github.com/bpfs/defs/kbucket"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/afero"
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/fscfg"
+	"github.com/bpfs/defs/v2/kbucket"
+	"github.com/bpfs/defs/v2/pb"
 
 	"github.com/dep2p/libp2p/core/host"
 	"github.com/dep2p/pubsub"

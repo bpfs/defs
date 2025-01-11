@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/bitset"
-	"github.com/bpfs/defs/database"
-	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/segment"
+	"github.com/bpfs/defs/v2/badgerhold"
+	"github.com/bpfs/defs/v2/bitset"
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/pb"
+	"github.com/bpfs/defs/v2/segment"
 
-	"github.com/bpfs/defs/utils/paths"
+	"github.com/bpfs/defs/v2/utils/paths"
 	"github.com/dgraph-io/badger/v4"
 	"github.com/gogo/protobuf/proto"
 )

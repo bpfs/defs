@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/badgerhold"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 // UploadFileStore 处理 UploadFileRecord 的数据库操作

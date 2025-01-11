@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/badgerhold"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 // DownloadFileStore 管理下载文件记录的存储

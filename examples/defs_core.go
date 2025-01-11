@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bpfs/defs"
-	"github.com/bpfs/defs/fscfg"
+	"github.com/bpfs/defs/v2"
+	"github.com/bpfs/defs/v2/fscfg"
 	dht "github.com/dep2p/kaddht"
 	"github.com/dep2p/libp2p"
 	"github.com/dep2p/libp2p/config"

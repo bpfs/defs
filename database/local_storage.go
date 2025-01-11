@@ -1,7 +1,7 @@
 package database
 
 import (
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 )
 
 // FileSegmentStorageStore 处理 FileSegmentStorage 的数据库操作

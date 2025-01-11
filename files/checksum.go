@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bpfs/defs/afero"
+	"github.com/bpfs/defs/v2/afero"
 )
 
 // GetFileCRC32 计算文件的CRC32校验和 (*os.File版本)

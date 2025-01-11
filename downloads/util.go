@@ -5,9 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/bpfs/defs/files"
-	"github.com/bpfs/defs/files/tempfile"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/files"
+	"github.com/bpfs/defs/v2/files/tempfile"
+	"github.com/bpfs/defs/v2/pb"
 )
 
 // generateTempFileKey 生成临时文件的唯一键

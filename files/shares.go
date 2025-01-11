@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/bpfs/defs/shamir"
+	"github.com/bpfs/defs/v2/shamir"
 )
 
 // 定义 Shamir 秘密共享方案相关常量

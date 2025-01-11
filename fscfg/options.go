@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/bpfs/defs/utils/paths"
+	"github.com/bpfs/defs/v2/utils/paths"
 	"github.com/dep2p/pubsub"
 )
 
