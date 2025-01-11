@@ -128,16 +128,9 @@ func Handshake(ctx context.Context, h host.Host, pi peer.AddrInfo) ([]peer.AddrI
 		defer func() {
 			stream.Close()
 			// 如果发生错误，确保关闭与该节点的连接
-			// if lastErr != nil {
-			// 	h.Network().ClosePeer(pi.ID)
-			// }
-			// 问题点3: 关闭连接时，需要考虑连接是否已关闭
-			// 如果连接已关闭，则不会发生错误
-			// 如果连接未关闭，则会发生错误
-			// 问题点4: 关闭连接时，需要考虑连接是否已关闭
-			// 如果连接已关闭，则不会发生错误
-			// 如果连接未关闭，则会发生错误
-			h.Network().ClosePeer(pi.ID) // 可选：关闭peer连接
+			if lastErr != nil {
+				h.Network().ClosePeer(pi.ID)
+			}
 		}()
 
 		// 3. 构造本地节点的握手消息
