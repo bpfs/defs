@@ -12,7 +12,6 @@ import (
 
 	"github.com/bpfs/defs/mem"
 	// 使用自定义的 logger 包
-	"github.com/bpfs/defs/utils/logger"
 )
 
 const chmodBits = os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky // 仅允许更改部分位。记录在 os.Chmod() 中

@@ -4,8 +4,6 @@ import (
 	"os"
 	"syscall"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // CacheOnReadFs 类型用于在读取时进行缓存

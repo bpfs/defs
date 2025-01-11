@@ -9,8 +9,6 @@ import (
 	"math/big"
 	"reflect"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // ErrTypeMismatch 是在两个类型无法进行比较时抛出的错误类型

@@ -7,8 +7,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 var (

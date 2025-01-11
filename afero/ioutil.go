@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // byName 实现了 sort.Interface 接口，用于根据文件名排序

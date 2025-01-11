@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // UnionFile 实现了 afero.File 接口，当读取目录时（至少在覆盖层中存在）或打开文件进行写入时返回该接口。

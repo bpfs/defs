@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/bpfs/defs/utils/logger"
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"

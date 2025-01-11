@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // 确保 CopyOnWriteFs 实现了 Lstater 接口

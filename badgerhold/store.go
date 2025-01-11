@@ -9,9 +9,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 	"github.com/dgraph-io/badger/v4"
 )
+
+var logger = logging.Logger("badgerhold")
 
 const (
 	// BadgerHoldIndexTag 是用于将字段定义为可索引的 badgerhold 结构体标签

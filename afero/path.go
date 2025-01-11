@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // readDirNames 读取指定目录的内容，并返回排序后的目录条目列表。

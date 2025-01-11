@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // httpDir 结构体表示一个 HTTP 目录

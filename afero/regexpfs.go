@@ -5,8 +5,6 @@ import (
 	"regexp"
 	"syscall"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // RegexpFs 通过正则表达式过滤文件（不包括目录）。只有匹配给定正则表达式的文件才会被允许，

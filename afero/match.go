@@ -4,8 +4,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // Glob 返回所有与模式匹配的文件名，如果没有匹配的文件则返回 nil。

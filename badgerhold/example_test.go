@@ -13,10 +13,11 @@ import (
 	"time"
 
 	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/utils/logger"
-
+	logging "github.com/dep2p/log"
 	"github.com/dgraph-io/badger/v4"
 )
+
+var logger = logging.Logger("badgerhold_test")
 
 // Item 结构体表示一个项，其中包含 ID、Category（类别）和 Created（创建时间）。
 // Category 字段通过 `badgerholdIndex` 标签在 badgerhold 中建立索引。

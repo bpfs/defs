@@ -7,8 +7,6 @@ package badgerhold
 import (
 	"bytes"
 	"encoding/gob"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // EncodeFunc 是一个用于将值编码为字节的函数类型
