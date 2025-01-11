@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("reedsolomon")
 
 // FileEncoder 提供基于文件的Reed-Solomon编解码功能
 // 用于处理大文件的流式编码和解码
@@ -552,9 +554,9 @@ func (r *leopardFF16) VerifyFile(shards []*os.File) (bool, error) {
 	// 比较校验分片
 	for i := 0; i < r.parityShards; i++ {
 		if !bytes.Equal(outputs[i+r.dataShards], parityData[i]) {
-			logger.Printf("校验分片 %d 不一致:\n", i+r.dataShards)
-			logger.Printf("期望值: %x\n", parityData[i][:8])
-			logger.Printf("实际值: %x\n", outputs[i+r.dataShards][:8])
+			logger.Infof("校验分片 %d 不一致:\n", i+r.dataShards)
+			logger.Infof("期望值: %x\n", parityData[i][:8])
+			logger.Infof("实际值: %x\n", outputs[i+r.dataShards][:8])
 			return false, nil
 		}
 	}

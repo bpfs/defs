@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/bpfs/defs/sign/rsa"
-	"github.com/bpfs/defs/utils/logger"
+
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -150,7 +150,7 @@ func TestPayToPubKeyScriptECDSA(t *testing.T) {
 
 	// 获取公钥的字节表示
 	pubKeyBytes := elliptic.Marshal(privateKey.Curve, privateKey.PublicKey.X, privateKey.PublicKey.Y)
-	logger.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
+	logger.Infof("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
 
 	// 构建P2PK脚本
 	script, err := NewScriptBuilder().
@@ -160,14 +160,14 @@ func TestPayToPubKeyScriptECDSA(t *testing.T) {
 		AddOp(OP_CHECKSIG). // 添加检查签名操作
 		Script()
 	if err != nil {
-		logger.Println("Error building script:", err)
+		logger.Infof("Error building script:", err)
 		return
 	}
-	logger.Printf("十六进制脚本:\t%x\n", script)
+	logger.Infof("十六进制脚本:\t%x\n", script)
 
 	// 调用 DisassembleScript 来反汇编脚本
 	disassembledScript := DisassembleScript(script)
-	logger.Printf("反汇编脚本:\t%s\n", disassembledScript)
+	logger.Infof("反汇编脚本:\t%s\n", disassembledScript)
 
 	// 打印脚本
 	// logger.Println("Script:\t\t", hex.EncodeToString(script))
@@ -175,16 +175,16 @@ func TestPayToPubKeyScriptECDSA(t *testing.T) {
 	// 从脚本中提取公钥
 	pubKey, err := ExtractPubKeyFromP2PKScriptToECDSA(script)
 	if err != nil {
-		logger.Println("提取公钥时出错:", err)
+		logger.Infof("提取公钥时出错:", err)
 		return
 	}
 
 	// 打印提取的公钥
-	logger.Println("公钥 X 坐标:", pubKey.X.Text(16))
-	logger.Println("公钥 Y 坐标:", pubKey.Y.Text(16))
+	logger.Infof("公钥 X 坐标:", pubKey.X.Text(16))
+	logger.Infof("公钥 Y 坐标:", pubKey.Y.Text(16))
 
 	pubKeyBytes2 := elliptic.Marshal(pubKey.Curve, pubKey.X, pubKey.Y)
-	logger.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes2))
+	logger.Infof("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes2))
 }
 func TestPayToPubKeyHashScriptECDSA(t *testing.T) {
 	// 生成一个新的ECDSA私钥
@@ -195,14 +195,14 @@ func TestPayToPubKeyHashScriptECDSA(t *testing.T) {
 
 	// 获取公钥的字节表示
 	pubKeyBytes := elliptic.Marshal(privateKey.Curve, privateKey.PublicKey.X, privateKey.PublicKey.Y)
-	logger.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
+	logger.Infof("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
 
 	// 通过公钥字节生成公钥哈希
 	pubKeyHash, ok := PublicKeyBytesToPublicKeyHash(pubKeyBytes)
 	if !ok {
 		t.Fatalf("通过公钥字节生成公钥哈希: %v", err)
 	}
-	logger.Printf("公钥哈希:\t%x\n", pubKeyHash)
+	logger.Infof("公钥哈希:\t%x\n", pubKeyHash)
 
 	script, err := NewScriptBuilder().
 		AddOp(OP_DUP).AddOp(OP_HASH160).
@@ -210,21 +210,21 @@ func TestPayToPubKeyHashScriptECDSA(t *testing.T) {
 		AddOp(OP_EQUALVERIFY).AddOp(OP_CHECKSIG).
 		Script()
 	if err != nil {
-		logger.Println("Error building script:", err)
+		logger.Infof("Error building script:", err)
 		return
 	}
-	logger.Printf("十六进制脚本:\t%x\n", script)
+	logger.Infof("十六进制脚本:\t%x\n", script)
 
 	// 调用 DisassembleScript 来反汇编脚本
 	disassembledScript := DisassembleScript(script)
-	logger.Printf("反汇编脚本:\t%s\n", disassembledScript)
+	logger.Infof("反汇编脚本:\t%s\n", disassembledScript)
 
 	// 从P2PKH脚本中提取公钥哈希
 	extractedPubKeyHash, err := ExtractPubKeyHashFromScript(script)
 	if err != nil {
 		t.Fatalf("无法从脚本中提取公钥哈希: %v", err)
 	}
-	logger.Printf("从脚本中提取的公钥哈希:\t%x\n", extractedPubKeyHash)
+	logger.Infof("从脚本中提取的公钥哈希:\t%x\n", extractedPubKeyHash)
 }
 
 func TestPayToPubKeyHashScriptRSA(t *testing.T) {
@@ -241,7 +241,7 @@ func TestPayToPubKeyHashScriptRSA(t *testing.T) {
 		t.Error("Error publicKeyBytes:", err)
 		return
 	}
-	logger.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(publicKeyBytes))
+	logger.Infof("获取的公钥字节:\t%s\n", hex.EncodeToString(publicKeyBytes))
 
 	// 构建P2PK脚本
 	script, err := NewScriptBuilder().
@@ -252,16 +252,16 @@ func TestPayToPubKeyHashScriptRSA(t *testing.T) {
 		t.Error("Error script:", err)
 		return
 	}
-	logger.Printf("十六进制脚本:\t%x\n", script)
+	logger.Infof("十六进制脚本:\t%x\n", script)
 
 	// 调用 DisassembleScript 来反汇编脚本
 	disassembledScript := DisassembleScript(script)
-	logger.Printf("反汇编脚本:\t%s\n", disassembledScript)
+	logger.Infof("反汇编脚本:\t%s\n", disassembledScript)
 
 	// 从脚本中提取公钥
 	pubKey, err := ExtractPubKeyFromP2PKScriptToRSA(script)
 	if err != nil {
-		logger.Println("提取公钥时出错:", err)
+		logger.Infof("提取公钥时出错:", err)
 		return
 	}
 
@@ -270,7 +270,7 @@ func TestPayToPubKeyHashScriptRSA(t *testing.T) {
 		t.Error("Error publicKeyBytes:", err)
 		return
 	}
-	logger.Printf("提取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
+	logger.Infof("提取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
 }
 
 // ExtractPubKeyFromP2PKScript 从P2PK脚本中提取公钥
@@ -316,13 +316,13 @@ func TestCompressAndDecompressPubKey(t *testing.T) {
 
 	// 获取公钥的字节表示
 	pubKeyBytes := elliptic.Marshal(privateKey.Curve, privateKey.PublicKey.X, privateKey.PublicKey.Y)
-	logger.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
+	logger.Infof("获取的公钥字节:\t%s\n", hex.EncodeToString(pubKeyBytes))
 
 	originalPubKey := &privateKey.PublicKey
 
 	// 压缩公钥
 	compressedPubKey := CompressPubKey(originalPubKey)
-	logger.Printf("公钥的公钥字节:\t%s\n", hex.EncodeToString(compressedPubKey))
+	logger.Infof("公钥的公钥字节:\t%s\n", hex.EncodeToString(compressedPubKey))
 
 	// 解压公钥
 	decompressedPubKey, err := DecompressPubKey(elliptic.P256(), compressedPubKey)
@@ -332,7 +332,7 @@ func TestCompressAndDecompressPubKey(t *testing.T) {
 
 	// 解压公钥的字节表示
 	decompressedPubKeyBytes := elliptic.Marshal(privateKey.Curve, privateKey.PublicKey.X, privateKey.PublicKey.Y)
-	logger.Printf("获取的公钥字节:\t%s\n", hex.EncodeToString(decompressedPubKeyBytes))
+	logger.Infof("获取的公钥字节:\t%s\n", hex.EncodeToString(decompressedPubKeyBytes))
 
 	// 比较原始公钥和解压后的公钥
 	if !reflect.DeepEqual(originalPubKey, decompressedPubKey) {

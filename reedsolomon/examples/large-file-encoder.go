@@ -29,9 +29,10 @@ import (
 	"path/filepath"
 
 	"github.com/bpfs/defs/reedsolomon"
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 )
 
+var logger = logging.Logger("examples")
 var (
 	// 定义数据分片数量的命令行标志，默认值为17
 	dataShards = flag.Int("data", 17, "每批数据分片数量")

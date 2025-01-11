@@ -30,8 +30,10 @@ import (
 	"strings"
 
 	"github.com/bpfs/defs/reedsolomon"
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("main")
 
 // 定义全局变量
 var (
