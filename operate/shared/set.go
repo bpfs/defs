@@ -8,10 +8,10 @@ import (
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/fscfg"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 	"github.com/dep2p/pubsub"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
+
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/peer"
 )
 
 // RequestSetFileSegmentPubSub 请求设置文件片段的共享状态

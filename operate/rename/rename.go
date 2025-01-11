@@ -8,9 +8,11 @@ import (
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/fscfg"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 	"github.com/dep2p/pubsub"
 )
+
+var logger = logging.Logger("rename")
 
 // RequestRenameFileSegmentPubSub 请求重命名文件
 // 参数:

@@ -7,9 +7,9 @@ import (
 	"github.com/bpfs/defs/afero"
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/fscfg"
-	"github.com/bpfs/defs/utils/logger"
+
+	"github.com/dep2p/libp2p/core/host"
 	"github.com/dep2p/pubsub"
-	"github.com/libp2p/go-libp2p/core/host"
 	"go.uber.org/fx"
 )
 

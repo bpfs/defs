@@ -8,11 +8,14 @@ import (
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/fscfg"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 	"github.com/dep2p/pubsub"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
+
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/peer"
 )
+
+var logger = logging.Logger("shared")
 
 // SearchSubscription 定义检索订阅结构
 // 用于管理文件检索的订阅状态和通信
