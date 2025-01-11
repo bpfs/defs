@@ -62,8 +62,8 @@ func Handshake(ctx context.Context, h host.Host, pi peer.AddrInfo) ([]peer.AddrI
 	var lastErr error
 
 	// 创建带超时的上下文
-	connectCtx, cancel := context.WithTimeout(ctx, connectTimeout)
-	defer cancel()
+	// connectCtx, cancel := context.WithTimeout(ctx, connectTimeout)
+	// defer cancel()
 
 	// 实现指数退避重试逻辑
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -95,11 +95,27 @@ func Handshake(ctx context.Context, h host.Host, pi peer.AddrInfo) ([]peer.AddrI
 
 		// 尝试建立连接
 		// 问题点1: 当连接失败时，没有显式关闭已建立的连接
-		if err := h.Connect(connectCtx, pi); err != nil {
-			lastErr = err
-			logger.Errorf("连接节点 %s 失败 (尝试 %d/%d): %v", pi.ID, attempt+1, maxRetries, err)
-			continue
-		}
+		// if err := h.Connect(connectCtx, pi); err != nil {
+		// 	lastErr = err
+		// 	logger.Errorf("连接节点 %s 失败 (尝试 %d/%d): %v", pi.ID, attempt+1, maxRetries, err)
+		// 	continue
+		// }
+
+		/**
+		实际上不需要显式调用 Connect，原因如下：
+		1.NewStream 的内部机制
+			NewStream 内部会自动处理连接建立
+			如果没有现成连接，会自动调用 Connect
+			如果已有连接，会直接复用
+		2.重复操作的问题
+			当前代码等于做了两次连接尝试
+			增加了不必要的网络开销
+			可能导致竞态条件
+		3.错误处理冗余
+			需要在两个地方处理连接错误
+			增加了代码复杂度
+			可能导致错误处理不一致
+		*/
 
 		// 后续的握手流程保持不变
 		stream, err := h.NewStream(ctx, pi.ID, protocol.ID(HandshakeProtocol))
@@ -112,9 +128,16 @@ func Handshake(ctx context.Context, h host.Host, pi peer.AddrInfo) ([]peer.AddrI
 		defer func() {
 			stream.Close()
 			// 如果发生错误，确保关闭与该节点的连接
-			if lastErr != nil {
-				h.Network().ClosePeer(pi.ID)
-			}
+			// if lastErr != nil {
+			// 	h.Network().ClosePeer(pi.ID)
+			// }
+			// 问题点3: 关闭连接时，需要考虑连接是否已关闭
+			// 如果连接已关闭，则不会发生错误
+			// 如果连接未关闭，则会发生错误
+			// 问题点4: 关闭连接时，需要考虑连接是否已关闭
+			// 如果连接已关闭，则不会发生错误
+			// 如果连接未关闭，则会发生错误
+			h.Network().ClosePeer(pi.ID) // 可选：关闭peer连接
 		}()
 
 		// 3. 构造本地节点的握手消息
@@ -142,8 +165,8 @@ func Handshake(ctx context.Context, h host.Host, pi peer.AddrInfo) ([]peer.AddrI
 		// 6. 处理响应中包含的节点信息
 		for _, peerInfo := range response.KnownPeers {
 			if len(peerInfo.Addrs) > 0 {
-				// 将新发现的节点添加到本地节点存储,设置永久有效期
-				h.Peerstore().AddAddrs(peerInfo.ID, peerInfo.Addrs, peerstore.PermanentAddrTTL)
+				// 将新发现的节点添加到本地节点存储,设置为已连接状态的TTL
+				h.Peerstore().AddAddrs(peerInfo.ID, peerInfo.Addrs, peerstore.ConnectedAddrTTL)
 			}
 		}
 
@@ -176,7 +199,7 @@ func RegisterHandshakeProtocol(h host.Host) {
 		remotePeer := s.Conn().RemotePeer()      // 获取远程节点的ID
 
 		// 3. 将远程节点信息添加到本地节点存储
-		h.Peerstore().AddAddr(remotePeer, remoteAddr, peerstore.PermanentAddrTTL)
+		h.Peerstore().AddAddr(remotePeer, remoteAddr, peerstore.ConnectedAddrTTL)
 
 		// 4. 处理收到的其他节点信息
 		processedCount := 0
@@ -186,7 +209,7 @@ func RegisterHandshakeProtocol(h host.Host) {
 			}
 			if len(peerInfo.Addrs) > 0 {
 				// 将新发现的节点添加到本地节点存储
-				h.Peerstore().AddAddrs(peerInfo.ID, peerInfo.Addrs, peerstore.PermanentAddrTTL)
+				h.Peerstore().AddAddrs(peerInfo.ID, peerInfo.Addrs, peerstore.ConnectedAddrTTL)
 				processedCount++
 			}
 		}
