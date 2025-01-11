@@ -224,7 +224,7 @@ func (rt *RoutingTable) addPeer(p peer.ID, mode int, queryPeer bool, isReplaceab
 	// 获取对应桶的引用。
 	bucket := rt.buckets[bucketID]
 
-	// 获取当前���间。
+	// 获取当前时间。
 	now := time.Now()
 	var lastUsefulAt time.Time
 	if queryPeer {
