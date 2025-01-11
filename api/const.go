@@ -3,7 +3,7 @@
 package api
 
 import (
-	"github.com/bpfs/defs/api/pkg/gins"
+	"github.com/bpfs/defs/v2/api/pkg/gins"
 )
 
 // CODE提示信息

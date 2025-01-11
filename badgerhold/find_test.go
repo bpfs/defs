@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 )
 
 // ItemTest 代表用于测试的数据结构

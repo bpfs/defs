@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 )
 
 // 定义一组用于排序的测试用例

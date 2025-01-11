@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 )
 
 // Nested 结构体定义了一个嵌套的数据结构，包括嵌入的结构体和指针。

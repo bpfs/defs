@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/bpfs/defs"
-	"github.com/bpfs/defs/api/pkg/gins/middleware"
-	"github.com/bpfs/defs/api/pkg/routers"
+	"github.com/bpfs/defs/v2"
+	"github.com/bpfs/defs/v2/api/pkg/gins/middleware"
+	"github.com/bpfs/defs/v2/api/pkg/routers"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"

@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 )
 
 // TestFindAggregateGroup 测试使用 FindAggregate 方法根据 "Category" 字段对数据进行分组和聚合操作。

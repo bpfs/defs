@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bpfs/defs/mem"
+	"github.com/bpfs/defs/v2/mem"
 	// 使用自定义的 logger 包
 )
 

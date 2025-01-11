@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 )
 
 // TestForEach 测试 ForEach 方法在遍历查询结果时的行为。

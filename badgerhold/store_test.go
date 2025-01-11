@@ -17,7 +17,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 )
 
 // TestOpen 测试打开和关闭数据库存储的行为。

@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 	logging "github.com/dep2p/log"
 	"github.com/dgraph-io/badger/v4"
 )

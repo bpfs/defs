@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bpfs/defs/badgerhold"
+	"github.com/bpfs/defs/v2/badgerhold"
 )
 
 // CItemTest 定义一个包含 ItemTest 结构体的复合结构体。

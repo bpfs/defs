@@ -11,7 +11,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bpfs/defs/utils/common"
+	"github.com/bpfs/defs/v2/utils/common"
 )
 
 // IOFS 采用 afero.Fs 并适配为标准库的 io/fs.FS 接口
