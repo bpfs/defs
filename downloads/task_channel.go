@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/libp2p/go-libp2p/core/peer"
+
+	"github.com/dep2p/libp2p/core/peer"
 )
 
 // ForceSegmentIndex 强制触发片段索引请求

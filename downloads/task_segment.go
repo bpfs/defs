@@ -10,10 +10,10 @@ import (
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/reedsolomon"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/bpfs/defs/utils/network"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/dep2p/libp2p/core/peer"
+	"github.com/dep2p/libp2p/core/protocol"
 )
 
 // handleSegmentIndex 处理片段索引请求
@@ -161,6 +161,7 @@ func (t *DownloadTask) handleNodeDispatch() error {
 	for {
 		select {
 		case <-t.ctx.Done():
+			logger.Warnf("任务已取消: taskID=%s", t.taskId)
 			return fmt.Errorf("任务已取消")
 		default:
 		}
@@ -168,23 +169,29 @@ func (t *DownloadTask) handleNodeDispatch() error {
 		// 获取下一个待处理的分配
 		peerSegments, ok := t.distribution.GetNextDistribution()
 		if !ok {
+			logger.Infof("没有更多的分配任务: taskID=%s", t.taskId)
 			break
 		}
 
+		logger.Infof("获取到新的分配任务: taskID=%s, peerSegments=%v", t.taskId, peerSegments)
+
 		// 计算映射中的总片段数
-		totalProcessed += countSegments(peerSegments)
+		segmentCount := countSegments(peerSegments)
+		totalProcessed += segmentCount
+		logger.Infof("当前处理的片段数: %d, taskID=%s", segmentCount, t.taskId)
 
 		// 强制触发网络传输
 		if err := t.ForceNetworkTransfer(peerSegments); err != nil {
-			logger.Errorf("发送片段到网络通道失败: err=%v", err)
-			totalFailed += countSegments(peerSegments)
+			logger.Errorf("发送片段到网络通道失败: err=%v, taskID=%s", err, t.taskId)
+			totalFailed += segmentCount
 			if err.Error() == "任务已取消" {
 				return err
 			}
 			continue
 		}
 
-		totalSuccess += countSegments(peerSegments)
+		totalSuccess += segmentCount
+		logger.Infof("成功处理的片段数: %d, taskID=%s", segmentCount, t.taskId)
 	}
 
 	// 记录处理结果统计
@@ -193,13 +200,14 @@ func (t *DownloadTask) handleNodeDispatch() error {
 
 	// 如果有失败的片段，返回错误
 	if totalFailed > 0 {
-		logger.Errorf("部分片段分发失败: 总数=%d, 失败=%d",
-			totalProcessed, totalFailed)
+		logger.Errorf("部分片段分发失败: 总数=%d, 失败=%d, taskID=%s",
+			totalProcessed, totalFailed, t.taskId)
 		return fmt.Errorf("部分片段分发失败: 总数=%d, 失败=%d",
 			totalProcessed, totalFailed)
 	}
 
 	// 强制触发片段验证
+	logger.Infof("强制触发片段验证: taskID=%s", t.taskId)
 	return t.ForceSegmentVerify()
 }
 

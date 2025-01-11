@@ -6,7 +6,6 @@ import (
 
 	"github.com/bpfs/defs/badgerhold"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // FileAssetStore 处理 FileAssetRecord 的数据库操作

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bpfs/defs/utils/logger"
 	"github.com/bpfs/defs/utils/paths"
+
 	_ "github.com/mattn/go-sqlite3" // 导入SQLite驱动
 )
 

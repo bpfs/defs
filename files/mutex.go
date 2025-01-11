@@ -27,8 +27,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // SafeRWMutex 安全的读写锁结构体

@@ -27,8 +27,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // RetryConfig 重试配置

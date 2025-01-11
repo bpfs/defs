@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // generateTempFilename 生成唯一的临时文件名

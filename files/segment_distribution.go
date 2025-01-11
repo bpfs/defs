@@ -4,7 +4,7 @@ import (
 	"container/list"
 	"sync"
 
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/dep2p/libp2p/core/peer"
 )
 
 // SegmentDistribution 分片分配管理器

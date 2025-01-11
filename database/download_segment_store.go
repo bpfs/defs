@@ -5,7 +5,6 @@ import (
 
 	"github.com/bpfs/defs/badgerhold"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // DownloadSegmentStore 管理下载片段记录的存储

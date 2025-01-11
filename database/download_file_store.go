@@ -6,7 +6,6 @@ import (
 
 	"github.com/bpfs/defs/badgerhold"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // DownloadFileStore 管理下载文件记录的存储

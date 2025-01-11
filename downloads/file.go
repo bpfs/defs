@@ -5,10 +5,10 @@ import (
 
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/bpfs/defs/utils/paths"
+	"github.com/dep2p/libp2p/core/host"
 	"github.com/dep2p/pubsub"
-	"github.com/libp2p/go-libp2p/core/host"
 )
 
 // NewDownloadFile 创建并初始化一个新的下载文件实例

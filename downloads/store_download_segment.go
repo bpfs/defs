@@ -11,7 +11,7 @@ import (
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/segment"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/bpfs/defs/utils/paths"
 	"github.com/dgraph-io/badger/v4"
 	"github.com/gogo/protobuf/proto"

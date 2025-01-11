@@ -9,9 +9,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 	"github.com/googleapis/google-cloud-go-testing/storage/stiface"
 )
+
+var logger = logging.Logger("gcsfs")
 
 const (
 	defaultFileMode = 0o755   // 默认文件模式

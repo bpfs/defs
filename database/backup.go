@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/dgraph-io/badger/v4"
 )
 

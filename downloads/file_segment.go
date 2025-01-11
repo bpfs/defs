@@ -10,7 +10,7 @@ import (
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/script"
 	ecdsa_ "github.com/bpfs/defs/sign/ecdsa"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/bpfs/defs/zip/gzip"
 )
 

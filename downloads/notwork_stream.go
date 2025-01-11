@@ -9,11 +9,11 @@ import (
 	"github.com/bpfs/defs/fscfg"
 	"github.com/bpfs/defs/kbucket"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/bpfs/dep2p/streams"
+	"github.com/bpfs/defs/streams"
 	"github.com/dep2p/pubsub"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/protocol"
+
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/protocol"
 	"go.uber.org/fx"
 )
 
@@ -122,7 +122,7 @@ func (sp *StreamProtocol) handleRequestSegment(req *streams.RequestMessage, res 
 	}
 
 	// 记录收到片段请求的日志
-	logger.Printf("收到片段请求:  TaskID= %s, FileID= %s, SegmentIndex= %d, SegmentId= %s", payload.FileId, payload.TaskId, payload.SegmentIndex, payload.SegmentId)
+	logger.Infof("收到片段请求:  TaskID= %s, FileID= %s, SegmentIndex= %d, SegmentId= %s", payload.FileId, payload.TaskId, payload.SegmentIndex, payload.SegmentId)
 
 	// 获取片段存储数据
 	response, err := GetSegmentStorageData(sp.db, sp.host.ID().String(),

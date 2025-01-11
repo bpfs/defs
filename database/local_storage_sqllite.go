@@ -8,7 +8,6 @@ import (
 
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/script"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 var (

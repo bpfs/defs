@@ -7,7 +7,7 @@ import (
 	"github.com/bpfs/defs/badgerhold"
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/dgraph-io/badger/v4"
 )
 
@@ -84,18 +84,26 @@ func CreateDownloadFileRecord(
 		}
 
 		// 2. 批量保存分片记录
-		const batchSize = 100
+		const batchSize = 10
 		for i := 0; i < len(segments); i += batchSize {
 			end := i + batchSize
 			if end > len(segments) {
 				end = len(segments)
 			}
 
-			for _, segment := range segments[i:end] {
-				if err := segmentStore.InsertTx(txn, segment); err != nil {
-					logger.Errorf("保存片段记录失败 [%s]: %v", segment.SegmentId, err)
-					return fmt.Errorf("保存片段记录失败 [%s]: %v", segment.SegmentId, err)
+			// 对于每个批次，开启一个新的事务
+			err := db.Badger().Update(func(txn *badger.Txn) error {
+				for _, segment := range segments[i:end] {
+					if err := segmentStore.InsertTx(txn, segment); err != nil {
+						logger.Errorf("保存片段记录失败 [%s]: %v", segment.SegmentId, err)
+						return fmt.Errorf("保存片段记录失败 [%s]: %v", segment.SegmentId, err)
+					}
 				}
+				return nil
+			})
+			if err != nil {
+				logger.Errorf("批次处理分片记录失败: %v", err)
+				return fmt.Errorf("批次处理分片记录失败: %v", err)
 			}
 		}
 

@@ -14,7 +14,6 @@ import (
 
 	"github.com/bpfs/defs/afero"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 func init() {

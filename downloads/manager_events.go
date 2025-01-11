@@ -1,7 +1,5 @@
 package downloads
 
-import "github.com/bpfs/defs/utils/logger"
-
 // ManagerChannelEvents 处理下载管理器的通道事件
 // 功能:
 //   - 启动一个goroutine监听下载管理器的通道事件

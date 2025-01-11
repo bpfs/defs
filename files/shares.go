@@ -9,7 +9,6 @@ import (
 	"math/big"
 
 	"github.com/bpfs/defs/shamir"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // 定义 Shamir 秘密共享方案相关常量

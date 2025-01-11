@@ -5,7 +5,6 @@ import (
 
 	"github.com/bpfs/defs/badgerhold"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // UploadSegmentStore 处理上传片段记录的数据库操作

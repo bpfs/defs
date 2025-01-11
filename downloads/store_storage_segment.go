@@ -5,7 +5,7 @@ import (
 
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/gogo/protobuf/proto"
 )
 

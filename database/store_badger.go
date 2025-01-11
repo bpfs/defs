@@ -9,7 +9,7 @@ import (
 	"time"    // 导入时间包
 
 	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/bpfs/defs/utils/paths"
 	"github.com/dgraph-io/badger/v4" // 导入BadgerDB v4版本
 )

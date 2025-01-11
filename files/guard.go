@@ -30,8 +30,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // MemoryManagerInterface 定义内存管理器接口

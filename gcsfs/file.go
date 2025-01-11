@@ -15,8 +15,6 @@ import (
 	"cloud.google.com/go/storage"
 
 	"google.golang.org/api/iterator"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // GcsFile 是 Afero 版本适配 GCS 的文件类型

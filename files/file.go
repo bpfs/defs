@@ -7,8 +7,10 @@ import (
 
 	"github.com/bpfs/defs/afero"
 	"github.com/bpfs/defs/fscfg"
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("files")
 
 // CreateFile 在指定子目录创建一个新文件
 // 参数:

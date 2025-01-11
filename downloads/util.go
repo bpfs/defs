@@ -8,7 +8,6 @@ import (
 	"github.com/bpfs/defs/files"
 	"github.com/bpfs/defs/files/tempfile"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // generateTempFileKey 生成临时文件的唯一键

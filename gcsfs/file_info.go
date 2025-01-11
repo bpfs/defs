@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 const (

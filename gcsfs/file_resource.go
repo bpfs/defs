@@ -8,7 +8,6 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/bpfs/defs/utils/logger"
 	"github.com/googleapis/google-cloud-go-testing/storage/stiface"
 )
 

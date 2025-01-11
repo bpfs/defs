@@ -2,8 +2,6 @@ package tempfile
 
 import (
 	"sync"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // fileMap 使用sync.Map存储键值对映射关系,保证并发安全

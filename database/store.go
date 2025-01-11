@@ -6,10 +6,13 @@ import (
 	"path/filepath"
 
 	"github.com/bpfs/defs/badgerhold"
-	"github.com/bpfs/defs/utils/logger"
 	"github.com/bpfs/defs/utils/paths"
+	logging "github.com/dep2p/log"
+
 	"go.uber.org/fx"
 )
+
+var logger = logging.Logger("database")
 
 // DB 数据库结构体，包含BadgerDB和SqliteDB实例
 type DB struct {
@@ -72,7 +75,7 @@ func NewDB(lc fx.Lifecycle, input NewDBInput) (out NewDBOutput, err error) {
 	// 注册关闭数据库的钩子
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
-			logger.Println("关闭数据库")
+			logger.Infof("关闭数据库")
 			badgerDB.Close()
 			sqliteDB.Close()
 			return nil

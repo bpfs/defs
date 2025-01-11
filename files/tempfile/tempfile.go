@@ -4,16 +4,18 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/bpfs/defs/files"
+	logging "github.com/dep2p/log"
+
+	"github.com/pkg/errors"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
-
-	"github.com/bpfs/defs/files"
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/pkg/errors"
 )
+
+var logger = logging.Logger("tempfile")
 
 // WriteShards 将多个分片写入临时文件
 // 参数:

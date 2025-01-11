@@ -33,7 +33,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bpfs/defs/utils/logger"
 	"github.com/shirou/gopsutil/mem"
 )
 

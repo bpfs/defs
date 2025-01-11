@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"errors"
 
-	"github.com/bpfs/defs/utils/logger"
 	"golang.org/x/crypto/ripemd160"
 )
 

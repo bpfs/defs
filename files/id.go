@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"math/big"
 	"time"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // GenerateTaskID 生成任务ID

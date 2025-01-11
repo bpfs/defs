@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/bpfs/defs/fscfg"
-	"github.com/bpfs/defs/utils/logger"
 
 	"go.uber.org/fx"
 )

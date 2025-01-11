@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // NotifyStatus 通知上传状态

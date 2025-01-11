@@ -9,8 +9,11 @@ import (
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/files"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
+
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("downloads")
 
 // NewDownload 创建新的下载任务
 // 参数:
