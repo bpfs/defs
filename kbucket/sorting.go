@@ -4,8 +4,7 @@ import (
 	"container/list"
 	"sort"
 
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/dep2p/libp2p/core/peer"
 )
 
 // peerDistance 是一个辅助结构，用于按照与本地节点的距离对对等节点进行排序。

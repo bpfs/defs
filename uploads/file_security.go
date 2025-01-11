@@ -9,7 +9,6 @@ import (
 	"github.com/bpfs/defs/files"
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/script"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // NewFileSecurity 创建并初始化一个新的FileSecurity实例，封装了文件的安全和权限相关的信息

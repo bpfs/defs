@@ -16,24 +16,22 @@ import (
 
 	"github.com/bpfs/defs"
 	"github.com/bpfs/defs/fscfg"
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/bpfs/dep2p/utils"
+	dht "github.com/dep2p/kaddht"
+	"github.com/dep2p/libp2p"
+	"github.com/dep2p/libp2p/config"
+	"github.com/dep2p/libp2p/core/crypto"
+	"github.com/dep2p/libp2p/core/discovery"
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/network"
+	"github.com/dep2p/libp2p/core/peer"
+	routingdisc "github.com/dep2p/libp2p/p2p/discovery/routing"
+	"github.com/dep2p/libp2p/p2p/discovery/util"
+	"github.com/dep2p/libp2p/p2p/host/peerstore/pstoremem"
+	rcmgr "github.com/dep2p/libp2p/p2p/host/resource-manager"
+	"github.com/dep2p/libp2p/p2p/muxer/yamux"
+	"github.com/dep2p/libp2p/p2p/net/connmgr"
+	"github.com/dep2p/libp2p/p2p/transport/tcp"
 	"github.com/dep2p/pubsub"
-	"github.com/libp2p/go-libp2p"
-	dht "github.com/libp2p/go-libp2p-kad-dht"
-	"github.com/libp2p/go-libp2p/config"
-	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/core/discovery"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
-	routingdisc "github.com/libp2p/go-libp2p/p2p/discovery/routing"
-	"github.com/libp2p/go-libp2p/p2p/discovery/util"
-	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
-	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
-	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/tyler-smith/go-bip32"
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -177,7 +175,6 @@ func startDiscovery(ctx context.Context, disc discovery.Discovery, h host.Host) 
 
 	// 连接至引导节点
 	if err := connectToBootstrapPeers(ctx, h, nil); err != nil {
-		logger.Errorf("[%s]: %v", utils.WhereAmI(), err)
 		return err
 	}
 

@@ -4,8 +4,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("segment")
 
 const maxSegmentTypeLen = 100 // 段类型名称的最大长度
 

@@ -1,12 +1,13 @@
 package paths
 
 import (
+	logging "github.com/dep2p/log"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/bpfs/defs/utils/logger"
 )
+
+var logger = logging.Logger("paths")
 
 // 全局变量来存储根路径
 var (

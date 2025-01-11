@@ -15,13 +15,15 @@ import (
 	"github.com/bpfs/defs/net"
 
 	"github.com/bpfs/defs/uploads"
-	"github.com/bpfs/defs/utils/logger"
 	"github.com/bpfs/defs/utils/paths"
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/peer"
+	logging "github.com/dep2p/log"
 	"github.com/dep2p/pubsub"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/fx"
 )
+
+var logger = logging.Logger("defs")
 
 // NoOpThreshold 表示无操作的时间阈值，设定为 100 小时
 var NoOpThreshold = 100 * time.Hour

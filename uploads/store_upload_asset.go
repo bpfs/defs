@@ -5,7 +5,6 @@ import (
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/script"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // CreateFileAssetRecord 创建一个新的文件资产记录

@@ -7,7 +7,7 @@ import (
 	"github.com/bpfs/defs/kbucket/keyspace"
 	"github.com/minio/sha256-simd"
 
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/dep2p/libp2p/core/peer"
 )
 
 // ErrLookupFailure 表示路由表查询未返回任何结果时的错误。这不是预期行为。

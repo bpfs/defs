@@ -11,7 +11,6 @@ import (
 	"github.com/bpfs/defs/fscfg"
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/shamir"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // NewUploadFile 创建并初始化一个新的 UploadFile 实例
@@ -30,6 +29,7 @@ func NewUploadFile(opt *fscfg.Options, db *database.DB, scheme *shamir.ShamirSch
 	name string,
 	ownerPriv *ecdsa.PrivateKey,
 	onSegmentsReady func(taskID string),
+	taskStatus *SegmentStatus,
 	errChan chan error,
 ) (*pb.UploadOperationInfo, error) {
 	// 生成任务ID
@@ -131,6 +131,11 @@ func NewUploadFile(opt *fscfg.Options, db *database.DB, scheme *shamir.ShamirSch
 	// 启动一个新的 goroutine 来处理文件分片,避免阻塞主流程
 	// 只有在前面所有的参数校验和初始化都成功后,才会执行这个异步处理
 	go func() {
+		// 分片处理完成后,如果设置了回调函数则调用
+		// onSegmentsReady 用于通知上层分片准备完成,可以开始上传
+		if onSegmentsReady != nil {
+			onSegmentsReady(taskID)
+		}
 		// 调用 NewFileSegment 创建文件分片
 		// 参数说明:
 		// - db.BadgerDB: 数据库实例,用于存储分片信息
@@ -147,11 +152,8 @@ func NewUploadFile(opt *fscfg.Options, db *database.DB, scheme *shamir.ShamirSch
 			return         // 发生错误时直接返回,不会触发 onSegmentsReady 回调
 		}
 
-		// 分片处理完成后,如果设置了回调函数则调用
-		// onSegmentsReady 用于通知上层分片准备完成,可以开始上传
-		if onSegmentsReady != nil {
-			onSegmentsReady(taskID)
-		}
+		// 设置任务状态为已就绪
+		taskStatus.SetState(true)
 	}()
 
 	return uploadInfo, nil

@@ -12,10 +12,10 @@ import (
 	"github.com/bpfs/defs/kbucket"
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/shamir"
-	"github.com/bpfs/defs/utils/logger"
+
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/peer"
 	"github.com/dep2p/pubsub"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 // UploadTask 描述一个文件上传任务，包括文件信息和上传状态

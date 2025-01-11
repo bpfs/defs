@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/dep2p/libp2p/core/peer"
 
 	mh "github.com/multiformats/go-multihash"
 )

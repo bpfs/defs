@@ -10,8 +10,11 @@ import (
 	"github.com/bpfs/defs/badgerhold"
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
+
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("uploads")
 
 // NewUpload 创建一个新的上传任务
 // 参数:
@@ -85,9 +88,6 @@ func (m *UploadManager) NewUpload(
 		m.segmentStatuses[taskID] = taskStatus
 		m.mu.Unlock()
 
-		// 设置任务状态为已就绪
-		taskStatus.SetState(true)
-
 		// 检查是否为立即上传模式
 		isImmediate := len(immediate) > 0 && immediate[0]
 		if isImmediate {
@@ -101,7 +101,7 @@ func (m *UploadManager) NewUpload(
 	}
 
 	// 创建并初始化UploadFile实例
-	uploadInfo, err := NewUploadFile(m.opt, m.db, m.scheme, path, ownerPriv, onSegmentsReady, m.errChan)
+	uploadInfo, err := NewUploadFile(m.opt, m.db, m.scheme, path, ownerPriv, onSegmentsReady, taskStatus, m.errChan)
 	if err != nil {
 		logger.Errorf("创建上传文件任务失败: %v", err)
 		return nil, err

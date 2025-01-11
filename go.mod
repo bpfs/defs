@@ -12,6 +12,7 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/googleapis/google-cloud-go-testing v0.0.0-20210719221736-1c9a4c676720
+	github.com/jbenet/go-temp-err-catcher v0.1.0
 	github.com/klauspost/cpuid/v2 v2.2.9
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/libp2p/go-cidranger v1.1.0
@@ -95,7 +96,6 @@ require (
 	github.com/ipfs/go-log/v2 v2.5.1 // indirect
 	github.com/ipld/go-ipld-prime v0.21.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
-	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/jbenet/goprocess v0.1.4 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect

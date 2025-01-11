@@ -7,7 +7,6 @@ import (
 	"github.com/bpfs/defs/bitset"
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // GetUploadProgress 获取上传任务的进度信息

@@ -8,10 +8,10 @@ import (
 	"github.com/bpfs/defs/fscfg"
 	"github.com/bpfs/defs/kbucket/peerdiversity"
 	"github.com/bpfs/defs/net"
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/p2p/host/peerstore"
+
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/peer"
+	"github.com/dep2p/libp2p/p2p/host/peerstore"
 	ma "github.com/multiformats/go-multiaddr"
 )
 

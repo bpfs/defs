@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // DefaultDownloadPath 返回操作系统的默认下载路径。

@@ -5,7 +5,7 @@ import (
 	"context"
 
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/dep2p/pubsub"
 )
 

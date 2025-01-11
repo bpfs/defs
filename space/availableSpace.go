@@ -1,6 +1,12 @@
 package space
 
-import "syscall"
+import (
+	"syscall"
+
+	logging "github.com/dep2p/log"
+)
+
+var logger = logging.Logger("space")
 
 // GetAvailableSpace 返回指定路径下的可用存储空间（字节）
 func GetAvailableSpace(path string) (uint64, error) {

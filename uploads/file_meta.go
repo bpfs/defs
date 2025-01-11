@@ -10,7 +10,6 @@ import (
 	"github.com/bpfs/defs/files"
 	"github.com/bpfs/defs/fscfg"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // NewFileMeta 创建并初始化一个新的 FileMeta 实例，提供文件的基本元数据信息

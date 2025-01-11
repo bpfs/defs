@@ -5,7 +5,6 @@ import (
 
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // Start 开始或恢复上传任务

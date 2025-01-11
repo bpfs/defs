@@ -6,9 +6,11 @@ import (
 	"container/list"
 	"time"
 
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/dep2p/libp2p/core/peer"
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("kbucket")
 
 // PeerInfo 包含了 K-Bucket 中一个对等节点的所有相关信息。
 type PeerInfo struct {

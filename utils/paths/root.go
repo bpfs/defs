@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 ////////////////////////////////////////////////////////////////////////

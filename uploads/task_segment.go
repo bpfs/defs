@@ -9,10 +9,10 @@ import (
 	"github.com/bpfs/defs/files"
 	"github.com/bpfs/defs/kbucket"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/bpfs/defs/utils/network"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/dep2p/libp2p/core/peer"
+	"github.com/dep2p/libp2p/core/protocol"
 )
 
 // handleSegmentProcess 处理文件片段
@@ -247,6 +247,11 @@ func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) er
 			}
 			if !exists {
 				logger.Warnf("片段记录不存在: segmentID=%s", segmentID)
+				continue
+			}
+
+			if segment.Status == pb.SegmentUploadStatus_SEGMENT_UPLOAD_STATUS_COMPLETED {
+				logger.Infof("片段已经上传完成: segmentID=%s", segmentID)
 				continue
 			}
 

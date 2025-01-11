@@ -16,13 +16,13 @@ import (
 	"github.com/bpfs/defs/kbucket"
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/segment"
-	"github.com/bpfs/defs/utils/logger"
+	"github.com/bpfs/defs/streams"
 	"github.com/bpfs/defs/utils/network"
 	"github.com/bpfs/defs/utils/paths"
-	"github.com/bpfs/dep2p/streams"
 	"github.com/dep2p/pubsub"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/protocol"
+
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/protocol"
 	"go.uber.org/fx"
 )
 
@@ -117,7 +117,7 @@ func (sp *StreamProtocol) handleSendingToNetwork(req *streams.RequestMessage, re
 	}
 
 	// 打印分片ID信息
-	logger.Printf("=====> SegmentId: %v", payload.SegmentId)
+	logger.Infof("=====> SegmentId: %v", payload.SegmentId)
 
 	// 检查参数有效性
 	if sp.opt == nil || sp.fs == nil || payload.SegmentContent == nil {
@@ -149,7 +149,7 @@ func (sp *StreamProtocol) handleSendingToNetwork(req *streams.RequestMessage, re
 	payload.SegmentContent = nil
 
 	// 将payload发送到转发通道
-	sp.upload.TriggerForward(payload)
+	//sp.upload.TriggerForward(payload)
 
 	// 清空数据和请求载荷以释放内存
 	payload = nil
@@ -177,7 +177,7 @@ func (sp *StreamProtocol) handleForwardToNetwork(req *streams.RequestMessage, re
 		return 6603, err.Error()
 	}
 
-	logger.Printf("转发=====> SegmentId: %v,内容%d", payload.SegmentId, len(payload.SegmentContent))
+	logger.Infof("转发=====> SegmentId: %v,内容%d", payload.SegmentId, len(payload.SegmentContent))
 
 	// 检查参数有效性
 	if sp.opt == nil || sp.fs == nil || payload.SegmentContent == nil {
@@ -263,7 +263,7 @@ func sendForwardRequest(ctx context.Context, h host.Host, routingTable *kbucket.
 			continue
 		}
 
-		logger.Printf("=====> 成功转发 SegmentId: %v", payload.SegmentId)
+		logger.Infof("=====> 成功转发 SegmentId: %v", payload.SegmentId)
 		return nil
 	}
 

@@ -6,13 +6,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/bpfs/dep2p/streams"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
-	protocols "github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/bpfs/defs/streams"
+
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/network"
+	"github.com/dep2p/libp2p/core/peer"
+	protocols "github.com/dep2p/libp2p/core/protocol"
+
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("network")
 
 // StreamMutex 流互斥锁
 var StreamMutex sync.Mutex

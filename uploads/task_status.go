@@ -2,7 +2,6 @@ package uploads
 
 import (
 	"github.com/bpfs/defs/database"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // GetProgress 计算并返回当前上传进度

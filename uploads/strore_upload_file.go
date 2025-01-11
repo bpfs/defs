@@ -8,7 +8,6 @@ import (
 	"github.com/bpfs/defs/bitset"
 	"github.com/bpfs/defs/database"
 	"github.com/bpfs/defs/pb"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // CreateUploadFileRecord 创建上传文件记录并保存到数据库

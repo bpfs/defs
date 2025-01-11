@@ -1,11 +1,12 @@
 package keyspace
 
 import (
+	logging "github.com/dep2p/log"
 	"math/big"
 	"sort"
-
-	"github.com/bpfs/defs/utils/logger"
 )
+
+var logger = logging.Logger("keyspace")
 
 // Key 表示 KeySpace 中的标识符。它持有与之关联的 KeySpace 的引用，以及原始标识符和新的 KeySpace 字节。
 type Key struct {

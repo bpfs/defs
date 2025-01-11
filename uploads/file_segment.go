@@ -14,7 +14,7 @@ import (
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/reedsolomon"
 	sign "github.com/bpfs/defs/sign/ecdsa"
-	"github.com/bpfs/defs/utils/logger"
+
 	"github.com/bpfs/defs/zip/gzip"
 )
 
@@ -255,7 +255,7 @@ func generateSignature(privateKey *ecdsa.PrivateKey, data *pb.SignatureData) ([]
 	merged := hash[:]
 
 	// 打印哈希值的十六进制表示，用于调试
-	logger.Printf("===> %v", hex.EncodeToString(merged))
+	logger.Infof("===> %v", hex.EncodeToString(merged))
 
 	// 使用ECDSA私钥对哈希值进行签名
 	signature, err := sign.SignData(privateKey, merged)

@@ -6,8 +6,11 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	logging "github.com/dep2p/log"
 	"math/big"
 )
+
+var logger = logging.Logger("shamir")
 
 // GenerateStandardShares 生成标准的秘密份额
 // 参数：

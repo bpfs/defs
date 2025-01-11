@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/bpfs/defs/afero"
-	"github.com/bpfs/defs/utils/logger"
 )
 
 // DirExistsAndMkdirAll 检查路径是否存在并且是一个目录，如果不存在则创建目录路径和所有尚不存在的父级。

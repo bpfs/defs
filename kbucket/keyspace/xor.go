@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"math/bits"
 
-	"github.com/bpfs/defs/utils/logger"
 	sha256 "github.com/minio/sha256-simd"
 )
 

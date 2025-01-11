@@ -6,15 +6,16 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/libp2p/go-libp2p/core/peer"
-
+	"github.com/dep2p/libp2p/core/peer"
+	logging "github.com/dep2p/log"
 	"github.com/libp2p/go-cidranger"
 	asnutil "github.com/libp2p/go-libp2p-asn-util"
 
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
+
+var logger = logging.Logger("peerdiversity")
 
 // asnStore 是一个接口，定义了获取 IPv6 地址的 ASN（自治系统号）的方法
 type asnStore interface {

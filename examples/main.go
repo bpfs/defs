@@ -17,17 +17,17 @@ import (
 	"github.com/bpfs/defs/kbucket"
 	"github.com/bpfs/defs/pb"
 	"github.com/bpfs/defs/uploads"
-	"github.com/bpfs/defs/utils/logger"
-	"github.com/bpfs/dep2p/utils"
-	publog "github.com/dep2p/pubsub/logger"
-	dht "github.com/libp2p/go-libp2p-kad-dht"
-	"github.com/libp2p/go-libp2p/core/host"
-	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/bpfs/defs/utils/log"
+	dht "github.com/dep2p/kaddht"
+	"github.com/dep2p/libp2p/core/host"
+	"github.com/dep2p/libp2p/core/network"
+	"github.com/dep2p/libp2p/core/peer"
+	logging "github.com/dep2p/log"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/pterm/pterm"
-	"github.com/sirupsen/logrus"
 )
+
+var logger = logging.Logger("examples")
 
 // main 函数是程序的入口点
 func main() {
@@ -46,17 +46,10 @@ func main() {
 	}
 	defer logFile.Close()
 
-	// 设置DeFS的日志输出
-	// 将所有日志重定向到文件
-	logger.SetOutput(logFile)
-	// 禁用标准输出的日志
-	logger.SetStdoutEnabled(false)
-
-	// 设置 dep2p/pubsub 的日志输出
-	// 设置 pubsub 日志输出到文件
-	publog.SetOutput(logFile)
-	// 设置 pubsub 日志级别为 INFO
-	publog.SetLevel(logrus.InfoLevel)
+	// 设置defs日志输出
+	log.SetLog(logFile.Name(), false)
+	// 设置订阅日志
+	//publog.SetLog(logFile.Name(), true)
 
 	// 初始化DeFS核心
 	logger.Info("开始初始化DeFS核心...")
@@ -508,7 +501,6 @@ func connectToBootstrapPeers(ctx context.Context, host host.Host, bootstrapPeers
 	for _, peer := range bootstrapPeers {
 		maddr, err := multiaddr.NewMultiaddr(peer)
 		if err == nil {
-			logger.Infof("[%s]: %v", utils.WhereAmI(), err)
 			defaultMultiaddrs = append(defaultMultiaddrs, maddr)
 		}
 	}
@@ -545,7 +537,6 @@ func connectToBootstrapPeers(ctx context.Context, host host.Host, bootstrapPeers
 	wg.Wait() // 等待所有连接试完成
 
 	if !successfulConnection {
-		logger.Errorf("[%s]未能连接至引导节点", utils.WhereAmI())
 		return fmt.Errorf("未能连接至引导节点")
 	}
 
