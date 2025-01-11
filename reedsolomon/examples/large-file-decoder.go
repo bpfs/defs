@@ -29,7 +29,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bpfs/defs/reedsolomon"
+	"github.com/bpfs/defs/v2/reedsolomon"
 	logging "github.com/dep2p/log"
 )
 

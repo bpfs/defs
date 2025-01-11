@@ -5,7 +5,7 @@ package kbucket
 // 	"testing"
 // 	"time"
 
-// 	"github.com/bpfs/defs/fscfg"
+// 	"github.com/bpfs/defs/v2/fscfg"
 
 // 	dht "github.com/dep2p/kaddht"
 // 	"github.com/dep2p/libp2p"

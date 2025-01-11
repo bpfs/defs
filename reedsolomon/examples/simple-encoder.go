@@ -41,7 +41,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bpfs/defs/reedsolomon"
+	"github.com/bpfs/defs/v2/reedsolomon"
 )
 
 var dataShards = flag.Int("data", 4, "Number of shards to split the data into, must be below 257.") // 定义数据分片数量的命令行标志

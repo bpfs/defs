@@ -5,9 +5,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/bpfs/defs/fscfg"
-	"github.com/bpfs/defs/kbucket/peerdiversity"
-	"github.com/bpfs/defs/net"
+	"github.com/bpfs/defs/v2/fscfg"
+	"github.com/bpfs/defs/v2/kbucket/peerdiversity"
+	"github.com/bpfs/defs/v2/net"
 
 	"github.com/dep2p/libp2p/core/host"
 	"github.com/dep2p/libp2p/core/peer"

@@ -8,7 +8,7 @@ package kbucket
 // 	"github.com/dep2p/libp2p/core/peer"
 // 	"github.com/dep2p/libp2p/core/test"
 
-// 	"github.com/bpfs/defs/kbucket/peerdiversity"
+// 	"github.com/bpfs/defs/v2/kbucket/peerdiversity"
 
 // 	pstore "github.com/dep2p/libp2p/p2p/host/peerstore"
 

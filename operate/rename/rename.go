@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/bpfs/defs/afero"
-	"github.com/bpfs/defs/database"
-	"github.com/bpfs/defs/fscfg"
-	"github.com/bpfs/defs/pb"
+	"github.com/bpfs/defs/v2/afero"
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/fscfg"
+	"github.com/bpfs/defs/v2/pb"
 	logging "github.com/dep2p/log"
 	"github.com/dep2p/pubsub"
 )

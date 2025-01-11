@@ -4,7 +4,7 @@ import (
 	"crypto/subtle"
 	"fmt"
 
-	"github.com/bpfs/defs/kbucket/keyspace"
+	"github.com/bpfs/defs/v2/kbucket/keyspace"
 	"github.com/minio/sha256-simd"
 
 	"github.com/dep2p/libp2p/core/peer"

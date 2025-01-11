@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bpfs/defs/reedsolomon"
+	"github.com/bpfs/defs/v2/reedsolomon"
 )
 
 func TestStreamDecoder(t *testing.T) {

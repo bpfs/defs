@@ -19,7 +19,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/bpfs/defs/reedsolomon"
+	"github.com/bpfs/defs/v2/reedsolomon"
 	"github.com/klauspost/cpuid/v2"
 )
 

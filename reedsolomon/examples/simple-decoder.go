@@ -38,7 +38,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bpfs/defs/reedsolomon"
+	"github.com/bpfs/defs/v2/reedsolomon"
 )
 
 // 定义数据分片数量的命令行标志

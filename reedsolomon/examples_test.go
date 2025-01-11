@@ -8,7 +8,7 @@ import (
 	"log"
 	"math/rand"
 
-	"github.com/bpfs/defs/reedsolomon"
+	"github.com/bpfs/defs/v2/reedsolomon"
 )
 
 // fillRandom 用随机数据填充字节切片

@@ -11,7 +11,7 @@ import (
 	"github.com/dep2p/libp2p/core/peerstore"
 	"github.com/sirupsen/logrus"
 
-	"github.com/bpfs/defs/kbucket/peerdiversity"
+	"github.com/bpfs/defs/v2/kbucket/peerdiversity"
 )
 
 // ErrPeerRejectedHighLatency：表示对等节点被拒绝的错误，原因是延迟太高。
