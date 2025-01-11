@@ -2,8 +2,6 @@ package rsa
 
 import (
 	"testing"
-
-	"github.com/bpfs/defs/utils/logger"
 )
 
 func TestSignData(t *testing.T) {
@@ -28,7 +26,7 @@ func TestSignData(t *testing.T) {
 	// 验证签名
 	isVerified := VerifySignature(publicKey, data, signature)
 	if isVerified {
-		logger.Printf("Signature verified.")
+		logger.Info("Signature verified.")
 	} else {
 		t.Error("Signature verification failed.")
 	}

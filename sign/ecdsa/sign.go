@@ -8,8 +8,10 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("ecdsa")
 
 // SignData 使用ECDSA私钥为数据签名
 // 参数:

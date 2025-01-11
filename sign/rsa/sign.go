@@ -6,10 +6,13 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	logging "github.com/dep2p/log"
 	"log"
 	"math/big"
 	mathrand "math/rand"
 )
+
+var logger = logging.Logger("rsa")
 
 // GenerateKeysFromSeed 使用种子数据生成 RSA 密钥对
 // 参数:

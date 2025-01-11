@@ -5,8 +5,10 @@ import (
 	"compress/gzip"
 	"io"
 
-	"github.com/bpfs/defs/utils/logger"
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("gzip")
 
 // 定义压缩级别常量
 const (
