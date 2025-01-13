@@ -143,7 +143,7 @@ func Handshake(ctx context.Context, h host.Host, pi peer.AddrInfo) ([]peer.AddrI
 		for _, peerInfo := range response.KnownPeers {
 			if len(peerInfo.Addrs) > 0 {
 				// 将新发现的节点添加到本地节点存储,设置永久有效期
-				h.Peerstore().AddAddrs(peerInfo.ID, peerInfo.Addrs, peerstore.ConnectedAddrTTL)
+				h.Peerstore().AddAddrs(peerInfo.ID, peerInfo.Addrs, peerstore.PermanentAddrTTL)
 			}
 		}
 
@@ -176,7 +176,7 @@ func RegisterHandshakeProtocol(h host.Host) {
 		remotePeer := s.Conn().RemotePeer()      // 获取远程节点的ID
 
 		// 3. 将远程节点信息添加到本地节点存储
-		h.Peerstore().AddAddr(remotePeer, remoteAddr, peerstore.ConnectedAddrTTL)
+		h.Peerstore().AddAddr(remotePeer, remoteAddr, peerstore.PermanentAddrTTL)
 
 		// 4. 处理收到的其他节点信息
 		processedCount := 0
@@ -186,7 +186,7 @@ func RegisterHandshakeProtocol(h host.Host) {
 			}
 			if len(peerInfo.Addrs) > 0 {
 				// 将新发现的节点添加到本地节点存储
-				h.Peerstore().AddAddrs(peerInfo.ID, peerInfo.Addrs, peerstore.ConnectedAddrTTL)
+				h.Peerstore().AddAddrs(peerInfo.ID, peerInfo.Addrs, peerstore.PermanentAddrTTL)
 				processedCount++
 			}
 		}
