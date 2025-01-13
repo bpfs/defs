@@ -99,12 +99,12 @@ github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 h1:rpfIENRNNilwHwZeG5+P150SMrnN
 github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0/go.mod h1:v57UDF4pDQJcEfFUCRop3lJL149eHGSe9Jvczhzjo/0=
 github.com/dep2p/kaddht v0.0.1 h1:sd3EsaBiWgjl7+qIsQ2CqhG2apg6AvOlBhYyb82/U3E=
 github.com/dep2p/kaddht v0.0.1/go.mod h1:W0BwwjJ3dRumbm1XR8ZT+mCdO5dPw2sOY0bF9syolz8=
-github.com/dep2p/libp2p v0.0.3 h1:tomSD1kxbJP6okUe2H9zRMYxhkEIMqWM16ZQWPxAXEM=
-github.com/dep2p/libp2p v0.0.3/go.mod h1:V1D/zt2Y6oK58kvEyyak+xZdnL+Fcx3ZtjMjcFtMkMg=
+github.com/dep2p/libp2p v0.0.4 h1:3z8X0+LXmXv9yA1a/tQlbosVyz8aIj+FYAtMgyWZY9g=
+github.com/dep2p/libp2p v0.0.4/go.mod h1:V1D/zt2Y6oK58kvEyyak+xZdnL+Fcx3ZtjMjcFtMkMg=
 github.com/dep2p/log v0.0.1 h1:Eb2b936xt44P41ymZS+vA5NWN59HYslkT4FgnWSkSIA=
 github.com/dep2p/log v0.0.1/go.mod h1:rPoclCwhOdTSonpYbcgzR4SKEa921SCRTsLAx3vtO+c=
-github.com/dep2p/pubsub v1.0.1 h1:yNX8iORt+SZzIlFnYH1Z2mHXEyRMcWUSp+r5XNxjeOs=
-github.com/dep2p/pubsub v1.0.1/go.mod h1:Is8CIWbm5qqqlBJPv9F1emtR1n9Pz13EcC4Ent2iicI=
+github.com/dep2p/pubsub v1.0.2 h1:yFaE/q0JvjlbyDCHg7K0dVTIz/AOenx0dRPERtXQeVE=
+github.com/dep2p/pubsub v1.0.2/go.mod h1:DixpJ+d+/dDblW+dxKOS6zxtJlTornpGMJ7hw98Z2ao=
 github.com/dgraph-io/badger/v4 v4.5.0 h1:TeJE3I1pIWLBjYhIYCA1+uxrjWEoJXImFBMEBVSm16g=
 github.com/dgraph-io/badger/v4 v4.5.0/go.mod h1:ysgYmIeG8dS/E8kwxT7xHyc7MkmwNYLRoYnFbr7387A=
 github.com/dgraph-io/ristretto/v2 v2.0.1 h1:7W0LfEP+USCmtrUjJsk+Jv2jbhJmb72N4yRI7GrLdMI=

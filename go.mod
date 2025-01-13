@@ -5,9 +5,9 @@ go 1.22.5
 require (
 	cloud.google.com/go/storage v1.43.0
 	github.com/dep2p/kaddht v0.0.1
-	github.com/dep2p/libp2p v0.0.3
+	github.com/dep2p/libp2p v0.0.4
 	github.com/dep2p/log v0.0.1
-	github.com/dep2p/pubsub v1.0.1
+	github.com/dep2p/pubsub v1.0.2
 	github.com/dgraph-io/badger/v4 v4.5.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/gogo/protobuf v1.3.2
