@@ -638,7 +638,9 @@ func (s *FileSegmentStorageSqlStore) GetSharedFileSegmentStorageByFileID(fileID 
 		"extension",    // 文件扩展名
 		"size",         // 文件总大小
 		"content_type", // MIME类型
+		"sha256_hash",  // 文件内容的SHA256哈希值
 		"upload_time",  // 文件首次上传的Unix时间戳
+		"p2pkh_script", // P2PKH脚本
 	}
 
 	// 设置查询条件：文件ID匹配且必须是共享状态
@@ -663,7 +665,9 @@ func (s *FileSegmentStorageSqlStore) GetSharedFileSegmentStorageByFileID(fileID 
 		&m.Extension,   // 文件扩展名
 		&m.Size_,       // 文件总大小
 		&m.ContentType, // MIME类型
+		&m.Sha256Hash,  // 文件内容的SHA256哈希值
 		&m.UploadTime,  // 文件首次上传的Unix时间戳
+		&m.P2PkhScript, // P2PKH脚本
 	); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, false, nil
