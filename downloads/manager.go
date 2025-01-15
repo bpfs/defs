@@ -6,10 +6,12 @@ import (
 	"sync"
 
 	"github.com/bpfs/defs/v2/afero"
+	"github.com/bpfs/defs/v2/badgerhold"
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/fscfg"
 	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/pb"
+	"github.com/dgraph-io/badger/v4"
 
 	"github.com/dep2p/libp2p/core/host"
 	"github.com/dep2p/pubsub"
@@ -341,88 +343,88 @@ func (m *DownloadManager) IsFileDownloading(fileID string) bool {
 //   - error: 加载过程中的错误信息，如果成功则为nil
 func (m *DownloadManager) LoadExistingTasks() error {
 	// 创建下载任务存储对象
-	// downloadTaskStore := database.NewDownloadFileStore(m.db.BadgerDB)
+	downloadTaskStore := database.NewDownloadFileStore(m.db.BadgerDB)
 
-	// // 从数据库加载现有的下载任务
-	// // TODO: 这里需要考虑量的问题
-	// tasks, _, err := QueryDownloadTask(m.db.BadgerDB, 0, 1000) // 设置较大的页面大小以加载所有任务
-	// if err != nil {
-	// 	if err == badgerhold.ErrNotFound {
-	// 		logger.Info("没有找到现有的下载任务")
-	// 		return nil
-	// 	}
-	// 	logger.Errorf("加载下载任务时出错: %v", err)
-	// 	return err
-	// }
+	// 从数据库加载现有的下载任务
+	// TODO: 这里需要考虑量的问题
+	tasks, _, err := QueryDownloadTask(m.db.BadgerDB, 0, 1000) // 设置较大的页面大小以加载所有任务
+	if err != nil {
+		if err == badgerhold.ErrNotFound {
+			logger.Info("没有找到现有的下载任务")
+			return nil
+		}
+		logger.Errorf("加载下载任务时出错: %v", err)
+		return err
+	}
 
-	// // 处理每个下载任务
-	// for _, downloadFile := range tasks {
-	// 	switch downloadFile.Status {
-	// 	case pb.DownloadStatus_DOWNLOAD_STATUS_DOWNLOADING, // 下载中
-	// 		pb.DownloadStatus_DOWNLOAD_STATUS_FETCHING_INFO, // 获取文件信息中
-	// 		pb.DownloadStatus_DOWNLOAD_STATUS_PENDING:       // 待下载
-	// 		// 如果状态为下载中、获取信息中或待下载，修改为暂停状态
-	// 		err := m.db.BadgerDB.Badger().Update(func(txn *badger.Txn) error {
-	// 			downloadFile.Status = pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED // 已暂停
-	// 			return downloadTaskStore.UpdateTx(txn, downloadFile)
-	// 		})
-	// 		if err != nil {
-	// 			logger.Errorf("更新文件状态为暂停失败: taskID=%s, error=%v",
-	// 				downloadFile.TaskId, err)
-	// 			continue
-	// 		}
+	// 处理每个下载任务
+	for _, downloadFile := range tasks {
+		switch downloadFile.Status {
+		case pb.DownloadStatus_DOWNLOAD_STATUS_DOWNLOADING, // 下载中
+			pb.DownloadStatus_DOWNLOAD_STATUS_FETCHING_INFO, // 获取文件信息中
+			pb.DownloadStatus_DOWNLOAD_STATUS_PENDING:       // 待下载
+			// 如果状态为下载中、获取信息中或待下载，修改为暂停状态
+			err := m.db.BadgerDB.Badger().Update(func(txn *badger.Txn) error {
+				downloadFile.Status = pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED // 已暂停
+				return downloadTaskStore.UpdateTx(txn, downloadFile)
+			})
+			if err != nil {
+				logger.Errorf("更新文件状态为暂停失败: taskID=%s, error=%v",
+					downloadFile.TaskId, err)
+				continue
+			}
 
-	// 	// TODO: 已完成的不应该再次加入
-	// 	case pb.DownloadStatus_DOWNLOAD_STATUS_COMPLETED: // 已完成
-	// 		continue
+		// TODO: 已完成的不应该再次加入
+		case pb.DownloadStatus_DOWNLOAD_STATUS_COMPLETED: // 已完成
+			continue
 
-	// 	case pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED: // 已暂停
-	// 		// 已完成或已暂停状态的任务无需修改
-	// 		logger.Infof("文件状态为已完成或已暂停，无需修改: taskID=%s, status=%s",
-	// 			downloadFile.TaskId, downloadFile.Status)
+		case pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED: // 已暂停
+			// 已完成或已暂停状态的任务无需修改
+			logger.Infof("文件状态为已完成或已暂停，无需修改: taskID=%s, status=%s",
+				downloadFile.TaskId, downloadFile.Status)
 
-	// 	default:
-	// 		// 其他状态（未指定、失败等）修改为异常状态
-	// 		err := m.db.BadgerDB.Badger().Update(func(txn *badger.Txn) error {
-	// 			downloadFile.Status = pb.DownloadStatus_DOWNLOAD_STATUS_FAILED // 失败
-	// 			return downloadTaskStore.UpdateTx(txn, downloadFile)
-	// 		})
-	// 		if err != nil {
-	// 			logger.Errorf("更新文件状态为失败状态失败: taskID=%s, error=%v",
-	// 				downloadFile.TaskId, err)
-	// 			continue
-	// 		}
-	// 	}
+		default:
+			// 其他状态（未指定、失败等）修改为异常状态
+			err := m.db.BadgerDB.Badger().Update(func(txn *badger.Txn) error {
+				downloadFile.Status = pb.DownloadStatus_DOWNLOAD_STATUS_FAILED // 失败
+				return downloadTaskStore.UpdateTx(txn, downloadFile)
+			})
+			if err != nil {
+				logger.Errorf("更新文件状态为失败状态失败: taskID=%s, error=%v",
+					downloadFile.TaskId, err)
+				continue
+			}
+		}
 
-	// 	// 移除指定任务ID的下载任务，如果存在
-	// 	m.removeTask(downloadFile.TaskId)
+		// 移除指定任务ID的下载任务，如果存在
+		m.removeTask(downloadFile.TaskId)
 
-	// 	// 创建新的下载任务实例
-	// 	downloadTask, err := NewDownloadTask(
-	// 		m.ctx,
-	// 		m.opt,
-	// 		m.db,
-	// 		m.fs,
-	// 		m.host,
-	// 		m.routingTable,
-	// 		m.nps,
-	// 		m.statusChan,
-	// 		m.errChan,
-	// 		downloadFile.TaskId,
-	// 	)
-	// 	if err != nil {
-	// 		logger.Errorf("创建下载任务失败: taskID=%s, error=%v",
-	// 			downloadFile.TaskId, err)
-	// 		continue
-	// 	}
+		// 创建新的下载任务实例
+		downloadTask, err := NewDownloadTask(
+			m.ctx,
+			m.opt,
+			m.db,
+			m.fs,
+			m.host,
+			m.routingTable,
+			m.nps,
+			m.statusChan,
+			m.errChan,
+			downloadFile.TaskId,
+		)
+		if err != nil {
+			logger.Errorf("创建下载任务失败: taskID=%s, error=%v",
+				downloadFile.TaskId, err)
+			continue
+		}
 
-	// 	// 添加一个新的下载任务
-	// 	if err := m.addTask(downloadTask); err != nil {
-	// 		continue
-	// 	}
+		// 添加一个新的下载任务
+		if err := m.addTask(downloadTask); err != nil {
+			continue
+		}
 
-	// 	logger.Infof("已加载下载任务: taskID=%s", downloadFile.TaskId)
-	// }
+		logger.Infof("已加载下载任务: taskID=%s", downloadFile.TaskId)
+	}
 
 	var taskCount int
 	m.tasks.Range(func(_, _ interface{}) bool {

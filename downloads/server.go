@@ -13,16 +13,23 @@ import (
 	logging "github.com/dep2p/log"
 )
 
+// logger 定义下载模块的日志记录器
 var logger = logging.Logger("downloads")
 
 // NewDownload 创建新的下载任务
 // 参数:
-//   - fileID: 文件唯一标识,要下载的文件ID
 //   - ownerPriv: 所有者的私钥,用于签名和权限验证
+//   - fileID: 文件唯一标识,要下载的文件ID
 //
 // 返回值:
 //   - string: 下载任务ID
 //   - error: 如果创建失败则返回错误原因
+//
+// 功能:
+//   - 检查服务端节点数量是否满足最小要求
+//   - 验证文件ID和所有者私钥的有效性
+//   - 生成任务ID和密钥分片
+//   - 创建下载任务并触发下载操作
 func (m *DownloadManager) NewDownload(
 	ownerPriv *ecdsa.PrivateKey,
 	fileID string,
@@ -111,16 +118,24 @@ func (m *DownloadManager) NewDownload(
 
 // NewShareDownload 创建新的共享下载任务
 // 参数:
-//   - fileID: 文件唯一标识,要下载的文件ID
 //   - ownerPriv: 所有者的私钥,用于签名和权限验证
+//   - fileID: 文件唯一标识,要下载的文件ID
+//   - keyShare: 密钥分片,用于文件解密
+//   - pubkeyHash: 公钥哈希,用于身份验证
 //
 // 返回值:
 //   - string: 下载任务ID
 //   - error: 如果创建失败则返回错误原因
+//
+// 功能:
+//   - 检查服务端节点数量是否满足最小要求
+//   - 验证文件ID和所有者私钥的有效性
+//   - 创建共享下载任务并触发下载操作
 func (m *DownloadManager) NewShareDownload(
 	ownerPriv *ecdsa.PrivateKey,
 	fileID string,
-	firstKeyShare []byte,
+	keyShare []byte,
+	pubkeyHash []byte,
 ) (string, error) {
 	// 检查服务端节点数量是否足够
 	minNodes := m.opt.GetMinDownloadServerNodes()
@@ -160,14 +175,14 @@ func (m *DownloadManager) NewShareDownload(
 
 	// 创建新的下载文件任务
 	downloadInfo, err := NewDownloadFile(
-		m.ctx,         // 上下文
-		m.db,          // 数据库实例
-		m.host,        // 主机实例
-		m.nps,         // 发布订阅系统
-		taskID,        // 任务ID
-		fileID,        // 文件ID
-		nil,           // 公钥哈希
-		firstKeyShare, // 第?个密钥分片
+		m.ctx,      // 上下文
+		m.db,       // 数据库实例
+		m.host,     // 主机实例
+		m.nps,      // 发布订阅系统
+		taskID,     // 任务ID
+		fileID,     // 文件ID
+		pubkeyHash, // 公钥哈希
+		keyShare,   // 密钥共享
 	)
 	if err != nil {
 		logger.Errorf("创建下载文件任务失败: %v", err)
@@ -189,6 +204,11 @@ func (m *DownloadManager) NewShareDownload(
 //
 // 返回值:
 //   - error: 如果触发失败则返回错误原因
+//
+// 功能:
+//   - 检查服务端节点数量和并发下载数是否满足要求
+//   - 创建并初始化新的下载任务
+//   - 将任务添加到下载队列并触发下载
 func (m *DownloadManager) TriggerDownload(taskID string) error {
 	logger.Infof("开始触发下载任务: %s", taskID)
 
@@ -252,6 +272,12 @@ func (m *DownloadManager) TriggerDownload(taskID string) error {
 //
 // 返回值:
 //   - error: 如果暂停过程中发生错误，返回错误信息
+//
+// 功能:
+//   - 检查任务是否存在
+//   - 获取任务当前状态
+//   - 根据状态判断是否可以暂停
+//   - 执行暂停操作
 func (m *DownloadManager) PauseDownload(taskID string) error {
 	// 获取任务实例
 	taskValue, exists := m.tasks.Load(taskID)
@@ -306,6 +332,11 @@ func (m *DownloadManager) PauseDownload(taskID string) error {
 //
 // 返回值:
 //   - error: 如果继续下载过程中发生错误，返回错误信息
+//
+// 功能:
+//   - 获取任务当前状态
+//   - 根据状态判断是否可以继续下载
+//   - 触发继续下载操作
 func (m *DownloadManager) ResumeDownload(taskID string) error {
 	// 创建存储实例
 	downloadFileStore := database.NewDownloadFileStore(m.db.BadgerDB)
@@ -351,6 +382,12 @@ func (m *DownloadManager) ResumeDownload(taskID string) error {
 //
 // 返回值:
 //   - error: 如果取消过程中发生错误，返回错误信息
+//
+// 功能:
+//   - 检查任务是否存在
+//   - 获取任务当前状态
+//   - 根据状态判断是否可以取消
+//   - 执行取消操作并清理任务
 func (m *DownloadManager) CancelDownload(taskID string) error {
 	// 获取任务实例
 	taskValue, exists := m.tasks.Load(taskID)
@@ -382,6 +419,11 @@ func (m *DownloadManager) CancelDownload(taskID string) error {
 		return fmt.Errorf("任务已经处于取消状态: %s", taskID)
 
 	default:
+		// 先从数据库中移除
+		if err := downloadFileStore.Delete(taskID); err != nil {
+			logger.Errorf("取消下载失败: taskID=%s, err=%v", taskID, err)
+			return err
+		}
 		// 其他状态都可以取消
 		if err := task.Cancel(); err != nil {
 			logger.Errorf("取消下载失败: taskID=%s, err=%v", taskID, err)
@@ -400,6 +442,11 @@ func (m *DownloadManager) CancelDownload(taskID string) error {
 //
 // 返回值:
 //   - error: 如果删除过程中发生错误，返回错误信息
+//
+// 功能:
+//   - 检查任务是否存在
+//   - 执行删除操作
+//   - 从任务管理器中移除任务
 func (m *DownloadManager) DeleteDownload(taskID string) error {
 	// 获取任务实例
 	taskValue, exists := m.tasks.Load(taskID)
@@ -431,7 +478,12 @@ func (m *DownloadManager) DeleteDownload(taskID string) error {
 //   - uint64: 符合查询条件的总记录数
 //   - int: 当前页码(从1开始)
 //   - int: 每页大小
-//   - error: 如果查询���败则返回错误原因
+//   - error: 如果查询失败则返回错误原因
+//
+// 功能:
+//   - 根据查询条件获取下载任务记录
+//   - 计算分页信息
+//   - 返回查询结果和分页数据
 func (m *DownloadManager) QueryDownload(start, pageSize int, options ...database.QueryOption) ([]*pb.DownloadFileRecord, uint64, int, int, error) {
 	// 调用底层查询方法获取记录列表和总数
 	tasks, totalCount, err := QueryDownloadTask(m.db.BadgerDB, start, pageSize, options...)
