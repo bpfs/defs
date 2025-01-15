@@ -181,6 +181,10 @@ message ResponseSearchFileSegmentPubSub {
   int64 size = 4;
   // MIME类型
   string content_type = 5;
-  // 文件上传时间
-  int64 upload_time = 6;
+  // 文件内容的SHA256哈希值,用于校验文件完整性
+  bytes sha256_hash = 6;
+  // 文件首次上传的Unix时间戳
+  int64 upload_time = 7;
+  // P2PKH脚本,用于验证文件所有者身份
+  bytes p2pkh_script = 8;
 }
