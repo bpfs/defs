@@ -1,8 +1,11 @@
 package database
 
 import (
+	"bytes"
+	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/bpfs/defs/v2/badgerhold"
 	"github.com/bpfs/defs/v2/pb"
@@ -230,5 +233,111 @@ func (s *FileAssetStore) ClearAllFileAssets() error {
 	}
 	// 清空成功，记录信息日志并返回nil
 	logger.Info("所有文件资产记录已成功清空")
+	return nil
+}
+
+// GetFileAssetByOwnerAndFileID 通过所有者的公钥哈希和文件唯一标识获取FileAssetRecord
+// 参数:
+//   - pubkeyHash: []byte 所有者的公钥哈希
+//   - fileID: string 文件唯一标识
+//
+// 返回值:
+//   - *pb.FileAssetRecord: 查询到的文件资产记录
+//   - bool: 是否找到记录
+//   - error: 如果查询成功返回nil，否则返回错误信息
+func (s *FileAssetStore) GetFileAssetByOwnerAndFileID(pubkeyHash []byte, fileID string) (*pb.FileAssetRecord, bool, error) {
+	var asset pb.FileAssetRecord
+
+	// 构建查询条件：同时匹配公钥哈希和文件ID
+	err := s.db.FindOne(&asset, badgerhold.Where("PubkeyHash").Eq(pubkeyHash).And("FileId").Eq(fileID))
+	if err != nil {
+		if err == badgerhold.ErrNotFound {
+			return nil, false, nil
+		}
+		logger.Errorf("查询文件资产记录失败: %v", err)
+		return nil, false, err
+	}
+
+	return &asset, true, nil
+}
+
+// SetFileShared 将文件设置为共享状态并设置共享金额
+// 参数:
+//   - pubkeyHash: []byte 所有者的公钥哈希
+//   - fileID: string 文件唯一标识
+//   - shareAmount: float64 共享金额
+//
+// 返回值:
+//   - error: 如果设置成功返回nil，否则返回错误信息
+func (s *FileAssetStore) SetFileShared(pubkeyHash []byte, fileID string, shareAmount float64) error {
+	// 验证共享金额的合法性
+	if shareAmount < 0 {
+		return fmt.Errorf("共享金额不能为负数")
+	}
+	if shareAmount > 1000000 { // 设置一个合理的上限，比如100万
+		return fmt.Errorf("共享金额超出允许范围")
+	}
+
+	// 获取文件资产记录
+	asset, exists, err := s.GetFileAssetByOwnerAndFileID(pubkeyHash, fileID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("文件资产记录不存在")
+	}
+
+	// 验证文件所有权
+	if !bytes.Equal(asset.PubkeyHash, pubkeyHash) {
+		return fmt.Errorf("无权限修改此文件的共享状态")
+	}
+
+	// 更新共享状态和金额
+	asset.IsShared = true
+	asset.ShareAmount = shareAmount
+	asset.ModTime = time.Now().Unix() // 更新修改时间
+
+	// 保存更新
+	if err := s.UpdateFileAsset(asset); err != nil {
+		logger.Errorf("更新文件共享状态失败: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// UnsetFileShared 取消文件的共享状态
+// 参数:
+//   - pubkeyHash: []byte 所有者的公钥哈希
+//   - fileID: string 文件唯一标识
+//
+// 返回值:
+//   - error: 如果取消成功返回nil，否则返回错误信息
+func (s *FileAssetStore) UnsetFileShared(pubkeyHash []byte, fileID string) error {
+	// 获取文件资产记录
+	asset, exists, err := s.GetFileAssetByOwnerAndFileID(pubkeyHash, fileID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("文件资产记录不存在")
+	}
+
+	// 验证文件所有权
+	if !bytes.Equal(asset.PubkeyHash, pubkeyHash) {
+		return fmt.Errorf("无权限修改此文件的共享状态")
+	}
+
+	// 更新共享状态和金额
+	asset.IsShared = false
+	asset.ShareAmount = 0             // 清零共享金额
+	asset.ModTime = time.Now().Unix() // 更新修改时间
+
+	// 保存更新
+	if err := s.UpdateFileAsset(asset); err != nil {
+		logger.Errorf("更新文件共享状态失败: %v", err)
+		return err
+	}
+
 	return nil
 }
