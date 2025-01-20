@@ -11,7 +11,7 @@ import (
 
 	"github.com/bpfs/defs/v2/utils/paths"
 
-	_ "github.com/mattn/go-sqlite3" // 导入SQLite驱动
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // NewSqliteDB 创建并初始化一个新的SQLite数据库连接
@@ -23,6 +23,10 @@ import (
 //   - *sql.DB: 数据库连接实例
 //   - error: 初始化过程中的错误，如果成功则为nil
 func NewSqliteDB(ctx context.Context) (*sql.DB, error) {
+	// 配置db路径
+	sqliteDBPath := filepath.Join(paths.GetDatabasePath(), "sqlite")
+	sqliteDBFile := filepath.Join(sqliteDBPath, "blockchain.db")
+	sqliteDBBackupDir := filepath.Join(sqliteDBPath, "backups")
 	// 确保数据库目录存在
 	if err := paths.AddDirectory(sqliteDBPath); err != nil {
 		// 记录创建目录失败的错误

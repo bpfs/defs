@@ -3,10 +3,8 @@ package database
 import (
 	"context"
 	"database/sql"
-	"path/filepath"
 
 	"github.com/bpfs/defs/v2/badgerhold"
-	"github.com/bpfs/defs/v2/utils/paths"
 	logging "github.com/dep2p/log"
 
 	"go.uber.org/fx"
@@ -21,17 +19,17 @@ type DB struct {
 }
 
 // 定义 BadgerDB 和 SqliteDB 的路径常量
-var (
-	// BadgerDB 相关路径
-	badgerDBDirPath      = filepath.Join(paths.GetDatabasePath(), "badgerhold")
-	badgerDBValueDirPath = filepath.Join(badgerDBDirPath, "value")
-	badgerDBBackupDir    = filepath.Join(badgerDBDirPath, "backups")
+// var (
+// 	// BadgerDB 相关路径
+// 	badgerDBDirPath      = filepath.Join(paths.GetDatabasePath(), "badgerhold")
+// 	badgerDBValueDirPath = filepath.Join(badgerDBDirPath, "value")
+// 	badgerDBBackupDir    = filepath.Join(badgerDBDirPath, "backups")
 
-	// SqliteDB 相关路径
-	sqliteDBPath      = filepath.Join(paths.GetDatabasePath(), "sqlite")
-	sqliteDBFile      = filepath.Join(sqliteDBPath, "blockchain.db")
-	sqliteDBBackupDir = filepath.Join(sqliteDBPath, "backups")
-)
+// 	// SqliteDB 相关路径
+// 	sqliteDBPath      = filepath.Join(paths.GetDatabasePath(), "sqlite")
+// 	sqliteDBFile      = filepath.Join(sqliteDBPath, "blockchain.db")
+// 	sqliteDBBackupDir = filepath.Join(sqliteDBPath, "backups")
+// )
 
 // NewDBInput 是用于传递给 NewBadgerholdStore 函数的输入结构体。
 // 它包含了 fx.In 嵌入结构体和应用的生命周期管理器 LC。

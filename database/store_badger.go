@@ -2,16 +2,16 @@
 package database
 
 import (
-	"context" // 导入上下文包
+	"context"
+	"path/filepath"
 
-	// 导入文件路径处理包
-	"runtime" // 导入运行时包
-	"time"    // 导入时间包
+	"runtime"
+	"time"
 
 	"github.com/bpfs/defs/v2/badgerhold"
 
 	"github.com/bpfs/defs/v2/utils/paths"
-	"github.com/dgraph-io/badger/v4" // 导入BadgerDB v4版本
+	"github.com/dgraph-io/badger/v4"
 )
 
 // NewBadgerDB 创建并初始化一个新的BadgerDB实例
@@ -23,6 +23,11 @@ import (
 //   - *badgerhold.Store: BadgerDB存储实例
 //   - error: 如果初始化过程中发生错误，返回错误信息
 func NewBadgerDB(ctx context.Context) (*badgerhold.Store, error) {
+	// 配置DB路径
+	badgerDBDirPath := filepath.Join(paths.GetDatabasePath(), "badgerhold")
+	badgerDBValueDirPath := filepath.Join(badgerDBDirPath, "value")
+	badgerDBBackupDir := filepath.Join(badgerDBDirPath, "backups")
+
 	// 配置 Badgerhold 数据库的选项，包括数据库目录和 Value 目录
 	options := badgerhold.DefaultOptions    // 获取默认配置选项
 	options.Dir = badgerDBValueDirPath      // 设置数据库文件存储的目录路径
@@ -65,24 +70,23 @@ func NewBadgerDB(ctx context.Context) (*badgerhold.Store, error) {
 	// 确保 Badgerhold 数据库目录已经存在，如果不存在则创建
 	if err := paths.AddDirectory(badgerDBDirPath); err != nil {
 		logger.Errorf(" 创建数据库目录失败: %v", err)
-		return nil, err // 返回错误信息
+		return nil, err
 	}
 
 	// 确保 Value 目录已经存在，如果不存在则创建
 	if err := paths.AddDirectory(badgerDBValueDirPath); err != nil {
 		logger.Errorf(" 创建 Value 目录失败: %v", err)
-		return nil, err // 返回错误信息
+		return nil, err
 	}
 
 	// 确保备份目录已经存在，如果不存在则创建
 	if err := paths.AddDirectory(badgerDBBackupDir); err != nil {
 		logger.Errorf(" 创建备份目录失败: %v", err)
-		return nil, err // 返回错误信息
+		return nil, err
 	}
 
 	// 打开 Badgerhold 数据库
 	store, err := badgerhold.Open(options)
-
 	// 如果打开数据库失败
 	if err != nil {
 		logger.Errorf(" 打开数据库失败: %v", err)
@@ -90,19 +94,19 @@ func NewBadgerDB(ctx context.Context) (*badgerhold.Store, error) {
 		restoreErr := RestoreDatabaseFromBackup(options, store, badgerDBBackupDir, badgerDBDirPath, badgerDBValueDirPath)
 		if restoreErr != nil {
 			logger.Errorf(" 数据库恢复失败: %v", restoreErr)
-			return nil, restoreErr // 返回恢复错误
+			return nil, restoreErr
 		}
 
 		// 重试打开数据库
 		store, err = badgerhold.Open(options)
 		if err != nil {
 			logger.Errorf(" 数据库恢复后打开失败: %v", err)
-			return nil, err // 返回打开错误
+			return nil, err
 		}
 		logger.Infof(" 数据库已成功从备份恢复并打开")
 	}
 
-	return store, nil // 返回成功打开的数据库实例
+	return store, nil
 }
 
 // ForceValueLogGC 强制执行 value log 垃圾回收
@@ -123,13 +127,13 @@ func ForceValueLogGC(db *badgerhold.Store, ratio float64) error {
 			// 手动触发Go的垃圾回收
 			runtime.GC()
 			logger.Info("手动垃圾回收完成")
-			return nil // 返回成功
+			return nil
 		}
 
 		// 如果发生其他错误
 		if err != nil {
 			logger.Errorf("值日志垃圾回收失败: %v", err)
-			return err // 返回错误信息
+			return err
 		}
 	}
 }
@@ -146,20 +150,20 @@ func ForceCleanup(db *badgerhold.Store) error {
 
 	// 1. 先执行激进GC
 	if err := AggressiveValueLogGC(db); err != nil {
-		return err // 返回GC错误
+		return err
 	}
 
 	// 2. 执行数据库压缩
 	if err := db.Badger().Flatten(1); err != nil {
-		return err // 返回压缩错误
+		return err
 	}
 
 	// 3. 再次执行GC
 	if err := AggressiveValueLogGC(db); err != nil {
-		return err // 返回GC错误
+		return err
 	}
 
-	return nil // 返回清理成功
+	return nil
 }
 
 // AggressiveValueLogGC 执行激进的值日志垃圾回收
@@ -199,7 +203,7 @@ func AggressiveValueLogGC(db *badgerhold.Store) error {
 			// 如果发生错误
 			if err != nil {
 				logger.Errorf("值日志GC失败: %v", err)
-				return err // 返回错误信息
+				return err
 			}
 
 			gcCount++      // 增加当前阈值GC计数
@@ -224,7 +228,7 @@ func AggressiveValueLogGC(db *badgerhold.Store) error {
 	runtime.GC()
 	logger.Info("手动垃圾回收完成")
 
-	return nil // 返回成功
+	return nil
 }
 
 // ClearDatabase 清空数据库中所有数据
@@ -239,8 +243,8 @@ func ClearDatabase(db *badgerhold.Store) error {
 	err := db.Badger().DropAll()
 	if err != nil {
 		logger.Errorf("清空数据库失败: %v", err)
-		return err // 返回错误信息
+		return err
 	}
 
-	return nil // 返回成功
+	return nil
 }
