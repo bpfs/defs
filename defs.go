@@ -13,6 +13,7 @@ import (
 	"github.com/bpfs/defs/v2/fscfg"
 	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/net"
+	"github.com/bpfs/defs/v2/operate/shared"
 
 	"github.com/bpfs/defs/v2/uploads"
 	"github.com/bpfs/defs/v2/utils/paths"
@@ -164,8 +165,9 @@ func Open(h host.Host, options ...fscfg.Option) (*DeFS, error) {
 			downloads.InitializeDownloadManager,      // 初始化下载管理器
 			downloads.RegisterDownloadPubsubProtocol, // 注册下载PubSub协议
 			downloads.RegisterDownloadStreamProtocol, // 注册下载流协议
-			database.InitDBTable,                     // 初始化数据库表
+			database.InitializeDatabase,              // 初始化数据库维护任务，包括定期GC和备份
 			net.RegisterHandshakeProtocol,            // 注册握手协议的处理函数
+			shared.RegisterSharedPubsubProtocol,      // 注册文件共享相关的PubSub协议处理器
 		),
 	}
 
