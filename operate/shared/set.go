@@ -3,11 +3,17 @@ package shared
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
+	"reflect"
 
 	"github.com/bpfs/defs/v2/afero"
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/fscfg"
 	"github.com/bpfs/defs/v2/pb"
+	"github.com/bpfs/defs/v2/script"
+	"github.com/bpfs/defs/v2/segment"
+	"github.com/bpfs/defs/v2/utils/paths"
 	"github.com/dep2p/pubsub"
 
 	"github.com/dep2p/libp2p/core/host"
@@ -42,7 +48,7 @@ func RequestSetFileSegmentPubSub(
 	// 序列化地址信息为JSON格式
 	addrInfoBytes, err := addrInfo.MarshalJSON()
 	if err != nil {
-		logger.Errorf("序列化 AddrInfo 失败: %v", err)
+		logger.Errorf("序列化AddrInfo失败: %v", err)
 		return err
 	}
 
@@ -70,7 +76,7 @@ func RequestSetFileSegmentPubSub(
 
 	// 发布消息到网络
 	if err := topic.Publish(ctx, data); err != nil {
-		logger.Errorf("发送消息失败: %v", err)
+		logger.Errorf("发布消息失败: %v", err)
 		return err
 	}
 
@@ -93,23 +99,24 @@ func HandleSetFileSegmentRequestPubSub(
 	nps *pubsub.NodePubSub,
 	res *pubsub.Message,
 ) {
+
 	// 解析请求数据
 	request := new(pb.RequestSetFileSegmentPubSub)
 	if err := request.Unmarshal(res.Data); err != nil {
-		logger.Errorf("解析设置共享文件请求数据失败: %v", err)
+		logger.Errorf("解析请求数据失败: %v", err)
 		return
 	}
 
 	// 解析请求者的地址信息
 	var addrInfo peer.AddrInfo
 	if err := addrInfo.UnmarshalJSON(request.AddrInfo); err != nil {
-		logger.Errorf("解析请求者地址信息失败: %v", err)
+		logger.Errorf("解析地址信息失败: %v", err)
 		return
 	}
 
 	// 验证请求参数的有效性
 	if request.FileId == "" || len(request.PubkeyHash) == 0 {
-		logger.Error("无效的文件ID或公钥哈希")
+		logger.Error("文件ID或公钥哈希无效")
 		return
 	}
 
@@ -122,22 +129,128 @@ func HandleSetFileSegmentRequestPubSub(
 		logger.Errorf("获取文件片段失败: %v", err)
 		return
 	}
+
 	if len(segments) == 0 {
 		logger.Error("文件不存在")
 		return
 	}
+	// 遍历文件片段
+	for _, segmentV := range segments {
+		// 在这里处理每个 segment
+		// 验证文件所有权
+		pubKeyHash, err := script.ExtractPubKeyHashFromScript(segmentV.P2PkhScript)
+		if err != nil {
+			logger.Errorf("从P2PKH脚本提取公钥哈希失败: %v", err)
+			return
+		}
 
-	// 验证文件所有权
-	if !bytes.Equal(segments[0].P2PkhScript, request.PubkeyHash) {
-		logger.Error("无权限设置该文件的共享状态")
-		return
+		if !bytes.Equal(pubKeyHash, request.PubkeyHash) {
+			logger.Error("无权限设置文件共享状态")
+			return
+		}
+
+		// 构建片段存储路径
+		subDir := filepath.Join(paths.GetSlicePath(), nps.Host().ID().String(), request.FileId)
+
+		// 打开片段文件
+		file, err := os.OpenFile(filepath.Join(subDir, segmentV.SegmentId), os.O_RDWR, 0666)
+		if err != nil {
+			logger.Errorf("打开文件失败: %v", err)
+			return
+		}
+
+		// 定义需要读取的片段类型
+		segmentTypes := []string{"FILEID", "P2PKHSCRIPT"}
+
+		// 读取文件片段
+		segmentResults, _, err := segment.ReadFileSegments(file, segmentTypes)
+		if err != nil {
+			logger.Errorf("读取文件片段失败: %v", err)
+			return
+		}
+
+		// 创建一个新的类型编解码器
+		codec := segment.NewTypeCodec()
+
+		// 获取并验证文件唯一标识
+		fileId, exists := segmentResults["FILEID"]
+		if !exists {
+			logger.Error("文件ID不存在")
+			return
+		}
+
+		// 解码文件唯一标识
+		fileIdDecode, err := codec.Decode(fileId.Data)
+		if err != nil {
+			logger.Errorf("解码文件ID失败: %v", err)
+			return
+		}
+
+		// 验证文件ID一致性
+		if !reflect.DeepEqual(fileIdDecode, request.FileId) {
+			logger.Error("文件ID不匹配")
+			return
+		}
+
+		// 获取并验证P2PKH脚本
+		p2pkhScript, exists := segmentResults["P2PKHSCRIPT"]
+		if !exists {
+			logger.Error("P2PKH脚本不存在")
+			return
+		}
+
+		p2pkhScriptDecode, err := codec.Decode(p2pkhScript.Data)
+		if err != nil {
+			logger.Errorf("解码P2PKH脚本失败: %v", err)
+			return
+		}
+
+		pubKeyHash, err = script.ExtractPubKeyHashFromScript(p2pkhScriptDecode.([]byte))
+		if err != nil {
+			logger.Errorf("从P2PKH脚本提取公钥哈希失败: %v", err)
+			return
+		}
+
+		// 验证P2PKH脚本一致性
+		if !reflect.DeepEqual(pubKeyHash, request.PubkeyHash) {
+			logger.Error("P2PKH脚本不匹配")
+			return
+		}
+
+		// 从文件加载 xref 表
+		xref, err := segment.LoadXrefFromFile(file)
+		if err != nil {
+			logger.Errorf("加载xref表失败: %v", err)
+			return
+		}
+
+		// 编码Shared
+		shared, err := codec.Encode(request.EnableSharing)
+		if err != nil {
+			logger.Errorf("编码共享状态失败: %v", err)
+			return
+		}
+
+		// 将段写入文件
+		if err := segment.WriteSegmentToFile(file, "SHARED", shared, xref); err != nil {
+			logger.Errorf("写入共享状态失败: %v", err)
+			return
+		}
+
+		// 保存 xref 表并关闭文件
+		if err := segment.SaveAndClose(file, xref); err != nil {
+			logger.Errorf("保存xref表失败: %v", err)
+			return
+		}
+		// 最后执行关闭
+		file.Close()
 	}
 
 	// 更新文件的共享状态
 	if err := store.UpdateFileSegmentShared(request.FileId, request.PubkeyHash, request.EnableSharing); err != nil {
-		logger.Errorf("更新文件共享状态失败: %v", err)
+		logger.Errorf("更新共享状态失败: %v", err)
 		return
 	}
 
-	logger.Infof("成功设置文件共享状态: fileID=%s", request.FileId)
+	logger.Infof("设置文件共享状态成功, fileID: %s", request.FileId)
 }
