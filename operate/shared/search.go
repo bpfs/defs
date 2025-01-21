@@ -232,7 +232,9 @@ func HandleSearchFileSegmentRequestPubSub(
 		Extension:   fileSegment.Extension,
 		Size_:       fileSegment.Size_,
 		ContentType: fileSegment.ContentType,
+		Sha256Hash:  fileSegment.Sha256Hash,
 		UploadTime:  fileSegment.UploadTime,
+		P2PkhScript: fileSegment.P2PkhScript,
 	}
 
 	// 序列化响应数据
