@@ -35,41 +35,48 @@ func (t *DownloadTask) Start() error {
 			case <-ticker.C:
 				// 每30秒触发一次片段索引请求
 				logger.Info("定时触发片段索引请求")
-				if err := t.ForceSegmentIndex(); err != nil {
-					logger.Errorf("定时触发片段索引请求失败: %v", err)
-					t.NotifyTaskError(err)
-				}
+				go func() {
+					if err := t.ForceSegmentIndex(); err != nil {
+						logger.Errorf("定时触发片段索引请求失败: %v", err)
+						t.NotifyTaskError(err)
+					}
+
+				}()
 
 			case <-t.chSegmentIndex:
 				// 处理片段索引请求
 				logger.Info("收到片段索引请求")
-				if err := t.handleSegmentIndex(); err != nil {
-					logger.Errorf("处理片段索引请求失败: %v", err)
-					t.NotifyTaskError(err)
-				}
-
+				go func() {
+					if err := t.handleSegmentIndex(); err != nil {
+						logger.Errorf("处理片段索引请求失败: %v", err)
+						t.NotifyTaskError(err)
+					}
+				}()
 			case <-t.chSegmentProcess:
 				// 处理文件片段：将文件片段整合并写入队列
-				if err := t.handleSegmentProcess(); err != nil {
-					logger.Errorf("处理文件片段失败: %v", err)
-					t.NotifyTaskError(err)
-				}
-
+				go func() {
+					if err := t.handleSegmentProcess(); err != nil {
+						logger.Errorf("处理文件片段失败: %v", err)
+						t.NotifyTaskError(err)
+					}
+				}()
 			case <-t.chNodeDispatch:
 				// 节点分发：以节点为单位从队列中读取文件片段
-				if err := t.handleNodeDispatch(); err != nil {
-					logger.Errorf("处理节点分发请求失败: %v", err)
-					t.NotifyTaskError(err)
-				}
-
+				go func() {
+					if err := t.handleNodeDispatch(); err != nil {
+						logger.Errorf("处理节点分发请求失败: %v", err)
+						t.NotifyTaskError(err)
+					}
+				}()
 			case peerSegments := <-t.chNetworkTransfer:
 				// 网络传输：向目标节点传输文件片段
 				logger.Infof("收到网络传输请求: segments=%d", len(peerSegments))
-				if err := t.handleNetworkTransfer(peerSegments); err != nil {
-					logger.Errorf("处理网络传输请求失败: %v", err)
-					t.NotifyTaskError(err)
-				}
-
+				go func() {
+					if err := t.handleNetworkTransfer(peerSegments); err != nil {
+						logger.Errorf("处理网络传输请求失败: %v", err)
+						t.NotifyTaskError(err)
+					}
+				}()
 			case <-t.chSegmentVerify:
 				// 片段验证：验证已传输片段的完整性
 				logger.Info("收到片段验证请求")
