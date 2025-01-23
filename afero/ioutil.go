@@ -10,9 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
 )
 
 // byName 实现了 sort.Interface 接口，用于根据文件名排序
@@ -44,14 +41,14 @@ func (f byName) Swap(i, j int) {
 func ReadDir(fs Afero, dirname string) ([]os.FileInfo, error) {
 	f, err := fs.Open(dirname) // 打开目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开目录失败:", err)
 		return nil, err // 如果发生错误，返回错误信息
 	}
 
 	list, err := f.Readdir(-1) // 读取目录中的所有条目
 	f.Close()                  // 关闭文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("读取目录失败:", err)
 		return nil, err // 如果发生错误，返回错误信息
 	}
 
@@ -73,7 +70,7 @@ func ListFileNamesRecursively(fs Afero, rootDir string) ([]string, error) {
 	// Walk 是递归遍历 rootDir 及其子目录的所有文件和目录
 	err := Walk(fs, rootDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			logrus.Errorf("[%s] %v", debug.WhereAmI(), err)
+			logger.Error("遍历目录失败:", err)
 			return err // 如果发生错误，返回错误信息
 		}
 
@@ -86,7 +83,7 @@ func ListFileNamesRecursively(fs Afero, rootDir string) ([]string, error) {
 
 	if err != nil {
 		// 无法列出文件
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("列出文件失败:", err)
 		return nil, err
 	}
 
@@ -105,21 +102,107 @@ func ListFileNamesRecursively(fs Afero, rootDir string) ([]string, error) {
 //   - []byte: 文件内容
 //   - error: 错误信息
 func ReadFile(fs Afero, filename string) ([]byte, error) {
-	f, err := fs.Open(filename) // 打开文件
+	// 打开文件
+	f, err := fs.Open(filename)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
-		return nil, err // 如果发生错误，返回错误信息
+		logger.Error("打开文件失败:", err)
+		return nil, err
 	}
-	defer f.Close() // 确保在函数返回时关闭文件
-	var n int64
+	// 确保函数结束时关闭文件
+	defer f.Close()
 
-	if fi, err := f.Stat(); err == nil {
-		if size := fi.Size(); size < 1e9 {
-			n = size // 预分配缓冲区的大小
-		}
+	// 使用 bytes.Buffer 来读取文件内容
+	var buf bytes.Buffer
+
+	// 使用较大的缓冲区来提高读取效率
+	_, err = io.Copy(&buf, f)
+	if err != nil {
+		logger.Error("读取文件内容失败:", err)
+		return nil, err
 	}
-	return readAll(f, n+bytes.MinRead) // 调用 readAll 函数读取文件内容
+
+	// 返回读取的内容
+	return buf.Bytes(), nil
 }
+
+// ReadFile 读取指定文件的内容并返回
+// 参数：
+//   - fs: Afero 文件系统
+//   - filename: string 文件名
+//
+// 返回值：
+//   - []byte: 文件内容
+//   - error: 错误信息
+// func ReadFile(fs Afero, filename string) ([]byte, error) {
+// 	// 打开文件
+// 	f, err := fs.Open(filename)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	// 确保函数结束时关闭文件
+// 	defer f.Close()
+
+// 	// 获取文件信息
+// 	fi, err := f.Stat()
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	// 获取文件大小
+// 	size := fi.Size()
+
+// 	// 如果文件小于1MB，使用readAll函数读取
+// 	if size < 1024*1024 { // 1MB
+// 		return readAll(f, size+bytes.MinRead)
+// 	}
+
+// 	// 尝试将文件转换为os.File类型
+// 	osFile, ok := f.(*os.File)
+// 	if !ok {
+// 		return nil, fmt.Errorf("无法获取底层 File 接口")
+// 	}
+
+// 	// 使用内存映射读取文件
+// 	mmap, err := syscall.Mmap(int(osFile.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	// 确保函数结束时解除内存映射
+// 	defer syscall.Munmap(mmap)
+
+// 	// 创建一个新的字节切片来存储文件内容
+// 	data := make([]byte, len(mmap))
+// 	// 将内存映射的内容复制到新的切片中
+// 	copy(data, mmap)
+
+// 	// 返回文件内容和nil错误
+// 	return data, nil
+// }
+
+// ReadFile 读取指定文件的内容并返回
+// 参数：
+//   - fs: Afero 文件系统
+//   - filename: string 文件名
+//
+// 返回值：
+//   - []byte: 文件内容
+//   - error: 错误信息
+// func ReadFile(fs Afero, filename string) ([]byte, error) {
+// 	f, err := fs.Open(filename) // 打开文件
+// 	if err != nil {
+// 		logger.Error("打开文件失败:", err)
+// 		return nil, err // 如果发生错误，返回错误信息
+// 	}
+// 	defer f.Close() // 确保在函数返回时关闭文件
+// 	var n int64
+
+// 	if fi, err := f.Stat(); err == nil {
+// 		if size := fi.Size(); size < 1e9 {
+// 			n = size // 预分配缓冲区的大小
+// 		}
+// 	}
+// 	return readAll(f, n+bytes.MinRead) // 调用 readAll 函数读取文件内容
+// }
 
 // readAll 从 r 读取直到遇到错误或 EOF，并返回读取的数据
 // 参数：
@@ -138,12 +221,16 @@ func readAll(r io.Reader, capacity int64) (b []byte, err error) {
 		}
 		if panicErr, ok := e.(error); ok && panicErr == bytes.ErrTooLarge {
 			err = panicErr // 如果缓冲区溢出，返回错误
+			logger.Error("缓冲区溢出:", err)
 		} else {
 			panic(e) // 重新抛出其他 panic
 		}
 	}()
 	_, err = buf.ReadFrom(r) // 从读取器读取数据到缓冲区
-	return buf.Bytes(), err  // 返回读取的数据和错误信息
+	if err != nil {
+		logger.Error("读取数据失败:", err)
+	}
+	return buf.Bytes(), err // 返回读取的数据和错误信息
 }
 
 // ReadAll 从 r 读取直到遇到错误或 EOF，并返回读取的数据
@@ -169,20 +256,27 @@ func ReadAll(r io.Reader) ([]byte, error) {
 func WriteFile(fs Afero, filename string, data []byte, perm os.FileMode) error {
 	f, err := fs.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm) // 打开文件进行写入
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开文件失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 
 	n, err := f.Write(data) // 将数据写入文件
-	if err == nil && n < len(data) {
+	if err != nil {
+		logger.Error("写入数据失败:", err)
+		return err
+	}
+	if n < len(data) {
 		err = io.ErrShortWrite // 如果写入的字节数小于数据长度，返回短写错误
+		logger.Error("写入数据不完整:", err)
+		return err
 	}
 
-	if err1 := f.Close(); err == nil {
-		err = err1 // 关闭文件时发生错误
+	if err1 := f.Close(); err1 != nil {
+		logger.Error("关闭文件失败:", err1)
+		return err1 // 关闭文件时发生错误
 	}
 
-	return err // 返回错误信息
+	return nil // 返回错误信息
 }
 
 // 随机数状态，用于生成随机的临时文件名，确保临时文件名的唯一性
@@ -247,6 +341,9 @@ func TempFile(fs Afero, dir, pattern string) (f File, err error) {
 			}
 			continue // 继续尝试
 		}
+		if err != nil {
+			logger.Error("创建临时文件失败:", err)
+		}
 		break // 成功创建文件，跳出循环
 	}
 
@@ -279,7 +376,9 @@ func TempDir(fs Afero, dir, prefix string) (name string, err error) {
 			}
 			continue // 继续尝试
 		}
-		if err == nil {
+		if err != nil {
+			logger.Error("创建临时目录失败:", err)
+		} else {
 			name = try // 成功创建目录，设置目录路径
 		}
 		break // 成功创建目录或发生其他错误，跳出循环

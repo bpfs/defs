@@ -3,7 +3,9 @@
 
 package main
 
-import "github.com/sirupsen/logrus"
+import (
+	"fmt"
+)
 
 var logTable = [fieldSize]int16{
 	-1, 0, 1, 25, 2, 50, 26, 198,
@@ -57,12 +59,12 @@ const (
 
 func main() {
 	t := generateExpTable()
-	logrus.Printf("var expTable = %#v\n", t)
+	fmt.Printf("var expTable = %#v\n", t)
 	//t2 := generateMulTableSplit(t)
-	//logrus.Printf("var mulTable = %#v\n", t2)
+	//fmt.Printf("var mulTable = %#v\n", t2)
 	low, high := generateMulTableHalf(t)
-	logrus.Printf("var mulTableLow = %#v\n", low)
-	logrus.Printf("var mulTableHigh = %#v\n", high)
+	fmt.Printf("var mulTableLow = %#v\n", low)
+	fmt.Printf("var mulTableHigh = %#v\n", high)
 }
 
 /**

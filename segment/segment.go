@@ -2,10 +2,12 @@ package segment
 
 import (
 	"os"
+	"path/filepath"
 
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("segment")
 
 const maxSegmentTypeLen = 100 // 段类型名称的最大长度
 
@@ -20,15 +22,20 @@ func WriteFileSegment(filePath string, data map[string][]byte) error {
 	// 检查文件是否存在，如果存在则删除
 	if _, err := os.Stat(filePath); err == nil {
 		if err := os.Remove(filePath); err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Errorf("删除文件失败: %v", err)
 			return err
 		}
 	}
-
+	// 确保父目录存在，否则会报文件不存在错误！
+	dir := filepath.Dir(filePath)                         // 获取文件的父目录
+	if err := os.MkdirAll(dir, os.ModePerm); err != nil { // 创建目录
+		logger.Errorf("创建目录失败: %v", err)
+		return err
+	}
 	// 创建新文件
 	file, err := os.Create(filePath)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Errorf("创建文件失败: %v", err)
 		return err
 	}
 	defer file.Close()
@@ -38,7 +45,7 @@ func WriteFileSegment(filePath string, data map[string][]byte) error {
 
 	// 批量将段写入文件
 	if err := WriteSegmentsToFile(file, data, xref); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Errorf("写入段数据失败: %v", err)
 		return err
 	}
 
@@ -60,7 +67,7 @@ func ReadFileSegments(file *os.File, segmentTypes []string, fileXref ...*FileXre
 	// 查找文件中的 "startxref" 位置
 	startXrefPos, err := findStartXref(file)
 	if err != nil {
-		logrus.Errorf("[%s]查找 startxref 失败: %v", debug.WhereAmI(), err)
+		logger.Errorf("查找 startxref 失败: %v", err)
 		return nil, nil, err
 	}
 
@@ -71,7 +78,7 @@ func ReadFileSegments(file *os.File, segmentTypes []string, fileXref ...*FileXre
 	} else {
 		xref, err = parseXref(file, startXrefPos)
 		if err != nil {
-			logrus.Errorf("[%s]解析 Xref 表失败: %v", debug.WhereAmI(), err)
+			logger.Errorf("解析 Xref 表失败: %v", err)
 			return nil, nil, err
 		}
 	}
@@ -79,7 +86,7 @@ func ReadFileSegments(file *os.File, segmentTypes []string, fileXref ...*FileXre
 	// 读取指定的段
 	segmentResults, err := readSegment(file, segmentTypes, xref)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Errorf("读取段数据失败: %v", err)
 		return nil, nil, err
 	}
 
@@ -104,7 +111,7 @@ func ReadFileSegment(file *os.File, segmentType string) ([]byte, *FileXref, erro
 	// 从指定文件中读取一个或多个段
 	results, xref, err := ReadFileSegments(file, []string{segmentType})
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Errorf("读取文件段失败: %v", err)
 		return nil, nil, err
 	}
 
@@ -112,7 +119,7 @@ func ReadFileSegment(file *os.File, segmentType string) ([]byte, *FileXref, erro
 	result, found := results[segmentType]
 	if !found || result.Error != nil {
 		if result.Error != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), result.Error)
+			logger.Errorf("获取段数据失败: %v", err)
 			return nil, nil, result.Error
 		}
 		return nil, nil, result.Error

@@ -24,10 +24,17 @@ var noSSE2 = flag.Bool("no-sse2", !defaultOptions.useSSE2, "Disable SSE2")
 var noSSSE3 = flag.Bool("no-ssse3", !defaultOptions.useSSSE3, "Disable SSSE3")
 var noAVX2 = flag.Bool("no-avx2", !defaultOptions.useAVX2, "Disable AVX2")
 var noAVX512 = flag.Bool("no-avx512", !defaultOptions.useAVX512, "Disable AVX512")
-var noGNFI = flag.Bool("no-gfni", !defaultOptions.useGFNI, "Disable AVX512+GFNI")
+var noGNFI = flag.Bool("no-gfni", !defaultOptions.useAvx512GFNI, "Disable AVX512+GFNI")
+var noAVX2GNFI = flag.Bool("no-avx-gfni", !defaultOptions.useAvxGNFI, "Disable AVX+GFNI")
 
 func TestMain(m *testing.M) {
 	flag.Parse()
+	rs, _ := New(10, 3, testOptions()...)
+	if rs != nil {
+		if rst, ok := rs.(*reedSolomon); ok {
+			fmt.Println("Using", rst.o.cpuOptions())
+		}
+	}
 	os.Exit(m.Run())
 }
 
@@ -47,6 +54,9 @@ func testOptions(o ...Option) []Option {
 	}
 	if *noGNFI {
 		o = append(o, WithGFNI(false))
+	}
+	if *noAVX2GNFI {
+		o = append(o, WithAVXGFNI(false))
 	}
 	return o
 }
@@ -204,7 +214,7 @@ func testOpts() [][]Option {
 			n = append(n, WithAVX512(true))
 			opts = append(opts, n)
 		}
-		if defaultOptions.useGFNI {
+		if defaultOptions.useAvx512GFNI {
 			n := make([]Option, len(o), len(o)+1)
 			copy(n, o)
 			n = append(n, WithGFNI(false))
@@ -431,10 +441,7 @@ func testEncodingIdx(t *testing.T, o ...Option) {
 
 				t.Run(fmt.Sprint(perShard), func(t *testing.T) {
 
-					shards := make([][]byte, data+parity)
-					for s := range shards {
-						shards[s] = make([]byte, perShard)
-					}
+					shards := AllocAligned(data+parity, perShard)
 					shuffle := make([]int, data)
 					for i := range shuffle {
 						shuffle[i] = i
@@ -826,8 +833,26 @@ func testReconstructData(t *testing.T, o ...Option) {
 		t.Fatal(err)
 	}
 
-	// Reconstruct 3 shards with 3 data and 5 parity shards
+	// Reconstruct parity shards from data
 	shardsCopy := make([][]byte, 13)
+	for i := 0; i < 8; i++ {
+		shardsCopy[i] = shards[i]
+	}
+
+	shardsRequired := make([]bool, 13)
+	shardsRequired[10] = true
+
+	err = r.ReconstructSome(shardsCopy, shardsRequired)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(shardsCopy[10], shards[10]) {
+		t.Fatal("ReconstructSome did not reconstruct required shards correctly")
+	}
+
+	// Reconstruct 3 shards with 3 data and 5 parity shards
+	shardsCopy = make([][]byte, 13)
 	copy(shardsCopy, shards)
 	shardsCopy[2] = nil
 	shardsCopy[3] = nil
@@ -835,7 +860,7 @@ func testReconstructData(t *testing.T, o ...Option) {
 	shardsCopy[5] = nil
 	shardsCopy[6] = nil
 
-	shardsRequired := make([]bool, 8)
+	shardsRequired = make([]bool, 8)
 	shardsRequired[3] = true
 	shardsRequired[4] = true
 	err = r.ReconstructSome(shardsCopy, shardsRequired)

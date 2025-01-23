@@ -8,9 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
 )
 
 // httpDir 结构体表示一个 HTTP 目录
@@ -40,7 +37,7 @@ func (d httpDir) Open(name string) (http.File, error) {
 	// 打开文件并返回文件对象和错误信息
 	f, err := d.fs.Open(filepath.Join(dir, filepath.FromSlash(path.Clean("/"+name))))
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开文件失败:", err)
 		return nil, err // 返回错误信息
 	}
 	return f, nil // 返回文件对象

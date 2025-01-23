@@ -10,9 +10,9 @@ func extractPubKeyHash(script []byte) []byte {
 	// A pay-to-pubkey-hash script is of the form:
 	//  OP_DUP OP_HASH160 <20-byte hash> OP_EQUALVERIFY OP_CHECKSIG
 
-	// logrus.Printf("\nscript:\t\t%d\n", len(script))
-	// logrus.Printf("script[3:23]:\t%x\n", script[3:23])
-	// logrus.Printf("script[24]:\t%d\n\n", script[24])
+	// logger.Printf("\nscript:\t\t%d\n", len(script))
+	// logger.Printf("script[3:23]:\t%x\n", script[3:23])
+	// logger.Printf("script[24]:\t%d\n\n", script[24])
 	if len(script) == 25 &&
 		script[0] == OP_DUP &&
 		script[1] == OP_HASH160 &&

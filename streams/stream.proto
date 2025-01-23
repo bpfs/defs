@@ -1,0 +1,25 @@
+
+syntax = "proto3";
+package streams;
+
+
+	// Message
+	message Message {
+    string type = 1;  // 消息类型
+    string sender = 2 ; // 发送方的 peer.ID
+    string receiver = 3 ; // 接收方的 peer.ID
+	}
+
+// 请求信息
+message RequestMessage {
+  Message message =1;
+  bytes payload = 2;  // 消息负载
+}
+
+// 回应信息
+message ResponseMessage {
+  Message message =1;
+  int32 code = 2; // 响应代码
+  string msg = 3; // 响应消息
+  bytes data = 4; // 响应数据
+}

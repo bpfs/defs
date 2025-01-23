@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
-	"github.com/bpfs/defs/afero"
+	"github.com/bpfs/defs/v2/afero"
+
 	"github.com/googleapis/google-cloud-go-testing/storage/stiface"
 	"google.golang.org/api/option"
 )
@@ -35,7 +36,8 @@ func NewGcsFS(ctx context.Context, opts ...option.ClientOption) (afero.Afero, er
 	// 创建存储客户端
 	client, err := storage.NewClient(ctx, opts...)
 	if err != nil {
-		// 返回创建客户端时的错误
+		// 记录创建客户端时的错误
+		logger.Error("创建存储客户端失败", "错误", err)
 		return nil, err
 	}
 
@@ -56,7 +58,8 @@ func NewGcsFSWithSeparator(ctx context.Context, folderSeparator string, opts ...
 	// 创建存储客户端
 	client, err := storage.NewClient(ctx, opts...)
 	if err != nil {
-		// 返回创建客户端时的错误
+		// 记录创建客户端时的错误
+		logger.Error("创建存储客户端失败", "错误", err)
 		return nil, err
 	}
 
@@ -115,7 +118,11 @@ func (fs *GcsFs) Name() string {
 //   - error: 可能出现的错误
 func (fs *GcsFs) Create(name string) (afero.File, error) {
 	// 调用源文件系统的 Create 方法
-	return fs.source.Create(name)
+	file, err := fs.source.Create(name)
+	if err != nil {
+		logger.Error("创建文件失败", "文件名", name, "错误", err)
+	}
+	return file, err
 }
 
 // Mkdir 创建一个新的目录
@@ -127,7 +134,11 @@ func (fs *GcsFs) Create(name string) (afero.File, error) {
 //   - error: 可能出现的错误
 func (fs *GcsFs) Mkdir(name string, perm os.FileMode) error {
 	// 调用源文件系统的 Mkdir 方法
-	return fs.source.Mkdir(name, perm)
+	err := fs.source.Mkdir(name, perm)
+	if err != nil {
+		logger.Error("创建目录失败", "目录名", name, "错误", err)
+	}
+	return err
 }
 
 // MkdirAll 创建一个新的目录，包括所有必要的父目录
@@ -139,7 +150,11 @@ func (fs *GcsFs) Mkdir(name string, perm os.FileMode) error {
 //   - error: 可能出现的错误
 func (fs *GcsFs) MkdirAll(path string, perm os.FileMode) error {
 	// 调用源文件系统的 MkdirAll 方法
-	return fs.source.MkdirAll(path, perm)
+	err := fs.source.MkdirAll(path, perm)
+	if err != nil {
+		logger.Error("创建目录及其父目录失败", "路径", path, "错误", err)
+	}
+	return err
 }
 
 // Open 打开一个文件
@@ -151,7 +166,11 @@ func (fs *GcsFs) MkdirAll(path string, perm os.FileMode) error {
 //   - error: 可能出现的错误
 func (fs *GcsFs) Open(name string) (afero.File, error) {
 	// 调用源文件系统的 Open 方法
-	return fs.source.Open(name)
+	file, err := fs.source.Open(name)
+	if err != nil {
+		logger.Error("打开文件失败", "文件名", name, "错误", err)
+	}
+	return file, err
 }
 
 // OpenFile 以指定的模式和权限打开一个文件
@@ -165,7 +184,11 @@ func (fs *GcsFs) Open(name string) (afero.File, error) {
 //   - error: 可能出现的错误
 func (fs *GcsFs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
 	// 调用源文件系统的 OpenFile 方法
-	return fs.source.OpenFile(name, flag, perm)
+	file, err := fs.source.OpenFile(name, flag, perm)
+	if err != nil {
+		logger.Error("打开文件失败", "文件名", name, "错误", err)
+	}
+	return file, err
 }
 
 // Remove 删除一个文件
@@ -176,7 +199,11 @@ func (fs *GcsFs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, 
 //   - error: 可能出现的错误
 func (fs *GcsFs) Remove(name string) error {
 	// 调用源文件系统的 Remove 方法
-	return fs.source.Remove(name)
+	err := fs.source.Remove(name)
+	if err != nil {
+		logger.Error("删除文件失败", "文件名", name, "错误", err)
+	}
+	return err
 }
 
 // RemoveAll 删除一个目录及其包含的所有内容
@@ -187,7 +214,11 @@ func (fs *GcsFs) Remove(name string) error {
 //   - error: 可能出现的错误
 func (fs *GcsFs) RemoveAll(path string) error {
 	// 调用源文件系统的 RemoveAll 方法
-	return fs.source.RemoveAll(path)
+	err := fs.source.RemoveAll(path)
+	if err != nil {
+		logger.Error("删除目录及其内容失败", "路径", path, "错误", err)
+	}
+	return err
 }
 
 // Rename 重命名一个文件或目录
@@ -199,7 +230,11 @@ func (fs *GcsFs) RemoveAll(path string) error {
 //   - error: 可能出现的错误
 func (fs *GcsFs) Rename(oldname, newname string) error {
 	// 调用源文件系统的 Rename 方法
-	return fs.source.Rename(oldname, newname)
+	err := fs.source.Rename(oldname, newname)
+	if err != nil {
+		logger.Error("重命名失败", "旧名称", oldname, "新名称", newname, "错误", err)
+	}
+	return err
 }
 
 // Stat 获取文件信息
@@ -211,7 +246,11 @@ func (fs *GcsFs) Rename(oldname, newname string) error {
 //   - error: 可能出现的错误
 func (fs *GcsFs) Stat(name string) (os.FileInfo, error) {
 	// 调用源文件系统的 Stat 方法
-	return fs.source.Stat(name)
+	info, err := fs.source.Stat(name)
+	if err != nil {
+		logger.Error("获取文件信息失败", "文件名", name, "错误", err)
+	}
+	return info, err
 }
 
 // Chmod 修改文件权限
@@ -223,7 +262,11 @@ func (fs *GcsFs) Stat(name string) (os.FileInfo, error) {
 //   - error: 可能出现的错误
 func (fs *GcsFs) Chmod(name string, mode os.FileMode) error {
 	// 调用源文件系统的 Chmod 方法
-	return fs.source.Chmod(name, mode)
+	err := fs.source.Chmod(name, mode)
+	if err != nil {
+		logger.Error("修改文件权限失败", "文件名", name, "错误", err)
+	}
+	return err
 }
 
 // Chtimes 修改文件的访问和修改时间
@@ -236,7 +279,11 @@ func (fs *GcsFs) Chmod(name string, mode os.FileMode) error {
 //   - error: 可能出现的错误
 func (fs *GcsFs) Chtimes(name string, atime time.Time, mtime time.Time) error {
 	// 调用源文件系统的 Chtimes 方法
-	return fs.source.Chtimes(name, atime, mtime)
+	err := fs.source.Chtimes(name, atime, mtime)
+	if err != nil {
+		logger.Error("修改文件时间失败", "文件名", name, "错误", err)
+	}
+	return err
 }
 
 // Chown 修改文件的所有者和所有组
@@ -249,5 +296,9 @@ func (fs *GcsFs) Chtimes(name string, atime time.Time, mtime time.Time) error {
 //   - error: 可能出现的错误
 func (fs *GcsFs) Chown(name string, uid, gid int) error {
 	// 调用源文件系统的 Chown 方法
-	return fs.source.Chown(name, uid, gid)
+	err := fs.source.Chown(name, uid, gid)
+	if err != nil {
+		logger.Error("修改文件所有者失败", "文件名", name, "错误", err)
+	}
+	return err
 }

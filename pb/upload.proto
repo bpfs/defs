@@ -1,0 +1,221 @@
+syntax = "proto3";
+
+package pb;
+
+import "pb/storage.proto";
+
+// UploadStatus 表示上传任务的状态
+enum UploadStatus {
+  // 未指定状态，表示任务状态未初始化或未知
+  UPLOAD_STATUS_UNSPECIFIED = 0;
+  // 文件编码中，表示文件正在进行编码处理（如压缩、加密等）
+  UPLOAD_STATUS_ENCODING = 1;
+  // 待上传，任务已创建但尚未开始执行，等待系统调度
+  UPLOAD_STATUS_PENDING = 2;
+  // 上传中，任务正在执行文件上传操作，数据传输进行中
+  UPLOAD_STATUS_UPLOADING = 3;
+  // 已暂停，任务已被用户或系统暂停，可通过恢复操作继续执行
+  UPLOAD_STATUS_PAUSED = 4;
+  // 已完成，任务已成功完成所有上传操作，文件已全部传输到目标位置
+  UPLOAD_STATUS_COMPLETED = 5;
+  // 失败，任务由于以下原因未能成功完成：
+  // - 网络连接超时或不稳定
+  // - 编码过程发生错误（如加密失败、压缩失败）
+  // - 存储设备空间不足
+  // - 存储设备写入错误
+  // - 文件系统权限问题
+  UPLOAD_STATUS_FAILED = 6;
+  // 已取消，任务被用户主动取消或系统因策略原因终止
+  UPLOAD_STATUS_CANCELED = 7;
+  // 文件异常，表示上传过程中检测到文件存在问题，如文件损坏、格式错误等
+  UPLOAD_STATUS_FILE_EXCEPTION = 8;
+}
+
+// SegmentUploadStatus 表示文件片段的上传状态
+enum SegmentUploadStatus {
+  // 未指定状态，表示片段状态未初始化或未知
+  SEGMENT_UPLOAD_STATUS_UNSPECIFIED = 0;
+  // 尚未准备好，文件片段尚未完成预处理或加密等准备工作
+  SEGMENT_UPLOAD_STATUS_NOT_READY = 1;
+  // 待上传，文件片段已准备好待上传但尚未开始传输
+  SEGMENT_UPLOAD_STATUS_PENDING = 2;
+  // 上传中，文件片段正在上传过程中，数据正在传输
+  SEGMENT_UPLOAD_STATUS_UPLOADING = 3;
+  // 已完成，文件片段已成功上传并通过完整性校验
+  SEGMENT_UPLOAD_STATUS_COMPLETED = 4;
+  // 失败，文件片段上传失败，可能是由于网络问题或服务器错误
+  SEGMENT_UPLOAD_STATUS_FAILED = 5;
+}
+
+// FileSecurity 封装了文件的安全和权限相关的信息
+message FileSecurity {
+  // 文件加密密钥，用于加密整个文件
+  bytes secret = 1;
+  // 文件加密密钥列表，用于在上传过程中保证文件数据的安全，支持多重加密
+  repeated bytes encryption_key = 2;
+  // 所有者的私钥，用于文件片段签名（注意：在实际使用中，私钥不应该通过网络传输）
+  bytes owner_priv = 3;
+  // P2PKH 脚本，用于验证文件所有者的身份
+  bytes p2pkh_script = 4;
+  // P2PK 脚本，用于进行文件验签操作
+  bytes p2pk_script = 5;
+}
+
+// UploadFileRecord 上传文件记录
+message UploadFileRecord {
+  // 任务唯一标识
+  // @gotags: badgerhold:"key"
+  string task_id = 1;
+  // 文件唯一标识,由文件内容和所有者私钥生成的SHA256哈希值
+  // @gotags: badgerhold:"index"
+  string file_id = 2;
+  // 文件路径
+  string path =3;
+  // 文件的基本元数据
+  FileMeta file_meta = 4;
+  // 文件的安全和权限相关信息
+  FileSecurity file_security = 5;
+  // 文件分片哈希表
+  map<int64, HashTable> slice_table = 6;
+  // 文件上传的开始时间戳
+  int64 started_at = 7;
+  // 文件上传的完成时间戳
+  int64 finished_at = 8;
+  // 上传任务的当前状态
+  // @gotags: badgerhold:"index"
+  UploadStatus status = 9;
+}
+
+// UploadSegmentRecord 上传文件片段记录
+message UploadSegmentRecord {
+  // 当前片段的唯一标识,由file_id和segment_index生成
+  // @gotags: badgerhold:"key"
+  string segment_id = 1;
+  // 当前片段在文件中的索引位置,从0开始
+  // @gotags: badgerhold:"index"
+  int64 segment_index = 2;
+  // 任务唯一标识
+  // @gotags: badgerhold:"index"
+  string task_id = 3;
+  // 当前片段大小,单位:字节
+  int64 size = 4;
+  // 当前片段的CRC32校验和,用于验证片段完整性
+  // @gotags: badgerhold:"index"
+  uint32 crc32_checksum = 5;
+  // 当前片段的加密后内容
+  bytes segment_content = 6;
+  // 是否为纠删码冗余分片
+  bool is_rs_codes = 7;
+  // 分片的上传状态
+  // @gotags: badgerhold:"index"
+  SegmentUploadStatus status = 8;
+  // 需要过滤的节点ID列表，存储不希望分配任务的节点
+  repeated string filtered_peer_ids = 9;
+}
+
+// UploadChan 用于表示上传任务的通道信息，用于实时通信和状态更新
+message UploadChan {
+  // 任务唯一标识，通常是该片段数据的哈希值
+  string task_id = 1;
+  // 上传任务是否完成的标志
+  bool is_complete = 2;
+  // 上传进度百分比，范围0-100
+  int64 upload_progress = 3;
+  // 文件总片段数量，数据片段+校验片段
+  int64 total_shards = 4;
+  // 文件片段唯一标识
+  string segment_id = 5;
+  // 文件片段索引，表示该片段在文件中的顺序
+  int64 segment_index = 6;
+  // 文件片段大小，单位为字节
+  int64 segment_size = 7;
+  // 是否使用纠删码技术
+  bool is_rs_codes = 8;
+  // 存储该文件片段的节点ID
+  string node_id = 9;
+  // 上传完成时间的时间戳
+  int64 upload_time = 10;
+}
+
+// UploadOperationInfo 表示上传操作的预处理或返回信息
+message UploadOperationInfo {
+  // 任务唯一标识，用于区分和管理不同的上传任务
+  string task_id = 1;
+  // 文件路径，指定要上传的文件在本地系统中的位置
+  string file_path = 2;
+  // 文件唯一标识，用于在系统内部唯一区分文件，通常是哈希值或UUID
+  string file_id = 3;
+  // 文件的基本元数据信息，包括文件名、大小等
+  FileMeta file_meta = 4;
+  // 数据片段数量，表示文件被分割成的片段数
+  int64 data_shards = 5;
+  // 校验片段数量，用于纠删码的冗余片段数
+  int64 parity_shards = 6;
+  // 文件片段大小，单位为字节
+  int64 segment_size = 7;
+  // 奇偶校验片段占比，表示冗余数据占总数据的比例
+  double parity_ratio = 8;
+  // 文件开始上传的时间戳，记录上传操作开始的精确时间
+  int64 upload_time = 9;
+  // 上传操作的状态，反映当前上传任务的进展情况
+  UploadStatus status = 10;
+}
+
+// FileAssetRecord 表示文件资产记录，用于存储在本地数据库中
+message FileAssetRecord {
+  // 文件唯一标识
+  // @gotags: badgerhold:"key"
+  string file_id = 1;
+  // 文件内容的SHA256哈希值,用于校验文件完整性
+  bytes sha256_hash = 2;
+  // 文件名称
+  // @gotags: badgerhold:"index"
+  string name = 3;
+  // 文件大小（字节）
+  int64 size = 4;
+  // 文件扩展名，用于识别文件类型
+  string extension = 5;
+  // MIME类型,用于标识文件格式,如"application/pdf"
+  string content_type = 6;
+  // 所有者的公钥哈希，用于身份验证和访问控制
+  // @gotags: badgerhold:"index"
+  bytes pubkey_hash = 7;
+  // 父级ID，用于构建文件层次结构
+  int64 parent_id = 8;
+  // 文件类型（0:文件, 1:文件夹）
+  int64 type = 9;
+  // 标签，用于文件分类和检索
+  string labels = 10;
+  // 是否共享，标识文件是否可被其他用户访问
+  bool is_shared = 11;
+  // 共享金额，如果文件是付费共享，这里记录共享价格
+  double share_amount = 12;
+  // 上传时间（创建时间），记录文件首次上传的时间戳
+  int64 upload_time = 13;
+  // 修改时间，记录文件最后一次被修改的时间戳
+  int64 mod_time = 14;
+}
+
+// UploadFilesSummaries 定义了上传任务的概要信息，用于快速展示任务状态
+message UploadFilesSummaries {
+  // 任务唯一标识，用于区分和管理不同的上传任务
+  string task_id = 1;
+  // 文件名，显示正在上传的文件名称
+  string name = 2;
+    // 文件扩展名，用于识别文件类型
+  string extension = 3;
+  // 待上传总大小（字节），包括文件大小和奇偶校验片段大小
+  int64 total_size = 4;
+  // 上传状态，反映当前上传任务的进展情况
+  UploadStatus upload_status = 5;
+  // 上传进度（百分比），范围0-100，表示已上传的数据量占总数据量的比例
+  int64 progress = 6;
+}
+
+// UploadPubSubDeleteFileSegmentRequest 上传订阅删除文件信息请求
+message UploadPubSubDeleteFileSegmentRequest {
+  // 文件唯一标识，用于在系统内部唯一区分文件，通常是哈希值或UUID
+  string file_id = 2;
+  // 所有者的公钥哈希，用于身份验证和访问控制
+  bytes pubkey_hash = 3;
+}

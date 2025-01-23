@@ -1,0 +1,232 @@
+syntax = "proto3";
+
+package pb;
+
+import "pb/storage.proto";
+
+// DownloadStatus 表示下载任务的状态
+enum DownloadStatus {
+  // 未指定状态，表示任务状态未初始化或未知
+  DOWNLOAD_STATUS_UNSPECIFIED = 0;
+  // 获取文件信息中，表示正在向网络请求文件的元数据信息（如名称、大小、格式等）
+  DOWNLOAD_STATUS_FETCHING_INFO = 1;
+  // 待下载，任务已创建但尚未开始执行，等待系统调度
+  DOWNLOAD_STATUS_PENDING = 2;
+  // 下载中，任务正在执行文件下载操作，数据传输进行中
+  DOWNLOAD_STATUS_DOWNLOADING = 3;
+  // 已暂停，任务已被用户或系统暂停，可通过恢复操作继续执行
+  DOWNLOAD_STATUS_PAUSED = 4;
+  // 已完成，任务已成功完成所有下载操作，文件已全部传输到目标位置
+  DOWNLOAD_STATUS_COMPLETED = 5;
+  // 失败，任务由于网络问题、存储错误等原因未能成功完成
+  DOWNLOAD_STATUS_FAILED = 6;
+  // 已取消，任务被用户或系统主动取消，不再继续执行
+  DOWNLOAD_STATUS_CANCELLED = 7;
+}
+
+// SegmentDownloadStatus 表示文件片段的下载状态
+enum SegmentDownloadStatus {
+  // 未指定状态，表示片段状态未初始化或未知
+  SEGMENT_DOWNLOAD_STATUS_UNSPECIFIED = 0;
+  // 待下载，文件片段已准备好待下载但尚未开始传输
+  SEGMENT_DOWNLOAD_STATUS_PENDING = 1;
+  // 下载中，文件片段正在下载过程中，数据正在传输
+  SEGMENT_DOWNLOAD_STATUS_DOWNLOADING = 2;
+  // 已完成，文件片段已成功下载并通过完整性校验
+  SEGMENT_DOWNLOAD_STATUS_COMPLETED = 3;
+  // 失败，文件片段下载失败，可能是由于网络问题或服务器错误
+  SEGMENT_DOWNLOAD_STATUS_FAILED = 4;
+}
+
+// DownloadFileRecord 包含待下载文件的详细信息及其分片信息
+message DownloadFileRecord {
+  // 任务唯一标识，用于在系统中唯一识别该下载任务
+  // @gotags: badgerhold:"key"
+  string task_id = 1;
+  // 文件唯一标识，用于在系统内部唯一区分文件，通常是哈希值或UUID
+  string file_id = 2;
+  // 所有者的公钥哈希，用于身份验证和访问控制
+  bytes pubkey_hash = 3;
+  // 恢复密钥的第一个分片，用于密钥重建
+  bytes first_key_share = 4;
+  // 文件的临时存储位置，用于存储下载过程中的临时文件
+  string temp_storage = 5;
+  // 文件的元数据，如文件名、大小、类型等基本信息
+  FileMeta file_meta = 6;
+  // 文件片段的哈希表，记录每个片段的哈希值，支持纠错和数据完整性验证
+  map<int64, HashTable> slice_table = 7;
+  // 文件下载的开始时间戳，记录任务开始执行的时间点
+  int64 started_at = 8;
+  // 文件下载的完成时间戳，记录任务完成执行的时间点
+  int64 finished_at = 9;
+  // 下载任务的当前状态，如pending、downloading、completed等
+  // @gotags: badgerhold:"index"
+  DownloadStatus status = 10;
+}
+
+// DownloadSegmentRecord 描述一个文件分片的详细信息及其下载状态
+message DownloadSegmentRecord {
+  // 文件片段的唯一标识，通常是该片段数据的哈希值
+  // @gotags: badgerhold:"key"
+  string segment_id = 1;
+  // 文件片段的索引，表示该片段在文件中的顺序，从0开始
+  // @gotags: badgerhold:"index"
+  int64 segment_index = 2;
+  // 任务唯一标识
+  // @gotags: badgerhold:"index"
+  string task_id = 3;
+  // 分片大小，单位为字节，描述该片段的数据量大小
+  int64 size = 4;
+  // 当前片段的CRC32校验和
+  // @gotags: badgerhold:"index"
+  uint32 crc32_checksum = 5;
+  // 当前片段的解密后内容
+  bytes segment_content = 6;
+  // 是否是纠删码片段，用于标识该片段是原始数据还是冗余数据
+  bool is_rs_codes = 7;
+  // 分片所在节点，及其是否可用
+  map<string,bool> segment_node = 8;
+  // 分片的下载状态，描述该片段的下载进度和结果
+  // @gotags: badgerhold:"index"
+  SegmentDownloadStatus status = 9;
+}
+
+// DownloadChan 用于刷新下载任务的通道
+message DownloadChan {
+  // 任务唯一标识，通常是该片段数据的哈希值
+  string task_id = 1;
+  // 下载任务是否完成的标志
+  bool is_complete = 2;
+  // 下载进度百分比，范围0-100
+  int64 download_progress = 3;
+  // 文件总片段数量，数据片段+校验片段
+  int64 total_shards = 4;
+  // 文件片段唯一标识
+  string segment_id = 5;
+  // 文件片段索引，表示该片段在文件中的顺序
+  int64 segment_index = 6;
+  // 文件片段大小，单位为字节
+  int64 segment_size = 7;
+  // 是否为纠删码冗余分片
+  bool is_rs_codes = 8;
+  // 存储该文件片段的节点ID
+  string node_id = 9;
+  // 下载完成时间的时间戳
+  int64 download_time = 10;
+}
+
+// DownloadOperationInfo 表示下载操作的预处理或返回信息
+message DownloadOperationInfo {
+  // 任务唯一标识，用于区分和管理不同的下载任务
+  string task_id = 1;
+  // 文件路径，指定要下载的文件在本地系统中的位置
+  string file_path = 2;
+  // 文件唯一标识，用于在系统内部唯一区分文件，通常是哈希值或UUID
+  string file_id = 3;
+  // 文件的基本元数据信息，包括文件名、大小等
+  FileMeta file_meta = 4;
+  // 数据片段数量，表示文件被分割成的片段数
+  int64 data_shards = 5;
+  // 校验片段数量，用于纠删码的冗余片段数
+  int64 parity_shards = 6;
+  // 文件片段大小，单位为字节
+  int64 segment_size = 7;
+  // 奇偶校验片段占比，表示冗余数据占总数据的比例
+  double parity_ratio = 8;
+  // 文件开始下载的时间戳，记录下载操作开始的精确时间
+  int64 upload_time = 9;
+  // 下载操作的状态，反映当前下载任务的进展情况
+  DownloadStatus status = 10;
+}
+
+// DownloadPubSubFileInfoRequest 下载订阅文件信息请求
+message DownloadPubSubFileInfoRequest {
+  // 任务唯一标识，用于在系统中唯一识别该下载任务
+  string task_id = 1;
+  // 文件唯一标识，用于在系统内部唯一区分文件，通常是哈希值或UUID
+  string file_id = 2;
+  // 所有者的公钥哈希，用于身份验证和访问控制
+  bytes pubkey_hash = 3;
+  // 请求者的 AddrInfo，包含 ID 和地址信息
+  bytes addr_info = 4;
+}
+
+// DownloadPubSubFileInfoResponse 下载订阅文件信息响应
+message DownloadPubSubFileInfoResponse {
+  // 任务唯一标识，用于在系统中唯一识别该下载任务
+  string task_id = 1;
+  // 文件唯一标识，用于在系统内部唯一区分文件，通常是哈希值或UUID
+  string file_id = 2;
+  // 文件元数据，包含文件的基本信息如名称、大小等
+  FileMeta file_meta = 3;
+  // 文件片段的哈希表，记录每个片段的哈希值，支持纠错和数据完整性验证
+  map<int64, HashTable> slice_table = 4;
+}
+
+// DownloadPubSubManifestRequest 下载订阅索引清单请求
+message DownloadPubSubManifestRequest {
+  // 任务唯一标识，用于在系统中唯一识别该下载任务
+  string task_id = 1;
+  // 文件唯一标识，用于在系统内部唯一区分文件，通常是哈希值或UUID
+  string file_id = 2;
+  // 所有者的公钥哈希，用于身份验证和访问控制
+  bytes pubkey_hash = 3;
+  // 请求者的 AddrInfo，包含 ID 和地址信息
+  bytes addr_info = 4;
+  // 请求下载的文件片段唯一标识数组
+  repeated string requested_segment_ids = 5;
+}
+
+// DownloadPubSubManifestResponse 下载订阅索引清单响应
+message DownloadPubSubManifestResponse {
+  // 任务唯一标识，用于在系统中唯一识别该下载任务
+  string task_id = 1;
+  // 本地可用的分片索引数组
+  map<int64, string> available_slices = 5;
+}
+
+// SegmentContentRequest 文件片段内容请求
+message SegmentContentRequest {
+  // 任务唯一标识，用于在系统中唯一识别该下载任务
+  string task_id = 1;
+  // 文件唯一标识，用于在系统内部唯一区分文件，通常是哈希值或UUID
+  string file_id = 2;
+  // 所有者的公钥哈希，用于身份验证和访问控制
+  bytes pubkey_hash = 3;
+  // 请求者的 AddrInfo，包含 ID 和地址信息
+  bytes addr_info = 4;
+  // 文件片段的唯一标识，通常是该片段数据的哈希值
+  string segment_id = 5;
+  // 文件片段索引，表示该片段在文件中的顺序
+  int64 segment_index = 6;
+  // 请求下载的文件片段唯一标识数组，用于批量请求
+  repeated string requested_segment_ids = 7;
+}
+
+// SegmentContentResponse 文件片段内容响应
+message SegmentContentResponse {
+  // 任务唯一标识，用于在系统中唯一识别该下载任务
+  string task_id = 1;
+  // 文件唯一标识，用于在系统内部唯一区分文件，通常是哈希值或UUID
+  string file_id = 2;
+  // 文件元数据，包含文件的基本信息如名称、大小等
+  FileMeta file_meta = 3;
+  // P2PK 脚本，用于进行文件验签操作
+  bytes p2pk_script = 4;
+  // 文件片段的唯一标识，通常是该片段数据的哈希值
+  string segment_id = 5;
+  // 文件片段的索引，表示该片段在文件中的顺序
+  int64 segment_index = 6;
+  // 分片的CRC32校验和
+  uint32 crc32_checksum = 7;
+  // 文件片段的内容(加密)，存储实际的加密后的数据
+  bytes segment_content = 8;
+  // 文件加密密钥，用于解密文件内容
+  bytes encryption_key = 9;
+  // 文件和文件片段的数据签名，用于验证数据的真实性和完整性
+  bytes signature = 10;
+  // 文件片段的哈希表，记录每个片段的哈希值，支持纠错和数据完整性验证
+  map<int64, HashTable> slice_table = 11;
+  // 本地可用的分片索引数组
+  map<int64, string> available_slices = 12;
+}

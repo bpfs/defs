@@ -11,9 +11,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/bpfs/defs/debug"
-	"github.com/bpfs/defs/internal/common"
-	"github.com/sirupsen/logrus"
+	"github.com/bpfs/defs/v2/utils/common"
 )
 
 // IOFS 采用 afero.Fs 并适配为标准库的 io/fs.FS 接口
@@ -58,7 +56,7 @@ func (iofs IOFS) Open(name string) (fs.File, error) {
 
 	file, err := iofs.Afero.Open(name) // 打开文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开文件失败:", err)
 		return nil, iofs.wrapError(op, name, err) // 如果发生错误，返回错误信息
 	}
 
@@ -82,13 +80,13 @@ func (iofs IOFS) Glob(pattern string) ([]string, error) {
 
 	// afero.Glob 不执行此检查，但对于实现是必需的
 	if _, err := path.Match(pattern, ""); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("匹配模式无效:", err)
 		return nil, iofs.wrapError(op, pattern, err) // 如果模式无效，返回错误信息
 	}
 
 	items, err := Glob(iofs.Afero, pattern) // 调用 Glob 函数匹配文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("执行Glob操作失败:", err)
 		return nil, iofs.wrapError(op, pattern, err) // 如果发生错误，返回错误信息
 	}
 
@@ -105,7 +103,7 @@ func (iofs IOFS) Glob(pattern string) ([]string, error) {
 func (iofs IOFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	f, err := iofs.Afero.Open(name) // 打开目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开目录失败:", err)
 		return nil, iofs.wrapError("readdir", name, err) // 如果发生错误，返回错误信息
 	}
 
@@ -114,7 +112,7 @@ func (iofs IOFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	if rdf, ok := f.(fs.ReadDirFile); ok { // 检查文件是否实现了 fs.ReadDirFile 接口
 		items, err := rdf.ReadDir(-1) // 读取目录中的所有条目
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("读取目录条目失败:", err)
 			return nil, iofs.wrapError("readdir", name, err) // 如果发生错误，返回错误信息
 		}
 
@@ -124,7 +122,7 @@ func (iofs IOFS) ReadDir(name string) ([]fs.DirEntry, error) {
 
 	items, err := f.Readdir(-1) // 读取目录中的所有条目
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("读取目录条目失败:", err)
 		return nil, iofs.wrapError("readdir", name, err) // 如果发生错误，返回错误信息
 	}
 
@@ -154,7 +152,7 @@ func (iofs IOFS) ReadFile(name string) ([]byte, error) {
 
 	bytes, err := ReadFile(iofs.Afero, name) // 调用 ReadFile 函数读取文件内容
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("读取文件失败:", err)
 		return nil, iofs.wrapError(op, name, err) // 如果发生错误，返回错误信息
 	}
 
@@ -211,7 +209,7 @@ var _ fs.ReadDirFile = readDirFile{}
 func (r readDirFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	items, err := r.File.Readdir(n) // 调用 Readdir 方法读取目录中的条目
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("读取目录条目失败:", err)
 		return nil, err // 如果发生错误，返回错误信息
 	}
 
@@ -464,7 +462,7 @@ func (f fromIOFSFile) Readdir(count int) ([]os.FileInfo, error) {
 
 	entries, err := rdfile.ReadDir(count) // 调用 ReadDir 方法读取条目
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("读取目录条目失败:", err)
 		return nil, err // 如果发生错误，返回错误信息
 	}
 
@@ -473,7 +471,7 @@ func (f fromIOFSFile) Readdir(count int) ([]os.FileInfo, error) {
 		ret[i], err = entries[i].Info() // 获取每个条目的信息
 
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("获取条目信息失败:", err)
 			return nil, err // 如果发生错误，返回错误信息
 		}
 	}
@@ -496,7 +494,7 @@ func (f fromIOFSFile) Readdirnames(n int) ([]string, error) {
 
 	entries, err := rdfile.ReadDir(n) // 调用 ReadDir 方法读取条目
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("读取目录条目失败:", err)
 		return nil, err // 如果发生错误，返回错误信息
 	}
 

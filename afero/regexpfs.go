@@ -5,9 +5,6 @@ import (
 	"regexp"
 	"syscall"
 	"time"
-
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
 )
 
 // RegexpFs 通过正则表达式过滤文件（不包括目录）。只有匹配给定正则表达式的文件才会被允许，
@@ -59,7 +56,7 @@ func (r *RegexpFs) matchesName(name string) error {
 func (r *RegexpFs) dirOrMatches(name string) error {
 	dir, err := IsDir(r.source, name) // 检查是否是目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return err // 返回错误信息
 	}
 	if dir {
@@ -78,7 +75,7 @@ func (r *RegexpFs) dirOrMatches(name string) error {
 //   - error: 错误信息
 func (r *RegexpFs) Chtimes(name string, a, m time.Time) error {
 	if err := r.dirOrMatches(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return err // 如果文件不匹配，返回错误
 	}
 	return r.source.Chtimes(name, a, m) // 调用源文件系统的方法
@@ -93,7 +90,7 @@ func (r *RegexpFs) Chtimes(name string, a, m time.Time) error {
 //   - error: 错误信息
 func (r *RegexpFs) Chmod(name string, mode os.FileMode) error {
 	if err := r.dirOrMatches(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return err // 如果文件不匹配，返回错误
 	}
 	return r.source.Chmod(name, mode) // 调用源文件系统的方法
@@ -109,7 +106,7 @@ func (r *RegexpFs) Chmod(name string, mode os.FileMode) error {
 //   - error: 错误信息
 func (r *RegexpFs) Chown(name string, uid, gid int) error {
 	if err := r.dirOrMatches(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return err // 如果文件不匹配，返回错误
 	}
 	return r.source.Chown(name, uid, gid) // 调用源文件系统的方法
@@ -131,7 +128,7 @@ func (r *RegexpFs) Name() string {
 //   - error: 错误信息
 func (r *RegexpFs) Stat(name string) (os.FileInfo, error) {
 	if err := r.dirOrMatches(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return nil, err // 如果文件不匹配，返回错误
 	}
 	return r.source.Stat(name) // 调用源文件系统的方法
@@ -147,7 +144,7 @@ func (r *RegexpFs) Stat(name string) (os.FileInfo, error) {
 func (r *RegexpFs) Rename(oldname, newname string) error {
 	dir, err := IsDir(r.source, oldname) // 检查是否是目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return err // 返回错误信息
 	}
 
@@ -156,12 +153,12 @@ func (r *RegexpFs) Rename(oldname, newname string) error {
 	}
 
 	if err := r.matchesName(oldname); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return err // 如果旧文件名不匹配，返回错误
 	}
 
 	if err := r.matchesName(newname); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return err // 如果新文件名不匹配，返回错误
 	}
 
@@ -177,7 +174,7 @@ func (r *RegexpFs) Rename(oldname, newname string) error {
 func (r *RegexpFs) RemoveAll(p string) error {
 	dir, err := IsDir(r.source, p) // 检查是否是目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return err // 返回错误信息
 	}
 
@@ -198,7 +195,7 @@ func (r *RegexpFs) RemoveAll(p string) error {
 //   - error: 错误信息
 func (r *RegexpFs) Remove(name string) error {
 	if err := r.dirOrMatches(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return err // 如果文件不匹配，返回错误
 	}
 
@@ -216,7 +213,7 @@ func (r *RegexpFs) Remove(name string) error {
 //   - error: 错误信息
 func (r *RegexpFs) OpenFile(name string, flag int, perm os.FileMode) (File, error) {
 	if err := r.dirOrMatches(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return nil, err // 如果文件不匹配，返回错误
 	}
 
@@ -233,7 +230,7 @@ func (r *RegexpFs) OpenFile(name string, flag int, perm os.FileMode) (File, erro
 func (r *RegexpFs) Open(name string) (File, error) {
 	dir, err := IsDir(r.source, name) // 检查是否是目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return nil, err // 返回错误信息
 	}
 
@@ -245,7 +242,7 @@ func (r *RegexpFs) Open(name string) (File, error) {
 
 	f, err := r.source.Open(name) // 调用源文件系统的方法
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return nil, err // 返回错误信息
 	}
 
@@ -283,7 +280,7 @@ func (r *RegexpFs) MkdirAll(n string, p os.FileMode) error {
 //   - error: 错误信息
 func (r *RegexpFs) Create(name string) (File, error) {
 	if err := r.matchesName(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return nil, err // 如果文件名不匹配，返回错误
 	}
 
@@ -373,7 +370,7 @@ func (f *RegexpFile) Readdir(c int) (fi []os.FileInfo, err error) {
 	var rfi []os.FileInfo
 	rfi, err = f.f.Readdir(c) // 调用文件对象的方法
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return nil, err // 返回错误信息
 	}
 
@@ -396,7 +393,7 @@ func (f *RegexpFile) Readdir(c int) (fi []os.FileInfo, err error) {
 func (f *RegexpFile) Readdirnames(c int) (n []string, err error) {
 	fi, err := f.Readdir(c) // 调用 Readdir 方法
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return nil, err // 返回错误信息
 	}
 

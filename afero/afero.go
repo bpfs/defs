@@ -5,7 +5,11 @@ import (
 	"io"
 	"os"
 	"time"
+
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("afero")
 
 // File 表示文件系统中的一个文件
 // 该接口包含了多种操作文件的方法

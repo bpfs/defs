@@ -1,518 +1,1078 @@
+// Package main 是DeFS系统的主包
 package main
 
+// 导入所需的包
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/sha256"
-	"crypto/sha512"
 	"fmt"
-	"hash"
-	"math/big"
-	"net"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/libp2p/go-libp2p"
-	libp2ppubsub "github.com/libp2p/go-libp2p-pubsub"
-	"github.com/libp2p/go-libp2p-pubsub/timecache"
-	"github.com/libp2p/go-libp2p/config"
-	"github.com/libp2p/go-libp2p/core/crypto"
-	"github.com/libp2p/go-libp2p/core/pnet"
-	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
-	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
-	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
-	"github.com/libp2p/go-libp2p/p2p/protocol/circuitv2/relay"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
-
-	"github.com/bpfs/defs"
-
-	"github.com/bpfs/defs/opts"
-
-	"github.com/bpfs/dep2p"
-	"github.com/bpfs/dep2p/pubsub"
-	"github.com/sirupsen/logrus"
-	"github.com/tyler-smith/go-bip32"
-	"golang.org/x/crypto/pbkdf2"
+	"github.com/bpfs/defs/v2/badgerhold"
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/kbucket"
+	"github.com/bpfs/defs/v2/pb"
+	"github.com/bpfs/defs/v2/uploads"
+	"github.com/bpfs/defs/v2/utils/log"
+	"github.com/dep2p/go-dep2p/core/host"
+	"github.com/dep2p/go-dep2p/core/network"
+	"github.com/dep2p/go-dep2p/core/peer"
+	"github.com/dep2p/go-dep2p/multiformats/multiaddr"
+	dht "github.com/dep2p/kaddht"
+	logging "github.com/dep2p/log"
+	"github.com/pterm/pterm"
 )
 
+var logger = logging.Logger("examples")
+
+// main 函数是程序的入口点
 func main() {
-	ctx := context.Background()
-	//pskmd5 := md5.New()
-	//psk := []byte(hex.EncodeToString(pskmd5.Sum(nil))) // TODO: 可能报错
+	// 确保日志目录存在
+	logDir := "../defsdata/logs"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		fmt.Printf("创建日志目录失败: %v\n", err)
+		os.Exit(1)
+	}
 
-	psk := []byte(nil) // TODO: 可能报错
-
-	macAddressEnv, err := GetPrimaryMACAddress()
+	// 设置日志输出到文件
+	logFile, err := os.OpenFile(filepath.Join(logDir, "defs.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		logrus.Errorf("GetPrimaryMACAddress 报错:\t%v", err)
-		return
+		fmt.Printf("创建日志文件失败: %v\n", err)
+		os.Exit(1)
 	}
-	privateKey, _, err := GenerateECDSAKeyPair([]byte(macAddressEnv), nil, 2048, 64, true)
+	defer logFile.Close()
+
+	// 设置defs日志输出
+	log.SetLog(logFile.Name(), false)
+	// 设置订阅日志
+	//publog.SetLog(logFile.Name(), true)
+
+	// 初始化DeFS核心
+	logger.Info("开始初始化DeFS核心...")
+	core, err := NewDefsCore()
 	if err != nil {
-		logrus.Errorf("GenerateECDSAKeyPair 报错:\t%v", err)
-		return
+		fmt.Printf("初始化DeFS核心失败: %v\n", err)
+		os.Exit(1)
 	}
+	logger.Info("DeFS核心初始化成功")
 
-	// privateKey1, _, err := GenerateECDSAKeyPair([]byte("1111"), nil, 2048, 64, true)
-	// if err != nil {
-	// 	logrus.Errorf("GenerateECDSAKeyPair 报错:\t%v", err)
-	// 	return
-	// }
+	// 创建一个交互式提示符
+	prompt := pterm.DefaultInteractiveTextInput.WithMultiLine(false)
 
-	// 生成私钥
-	privKey, _, err := crypto.ECDSAKeyPairFromKey(privateKey)
-	if err != nil {
-		logrus.Errorf("ECDSAKeyPairFromKey 报错:\t%v", err)
-		return
-	}
-
-	// 获取空闲端口号
-	port, err := getFreePort()
-	if err != nil {
-		logrus.Errorf("getFreePort 报错:\t%v", err)
-		return
-	}
-
-	p2p, err := dep2p.NewDeP2P(ctx,
-		dep2p.WithLibp2pOpts(buildHostOptions(psk, privKey, port)), // 设置libp2p选项
-		dep2p.WithDhtOpts(buildDHTOptions(2)),                      // 设置dht选项
-		dep2p.WithRendezvousString(RendezvousString),               // 配置
-	)
-	if err != nil {
-		logrus.Errorf("NewBpfs 报错:\t%v", err)
-		return
-	}
-
-	pubsub, err := NewBpfsPubSub(ctx, p2p)
-	if err != nil {
-		logrus.Errorf("NewBpfsPubSub 报错:\t%v", err)
-		return
-	}
-
-	// 设置一个推荐选项列表以获得良好的性能
-	opt := opts.DefaultOptions()
-	// 设置是否启动本地存储选项
-	opt.BuildLocalStorage(true)
-	//opt.BuildLocalStorage(false)
-	opt.BuildRoutingTableLow(1)
-	//opt.BuildDefaultFileKey("11111")
-	opt.BuildStorageMode(opts.RS_Proportion)
-	// opt.BuildRootPath("/Users/qinglong/go/src/chaincodes/BPFS/BPFSFILE/")
-	opt.BuildDownloadMaximumSize(int64(MBMultiplier(3)))
-	// _, err = defs.Open(opt, p2p, pubsub)
-	fs, err := defs.Open(opt, p2p, pubsub)
-	if err != nil {
-		logrus.Errorf("Open 报错:\t%v", err)
-		return
-	}
-	logrus.Debugf("FS 启动 %v", fs)
-
-	// 【测试须知】
-	// 至少需要启动 2 个节点，分别扮演[文件存储节点]和[业务请求节点]
-	// 文件存储节点，直接在当前路径运行: go run main.go 即可
-	// 业务请求节点，需要分别注销 第120行、第141行、第143行、第154行，它们分别是【上传】和【下载】的测试操作
-	// 你可以同时测试上传+下载，也可以单独测试上传后，结束再测试下载
-	// 如果你将上传和下载分开测试，注意需要将 第行 的"file.FileID"修改为文件ID，如果测试的是"BPFS 白皮书.pdf"，复制下面的那行即可；如果测试的是自己的文件，可在上传的打印日志里复制
-
-	// /**
-
-	time.Sleep(60 * time.Second) // 延时20秒
-
-	path := "BPFS 白皮书.pdf"
-	// fcd550eff8fa3e77c897e430177ea1b098480eb527022bf159bff95fa44a2846
-
-	logrus.Println(time.Now())
-	file, err := fs.Upload().NewUpload(fs.Opt(), fs.Afero(), fs.P2P(), fs.Pubsub(), path, privateKey)
-	if err != nil {
-		logrus.Errorf("Upload 报错:\t%v", err)
-		return
-	}
-	logrus.Print("\n\n===== 测试方法 =====\n")
-	logrus.Println(time.Now())
-	logrus.Print("\n\n返回值:\n")
-	logrus.Printf("FileID:\t%v\n", file.FileID)
-	logrus.Printf("Size:\t%v\n", file.Size)
-	logrus.Printf("UploadTime:\t%v\n", file.UploadTime)
-	logrus.Print("===== 测试方法 =====\n\n")
-
-	// */
-
-	// /**
-
-	time.Sleep(60 * time.Second) // 延时60秒
-
-	download, err := fs.Download().NewDownload(fs.Opt(), fs.Afero(), fs.P2P(), fs.Pubsub(), file.FileID, privateKey)
-	if err != nil {
-		logrus.Errorf("downloads 报错:\t%v", err)
-		return
-	}
-	logrus.Printf("下载任务开启\t%s\n\n", download.TaskID)
-
-	// */
-
-	// logrus.Printf("开始更新名字任务\t%s\n\n", file.FileID)
-
-	// // newName := "测试BPFS白皮书.pdf"
-	// // if err := edits.EditName(fs.P2P(), fs.Pubsub(), file.FileID, privateKey, newName); err != nil {
-	// // 	logrus.Errorf("Download 报错:\t%v", err)
-	// // 	return
-	// // }
-
-	// logrus.Printf("开始修改共享任务\t%s\n\n", file.FileID)
-
-	// if err := edits.EditShared(fs.P2P(), fs.Pubsub(), file.FileID, true, privateKey); err != nil {
-	// 	logrus.Errorf("Download 报错:\t%v", err)
-	// 	return
-	// }
-
-	// time.Sleep(10 * time.Second) // 延时10秒
-	// logrus.Printf("开始搜索下载任务\t%s\n\n", file.FileID)
-
-	// // 使用私钥和文件校验和生成秘密
-	// secret, err := uploads.GenerateSecretFromPrivateKeyAndChecksum(privateKey, []byte(file.FileID))
-	// if err != nil {
-	// 	return
-	// }
-
-	// searchDownload, err := downloads.NewSearchDownload(fs.Ctx(), fs.Opt(), fs.P2P(), fs.Pubsub(), fs.Download(), file.FileID, secret, privateKey1)
-	// if err != nil {
-	// 	logrus.Errorf("downloads 报错:\t%v", err)
-	// }
-	// logrus.Printf("搜索下载任务完成\t%s\n\n", searchDownload.TaskID)
-
-	// // logrus.Printf("开始新增分享任务\t%s\n\n", file.FileID)
-	// // address := "12gpXQVcCL2qhTNQgyLVdCFG2Qs2px98nV"
-	// // userPubHash, err := wallet.GetPubKeyHash(address)
-	// // if err != nil {
-	// // 	return
-	// // }
-	// // currentTime := time.Now()
-	// // logrus.Println("当前时间:", currentTime)
-
-	// // // 在当前时间加一天
-	// // tomorrow := currentTime.AddDate(0, 0, 1)
-	// // if err := edits.AddShared(fs.P2P(), fs.Pubsub(), file.FileID, userPubHash, tomorrow); err != nil {
-	// // 	logrus.Errorf("Download 报错:\t%v", err)
-	// // 	return
-	// // }
-	// // time.Sleep(10 * time.Second) // 延时10秒 防止还没有修改完
-
-	// // logrus.Printf("开始再次下载任务\t%s\n\n", file.FileID)
-
-	// // address2 := "1JYy9LLVAAQ5edAuu9QP7LjmFa632J1PZR"
-	// // userPubHash2, err := wallet.GetPubKeyHash(address2)
-	// // if err != nil {
-
-	// // 	return
-	// // }
-
-	// // if err := downloads.NewDownload(fs.Ctx(), fs.Opt(), fs.P2P(), fs.Pubsub(), fs.Download(), file.FileID, userPubHash2); err != nil {
-	// // 	logrus.Errorf("Download 报错:\t%v", err)
-	// // 	return
-	// // }
-	select {}
-}
-
-// NewBpfsPubSub 新的 BPFS 主题
-func NewBpfsPubSub(ctx context.Context, p2p *dep2p.DeP2P) (*pubsub.DeP2PPubSub, error) {
-	// 初始化
-	pb, err := pubsub.NewPubsub(ctx, p2p.Host()) // 初始化 PubSub
-	if err != nil {
-		return nil, err
-	}
-	// 返回新创建的 LibP2pPubSub 实例
-	if err := pb.Start(buildPubSub()...); err != nil {
-		return nil, err
-	}
-
-	return pb, nil
-}
-
-const (
-	// DefaultConnMgrHighWater 是连接管理器'high water'标记的默认值
-	DefaultConnMgrHighWater = 96
-	// DefaultConnMgrLowWater 是连接管理器'low water'标记的默认值
-	DefaultConnMgrLowWater = 32
-	// DefaultConnMgrGracePeriod 是连接管理器宽限期的默认值
-	DefaultConnMgrGracePeriod = time.Second * 20
-
-	// RendezvousString = "rendezvous:wesign.xyz.cs41"
-	RendezvousString = "[rendezvous] wesign.xyz CS-DeFS-0"
-)
-
-// 设置libp2p选项
-func buildHostOptions(psk pnet.PSK, sk crypto.PrivKey, portNumber string) []config.Option {
-	// IPFS配置
-	grace := DefaultConnMgrGracePeriod
-	low := int(DefaultConnMgrLowWater)
-	high := int(DefaultConnMgrHighWater)
-
-	// NewConnManager 使用提供的参数创建一个新的 BasicConnMgr：lo 和 hi 是管理将维护的连接数量的水印。
-	// 当对等点计数超过'high water'时，许多对等点将被修剪（并且它们的连接终止），直到保留'low water'对等点。
-	cm, err := connmgr.NewConnManager(low, high, connmgr.WithGracePeriod(grace))
-	if err != nil {
-		logrus.Errorf("初始化cm节点%v", err)
-	}
-
-	// NewPeerstore 创建内存中线程安全的对等点集合。
-	// 调用者有责任调用RemovePeer以确保peerstore的内存消耗不会无限制地增长。
-	libp2pPeerstore, err := pstoremem.NewPeerstore()
-	if err != nil {
-		logrus.Errorf("初始化存储节点%v", err)
-	}
-
-	// rcmgrObs.MustRegisterWith(prometheus.DefaultRegisterer) 注册 rcmgrObs 对象到 Prometheus 的默认注册器中，
-	// 以便将其暴露为 Prometheus 指标。
-	//rcmgrObs.MustRegisterWith(prometheus.DefaultRegisterer)
-
-	// str 是一个 StatsTraceReporter 对象，用于收集和报告资源管理器的统计信息和追踪数据。
-	// rcmgrObs.NewStatsTraceReporter() 用于创建 StatsTraceReporter 对象。
-	// 如果创建过程中发生错误，则将错误记录下来并终止程序的执行。
-	str, err := rcmgr.NewStatsTraceReporter()
-	if err != nil {
-		logrus.Errorf("初始化rcmgrObs%v", err)
-	}
-
-	// rmgr 是一个资源管理器对象，用于管理和分配资源。
-	// rcmgr.NewResourceManager() 用于创建资源管理器对象，参数包括资源限制器和追踪报告器等选项。
-	// 如果创建过程中发生错误，则将错误记录下来并终止程序的执行。
-	rmgr, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(rcmgr.DefaultLimits.AutoScale()), rcmgr.WithTraceReporter(str))
-	if err != nil {
-		logrus.Fatal(err)
-	}
-	// 默认中继配置选项
-	def := relay.DefaultResources()
-	options := []libp2p.Option{
-		// Peerstore 配置 libp2p 以使用给定的对等存储。
-		libp2p.Peerstore(libp2pPeerstore),
-		// Ping 会配置libp2p 来支持ping 服务； 默认启用。
-		libp2p.Ping(false),
-		libp2p.Identity(sk),
-		// DefaultSecurity 是默认的安全选项。
-		// 当您想要扩展而不是替换受支持的传输安全协议时非常有用。
-		libp2p.DefaultSecurity,
-		// ConnectionManager 将 libp2p 配置为使用给定的连接管理器。
-		libp2p.ConnectionManager(cm),
-		// ResourceManager 将 libp2p 配置为使用给定的 ResourceManager。
-		// 当使用 ResourceManager 接口的 p2p/host/resource-manager 实现时，建议通过调用 SetDefaultServiceLimits 设置 libp2p 协议的限制。
-		libp2p.ResourceManager(rmgr),
-		// 对于大文件传输，选择合适的传输协议很重要。您可以尝试使用 QUIC（基于 UDP 的传输协议），因为它具有低延迟、高并发和连接迁移等优点。
-		// libp2p.Transport(quic.NewTransport),
-		// TODO: 需要根据新包优化
-		// 使用 QUIC（基于 UDP 的传输协议）并设置连接超时
-		// libp2p.Transport(func(u *tptu.Upgrader) *quic.Transport {
-		//  t := quic.NewTransport(u)
-		//  t.SetHandshakeTimeout(5 * time.Minute) // 设置为 5 分钟，您可以根据需求调整这个值
-		//  return t
-		// }),
-		// Muxer 配置 libp2p 以使用给定的流多路复用器。 name 是协议名称。
-		libp2p.Muxer("/yamux/1.0.0", yamux.DefaultTransport), // 添加 yamux 传输协议
-		// 尝试使用 uPNP 为 NATed 主机打开端口。
-		libp2p.NATPortMap(),
-
-		// EnableRelay 配置 libp2p 以启用中继传输。
-		libp2p.EnableRelay(),
-		// 实验性 EnableHolePunching 通过启用 NATT 的对等点来启动和响应打孔尝试以创建与其他对等点的直接/NAT 遍历连接来启用 NAT 遍历。
-		libp2p.EnableHolePunching(),
-		// EnableNATService 将 libp2p 配置为向对等点提供服务以确定其可达性状态。
-		libp2p.EnableNATService(),
-		// 启用中继服务
-		libp2p.EnableRelayService(
-			relay.WithResources(
-				relay.Resources{
-					Limit: &relay.RelayLimit{
-						Data:     def.Limit.Data,     // 128K，设置每个中继数据的限制为128K
-						Duration: def.Limit.Duration, // 设置每个中继的持续时间为2分钟
-					},
-					MaxCircuits:            def.MaxCircuits,            // 设置最大的中继电路数量为16个
-					BufferSize:             def.BufferSize,             // 缓冲区大小由2048（2kb）调整为20480（20kb）
-					ReservationTTL:         def.ReservationTTL,         // 设置中继预留的生存时间为1小时
-					MaxReservations:        def.MaxReservations,        // 设置最大中继预留数量为128个
-					MaxReservationsPerIP:   def.MaxReservationsPerIP,   // 设置每个IP地址最大的中继预留数量为8个
-					MaxReservationsPerPeer: def.MaxReservationsPerPeer, // 设置每个对等节点最大的中继预留数量为4个
-					MaxReservationsPerASN:  def.MaxReservationsPerASN,  // 设置每个ASN（自治系统号）最大的中继预留数量为32个
-				},
-			),
-		),
-	}
-	// 如果是中继节点指定host主机端口
-	if portNumber != "" {
-		// ListenAddrStrings 配置 libp2p 来监听给定的（未解析的）地址。
-		options = append(options, libp2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%s", portNumber)))
-		// Transport 将 libp2p 配置为使用给定的传输（或传输构造函数）。
-		options = append(options, libp2p.Transport(tcp.NewTCPTransport, tcp.WithMetrics()))
-		// ForceReachabilityPublic 覆盖了AutoNAT子系统中的自动可达性检测，迫使本地节点相信它是可以从外部到达的。
-		options = append(options, libp2p.ForceReachabilityPublic())
-	} else {
-		// ForceReachabilityPrivate 覆盖 AutoNAT 子系统中的自动可达性检测，强制本地节点相信它在 NAT 后面并且无法从外部访问。
-		options = append(options, libp2p.ForceReachabilityPrivate())
-	}
-
-	// 私有网络
-	if psk != nil {
-		options = append(options, []libp2p.Option{
-			// PrivateNetwork 将 libp2p 配置为使用给定的专用网络保护器。
-			libp2p.PrivateNetwork(psk),
-		}...)
-	}
-
-	return options
-}
-
-// 设置dht选项
-func buildDHTOptions(mode int) []dep2p.Option {
-	baseOpts := []dep2p.Option{}
-	switch mode {
-	case 0:
-		baseOpts = append(baseOpts, dep2p.Mode(dep2p.ModeAuto))
-	case 1:
-
-		baseOpts = append(baseOpts, dep2p.Mode(dep2p.ModeClient)) // 客户端
-	case 2:
-
-		baseOpts = append(baseOpts, dep2p.Mode(dep2p.ModeServer)) // 服务器
-	case 3:
-		baseOpts = append(baseOpts, dep2p.Mode(dep2p.ModeAutoServer))
-	}
-
-	return baseOpts
-}
-
-func buildPubSub() []libp2ppubsub.Option {
-	var pubsubOptions []libp2ppubsub.Option
-
-	ttl, err := time.ParseDuration("10s")
-	if err != nil {
-		panic(err)
-	}
-
-	pubsubOptions = append(
-		pubsubOptions,
-		// 设置 pubsub 有线消息的全局最大消息大小。 默认值为 1MiB (DefaultMaxMessageSize)
-		libp2ppubsub.WithMaxMessageSize(pubsub.DefaultLibp2pPubSubMaxMessageSize),
-		// WithSeenMessagesTTL 配置何时可以忘记以前看到的消息 ID
-		libp2ppubsub.WithSeenMessagesTTL(ttl),
-		// Stategy_LastSeen 使上次被 Add 或 Has 触及的条目过期。
-		libp2ppubsub.WithSeenMessagesStrategy(timecache.Strategy_LastSeen),
-	)
-	return pubsubOptions
-}
-
-func GenerateECDSAKeyPair(password []byte, salt []byte, iterations, keyLength int, useSHA512 bool) (*ecdsa.PrivateKey, []byte, error) {
-	curve := elliptic.P256() // 根据需要选择合适的曲线
-
-	// 选择合适的哈希函数
-	var hashFunc func() hash.Hash
-	if useSHA512 {
-		hashFunc = sha512.New
-	} else {
-		hashFunc = sha256.New
-	}
-
-	combined := append([]byte("BPFS"), salt...)
-
-	// 使用 PBKDF2 生成强密钥
-	key := pbkdf2.Key(password, combined, iterations, keyLength, hashFunc)
-
-	// 生成主钱包
-	masterKey, _ := bip32.NewMasterKey(key) //?????? 如果不使用启动host会报错
-
-	// 生成私钥
-	privateKey := &ecdsa.PrivateKey{
-		PublicKey: ecdsa.PublicKey{
-			Curve: curve,
-		},
-		D: new(big.Int).SetBytes(masterKey.Key),
-	}
-
-	// 计算公钥
-	privateKey.PublicKey.X, privateKey.PublicKey.Y = curve.ScalarBaseMult(masterKey.Key)
-
-	// 生成公钥
-	pubKey := append(privateKey.PublicKey.X.Bytes(), privateKey.PublicKey.Y.Bytes()...)
-
-	return privateKey, pubKey, nil
-}
-
-type ifaceInfo struct {
-	mac    string
-	weight int
-}
-
-// GetPrimaryMACAddress 返回电脑上的主要MAC地址。
-func GetPrimaryMACAddress() (string, error) {
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		return "", err
-	}
-
-	var bestIface ifaceInfo
-
-	for _, iface := range interfaces {
-		if iface.HardwareAddr == nil || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-
-		info := ifaceInfo{mac: iface.HardwareAddr.String()}
-
-		// 为非虚拟接口增加权重
-		if !strings.Contains(iface.Name, "vmnet") && !strings.Contains(iface.Name, "vboxnet") {
-			info.weight += 10
-		}
-
-		// 为状态为"up"的接口增加权重
-		if iface.Flags&net.FlagUp != 0 {
-			info.weight += 10
-		}
-
-		addrs, err := iface.Addrs()
+	for {
+		// 显示提示符并获取输入
+		input, err := prompt.Show("请输入命令 > ")
 		if err != nil {
+			pterm.Error.Println("读取命令失败:", err)
 			continue
 		}
 
-		// 为有IPv4地址的接口增加权重
-		for _, addr := range addrs {
-			if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() && ipNet.IP.To4() != nil {
-				info.weight += 10
-				break
+		// 处理命令
+		args := strings.Fields(input)
+		if len(args) == 0 {
+			continue
+		}
+
+		// 处理退出命令
+		if args[0] == "exit" || args[0] == "quit" {
+			pterm.Info.Println("正在退出程序...")
+			break
+		}
+
+		// 处理其他命令
+		handleCommand(core, args)
+	}
+}
+
+// handleCommand 处理用户输入的命令
+// 参数:
+//   - core: DeFS核心实例
+//   - args: 用户输入的命令参数
+func handleCommand(core *DefsCore, args []string) {
+	if len(args) == 0 {
+		return
+	}
+
+	fmt.Println() // 添加空行以提高可读性
+
+	// 根据命令类型执行相应操作
+	switch args[0] {
+	case "help":
+		showHelp()
+	case "time":
+		fmt.Println("当前时间:", time.Now().Format("2006-01-02 15:04:05"))
+	case "upload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: upload <文件路径>")
+			return
+		}
+		// 将除了第一个参数(命令名)外的所有参数合并为文件路径，并去除引号
+		filePath := strings.Join(args[1:], " ")
+		filePath = strings.Trim(filePath, `'"`) // 去除两端的引号
+		if err := handleUpload(core, filePath); err != nil {
+			pterm.Error.Printf("上传失败: %v\n", err)
+		}
+	case "download":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: download <文件ID>")
+			return
+		}
+		fileID := strings.Trim(args[1], `'"`) // 同样处理下载ID
+		if err := handleDownload(core, fileID); err != nil {
+			pterm.Error.Printf("下载失败: %v\n", err)
+		}
+	case "list":
+		if err := handleListPeers(core); err != nil {
+			pterm.Error.Printf("列出节点失败: %v\n", err)
+		}
+	case "addRoutingPeer":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: addRoutingPeer <节点地址> <运行模式(1:客户端 2:服务端)>")
+			return
+		}
+		// 将完整的参数传递给处理函数
+		if err := handleAddRoutingPeer(core, args[1:]...); err != nil {
+			pterm.Error.Printf("添加节点失败: %v\n", err)
+		}
+	case "addPubSubPeer":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: addPubSubPeer <节点ID>")
+			return
+		}
+		if err := handleAddPubSubPeer(core, args[1]); err != nil {
+			pterm.Error.Printf("添加发布订阅节点失败: %v\n", err)
+		}
+	case "pauseUpload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: pauseUpload <taskID>")
+			return
+		}
+		if err := handlePauseUpload(core, args[1]); err != nil {
+			pterm.Error.Printf("暂停上传失败: %v\n", err)
+		}
+	case "resumeUpload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: resumeUpload <taskID>")
+			return
+		}
+		if err := handleResumeUpload(core, args[1]); err != nil {
+			pterm.Error.Printf("恢复上传失败: %v\n", err)
+		}
+	case "cancelUpload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: cancelUpload <taskID>")
+			return
+		}
+		if err := handleCancelUpload(core, args[1]); err != nil {
+			pterm.Error.Printf("取消上传失败: %v\n", err)
+		}
+	case "pauseDownload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: pauseDownload <taskID>")
+			return
+		}
+		if err := handlePauseDownload(core, args[1]); err != nil {
+			pterm.Error.Printf("暂停下载失败: %v\n", err)
+		}
+	case "resumeDownload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: resumeDownload <taskID>")
+			return
+		}
+		if err := handleResumeDownload(core, args[1]); err != nil {
+			pterm.Error.Printf("恢复下载失败: %v\n", err)
+		}
+	case "cancelDownload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: cancelDownload <taskID>")
+			return
+		}
+		if err := handleCancelDownload(core, args[1]); err != nil {
+			pterm.Error.Printf("取消下载失败: %v\n", err)
+		}
+	case "queryAssets":
+		if err := handleQueryFileAssets(core); err != nil {
+			pterm.Error.Printf("查询文件资产失败: %v\n", err)
+		}
+	case "listUploads":
+		if err := handleListUploads(core); err != nil {
+			pterm.Error.Printf("获取上传文件列表失败: %v\n", err)
+		}
+	case "triggerUpload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: triggerUpload <taskID>")
+			return
+		}
+		if err := handleTriggerUpload(core, args[1]); err != nil {
+			pterm.Error.Printf("触发上传失败: %v\n", err)
+		}
+	case "listDownloads":
+		if err := handleListDownloads(core); err != nil {
+			pterm.Error.Printf("获取下载文件列表失败: %v\n", err)
+		}
+	case "size":
+		if len(args) > 1 {
+			// 将完整的参数传递给处理函数
+			if err := handleSize(core, args[1:]...); err != nil {
+				pterm.Error.Printf("获取节点数量失败: %v\n", err)
+			}
+		} else {
+			if err := handleSize(core); err != nil {
+				pterm.Error.Printf("获取节点数量失败: %v\n", err)
 			}
 		}
+	case "listPeers":
+		if len(args) > 1 {
+			// 将完整的参数传递给处理函数
+			if err := handleListPeers(core, args[1:]...); err != nil {
+				pterm.Error.Printf("列出节点失败: %v\n", err)
+			}
+		} else {
+			if err := handleListPeers(core); err != nil {
+				pterm.Error.Printf("列出节点失败: %v\n", err)
+			}
+		}
+	case "printPeers":
+		if len(args) > 1 {
+			// 将完整的参数传递给处理函数
+			if err := handlePrintPeers(core, args[1:]...); err != nil {
+				pterm.Error.Printf("打印节点信息失败: %v\n", err)
+			}
+		} else {
+			if err := handlePrintPeers(core); err != nil {
+				pterm.Error.Printf("打印节点信息失败: %v\n", err)
+			}
+		}
+	case "nearestPeers":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: nearestPeers <目标节点ID> [mode] [count]")
+			return
+		}
+		// 将完整的参数传递给处理函数
+		if err := handleNearestPeers(core, args[1:]...); err != nil {
+			pterm.Error.Printf("查找最近节点失败: %v\n", err)
+		}
+	case "id":
+		if err := handleShowNodeID(core); err != nil {
+			pterm.Error.Printf("获取节点ID失败: %v\n", err)
+		}
+	case "addr":
+		if err := handleShowNodeAddr(core); err != nil {
+			pterm.Error.Printf("获取节点地址失败: %v\n", err)
+		}
+	default:
+		pterm.Warning.Printf("未知命令: %s\n", args[0])
+		pterm.Info.Println("输入 'help' 获取可用命令列表")
+	}
+}
 
-		// 选择权重最高的接口
-		if info.weight > bestIface.weight {
-			bestIface = info
+// showHelp 显示帮助信息
+func showHelp() {
+	logger.Info("显示帮助信息")
+
+	// 创建标题
+	pterm.DefaultHeader.WithFullWidth().WithBackgroundStyle(pterm.NewStyle(pterm.BgBlue)).
+		Println("DeFS 命令行界面帮助")
+
+	// 基础命令
+	pterm.DefaultSection.Println("基础命令")
+	pterm.DefaultBulletList.WithItems([]pterm.BulletListItem{
+		{Level: 0, Text: "help: 显示帮助信息"},
+		{Level: 0, Text: "time: 显示当前时间"},
+		{Level: 0, Text: "id: 显示当前节点ID"},
+		{Level: 0, Text: "addr: 显示当前节点完整地址"},
+	}).Render()
+
+	// 节点管理
+	pterm.DefaultSection.Println("节点管理")
+	pterm.DefaultBulletList.WithItems([]pterm.BulletListItem{
+		{Level: 0, Text: "list: 列出所有节点"},
+		{Level: 0, Text: "addRoutingPeer <节点地址> <运行模式(1:客户端 2:服务端)>: 添加路由表节点"},
+		{Level: 0, Text: "addPubSubPeer <节点ID>: 添加发布订阅节点"},
+		{Level: 0, Text: "size [mode]: 显示节点数量 (mode: 1:客户端 2:服务端, 可选)"},
+		{Level: 0, Text: "listPeers [mode]: 列出节点 (mode: 1:客户端 2:服务端, 可选)"},
+		{Level: 0, Text: "printPeers [mode]: 打印节点详细信息 (mode: 1:客户端 2:服务端, 可选)"},
+		{Level: 0, Text: "nearestPeers <目标节点ID> [mode] [count]: 查找最近的节点"},
+	}).Render()
+
+	// 上传管理
+	pterm.DefaultSection.Println("上传管理")
+	pterm.DefaultBulletList.WithItems([]pterm.BulletListItem{
+		{Level: 0, Text: "upload <文件路径>: 上传文件"},
+		{Level: 0, Text: "triggerUpload <taskID>: 触发指定任务的上传"},
+		{Level: 0, Text: "pauseUpload <taskID>: 暂停上传任务"},
+		{Level: 0, Text: "resumeUpload <taskID>: 恢复上传任务"},
+		{Level: 0, Text: "cancelUpload <taskID>: 取消上传任务"},
+		{Level: 0, Text: "queryAssets: 查询所有文件资产"},
+		{Level: 0, Text: "listUploads: 显示所有上传任务"},
+	}).Render()
+
+	// 下载管理
+	pterm.DefaultSection.Println("下载管理")
+	pterm.DefaultBulletList.WithItems([]pterm.BulletListItem{
+		{Level: 0, Text: "download <文件ID>: 下载文件"},
+		{Level: 0, Text: "pauseDownload <taskID>: 暂停下载任务"},
+		{Level: 0, Text: "resumeDownload <taskID>: 恢复下载任务"},
+		{Level: 0, Text: "cancelDownload <taskID>: 取消下载任务"},
+		{Level: 0, Text: "queryDownloads: 查询所有下载任务"},
+		{Level: 0, Text: "listDownloads: 显示所有下载任务"},
+	}).Render()
+
+	// 退出
+	pterm.DefaultSection.Println("退出")
+	pterm.DefaultBulletList.WithItems([]pterm.BulletListItem{
+		{Level: 0, Text: "exit/quit: 退出程序"},
+	}).Render()
+}
+
+// handleUpload 处理文件上传
+// 参数:
+//   - core: DeFS核心实例
+//   - filePath: 要上传的文件路径
+//
+// 返回:
+//   - error: 错误信息
+func handleUpload(core *DefsCore, filePath string) error {
+	logger.Infof("开始上传文件: %s", filePath)
+	// 创建上传任务
+	file, err := core.fs.Upload().NewUpload(filePath, core.privateKey, true)
+	if err != nil {
+		logger.Errorf("创建上传任务失败: %v", err)
+		return fmt.Errorf("创建上传任务失败: %v", err)
+	}
+
+	logger.Infof("文件上传成功，FileID: %s", file.FileId)
+	return nil
+}
+
+// handleDownload 处理文件下载
+// 参数:
+//   - core: DeFS核心实例
+//   - fileID: 要下载的文件ID
+//
+// 返回:
+//   - error: 错误信息
+func handleDownload(core *DefsCore, fileID string) error {
+	taskID, err := core.fs.Download().NewDownload(core.privateKey, fileID)
+	if err != nil {
+		return fmt.Errorf("创建下载任务失败: %v", err)
+	}
+
+	// 动下载进度监控
+	go monitorDownloadProgress(core.fs.DB().BadgerDB, taskID)
+	logger.Infof("下载任务已创建，TaskID: %s", taskID)
+	return nil
+}
+
+// handleAddRoutingPeer 处理添加新节点
+// 参数:
+//   - core: DeFS核心实例
+//   - args: 要添加的节点地址和运行模式
+//
+// 返回:
+//   - error: 错误信息
+func handleAddRoutingPeer(core *DefsCore, args ...string) error {
+	// 检查参数数量
+	if len(args) < 2 {
+		return fmt.Errorf("用法: addRoutingPeer <节点地址> <运行模式(1:客户端 2:服务端)>")
+	}
+
+	// 解析节点地址
+	maddr, err := multiaddr.NewMultiaddr(args[0])
+	if err != nil {
+		logger.Errorf("解析节点地址失败: %v", err)
+		return err
+	}
+
+	// 解运行模式
+	mode, err := strconv.Atoi(args[1])
+	if err != nil || (mode != 1 && mode != 2) {
+		return fmt.Errorf("运行模式必须为 1(客户端) 或 2(服务端)")
+	}
+
+	// 转换为节点信息
+	addrInfo, err := peer.AddrInfoFromP2pAddr(maddr)
+	if err != nil {
+		logger.Errorf("转换节点地址失败: %v", err)
+		return err
+	}
+
+	// 添加节点
+	success, err := core.fs.AddRoutingPeer(*addrInfo, mode)
+	if err != nil {
+		logger.Errorf("添加节点失败: %v", err)
+		return err
+	}
+
+	if success {
+		logger.Infof("成功添加节点: %s, 运行模式: %d", addrInfo.ID, mode)
+	} else {
+		logger.Warnf("节点已存在或无法添加: %s", addrInfo.ID)
+	}
+	return nil
+}
+
+// handleAddPubSubPeer 处理添加新的发布订阅节点
+// 参数:
+//   - core: DeFS核心实例,包含文件系统和网络功能
+//   - peerID: 要添加的节点ID字符串
+//
+// 返回:
+//   - error: 如果添加失败则返回错误信息,成功则返回nil
+func handleAddPubSubPeer(core *DefsCore, peerID string) error {
+	// 将字符串格式的节点ID解析为peer.ID类型
+	pid, err := peer.Decode(peerID)
+	if err != nil {
+		logger.Errorf("解析节点ID失败: %v", err)
+		return err
+	}
+
+	// 调用DeFS的AddPubSubPeer方法
+	if err := core.fs.AddPubSubPeer(pid); err != nil {
+		logger.Errorf("添加发布订阅节点失败: %v", err)
+		return err
+	}
+
+	logger.Infof("成功添加发布订阅节点: %s", pid)
+	return nil
+}
+
+// monitorDownloadProgress 监控下载进度
+// 参数:
+//   - db: BadgerDB实例
+//   - taskId: 下载任务ID
+func monitorDownloadProgress(db *badgerhold.Store, taskId string) {
+	// 创建下载段存储
+	store := database.NewDownloadSegmentStore(db)
+	// 创建定时器,每5秒检查一次进度
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	// 创建超时上下文,30分钟超时
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	logger.Infof("\n开始监控下载进度 - TaskId: %s", taskId)
+
+	// 循环检查下载进度
+	for {
+		select {
+		case <-ctx.Done():
+			// 超时退出
+			logger.Infof("\n下载监控已结束 - TaskId: %s", taskId)
+			return
+		case <-ticker.C:
+			// 获取下载进度
+			_, completedIndices, dataSegmentCount, err := store.TaskByFileID(taskId)
+			if err != nil {
+				logger.Errorf("获取下载进度失败: TaskId=%s, Error=%v", taskId, err)
+				continue
+			}
+
+			// 计算并显示完成率
+			completionRate := float64(len(completedIndices)) / float64(dataSegmentCount) * 100
+			logger.Infof("\r下载进度: %.2f%% (%d/%d) ", completionRate, len(completedIndices), dataSegmentCount)
+
+			// 检查是否下载完成
+			if len(completedIndices) == dataSegmentCount {
+				logger.Infof("\n文件下载完成 - TaskId: %s", taskId)
+				return
+			}
+		}
+	}
+}
+
+// connectToBootstrapPeers 连接至自配引导节点
+// 参数:
+//   - ctx: context.Context 上下文
+//   - host: host.Host libp2p主机实例
+//   - bootstrapPeers: []string 引导节点地址列表
+//
+// 返回值:
+//   - error: 如果生错误返回error,否则返回nil
+func connectToBootstrapPeers(ctx context.Context, host host.Host, bootstrapPeers []string) error {
+	var defaultMultiaddrs []multiaddr.Multiaddr
+
+	// 解析引导节点的 Multiaddr
+	for _, peer := range bootstrapPeers {
+		maddr, err := multiaddr.NewMultiaddr(peer)
+		if err == nil {
+			defaultMultiaddrs = append(defaultMultiaddrs, maddr)
 		}
 	}
 
-	if bestIface.mac == "" {
-		return "", fmt.Errorf("no MAC address found")
+	// 获取默认的引导节点
+	defaultBootstrapPeers := dht.DefaultBootstrapPeers
+	defaultBootstrapPeers = append(defaultBootstrapPeers, defaultMultiaddrs...)
+
+	var wg sync.WaitGroup
+	successfulConnection := false
+
+	// 并发连接所有引导节点
+	for _, peerAddr := range defaultBootstrapPeers {
+		// 将 Multiaddr 转换为 AddrInfo
+		peerInfo, err := peer.AddrInfoFromP2pAddr(peerAddr)
+		if err != nil {
+			logger.Errorf("地址 %s 转换失败: %v", peerAddr.String(), err)
+			continue
+		}
+
+		wg.Add(1)
+		go func(peerInfo peer.AddrInfo) {
+			defer wg.Done()
+			// 尝试连接引导节点
+			if err := host.Connect(ctx, peerInfo); err != nil {
+				logger.Debugf("连接引导节点警告: %v", err)
+			} else {
+				logger.Infof("连接引导节点成功: %s", peerInfo.ID)
+				successfulConnection = true
+			}
+		}(*peerInfo)
 	}
 
-	return bestIface.mac, nil
+	wg.Wait() // 等待所有连接试完成
+
+	if !successfulConnection {
+		return fmt.Errorf("未能连接至引导节点")
+	}
+
+	return nil
 }
 
-// 获取空闲端口号
-func getFreePort() (string, error) {
-	// 监听一个未指定端口的TCP地址
-	listener, err := net.Listen("tcp", ":0")
+// parseCommandLine 解析命令行输入，正确处理带引号和空格的参数
+// 参数:
+//   - cmd: 要解析的命令行字符串
+//
+// 返回值:
+//   - []string: 解析后参数列表
+// func parseCommandLine(cmd string) []string {
+// 	// 存储解析后的参数
+// 	var args []string
+// 	// 用于构建当前参数
+// 	var currentArg strings.Builder
+// 	// 标记是否在引号内
+// 	inQuotes := false
+// 	// 当前使用的引号字符
+// 	var quoteChar rune
+
+// 	// 历命令行字符串的每个字符
+// 	for _, char := range cmd {
+// 		switch char {
+// 		case '"', '\'':
+// 			if inQuotes && char == quoteChar {
+// 				// 如果在引号内且遇到相同的引号字符，结束引号
+// 				inQuotes = false
+// 				if currentArg.Len() > 0 {
+// 					args = append(args, currentArg.String())
+// 					currentArg.Reset()
+// 				}
+// 			} else if !inQuotes {
+// 				// 如果不在引号内，开始新的引号
+// 				inQuotes = true
+// 				quoteChar = char
+// 			} else {
+// 				// 如果在其他���型的引号内，当作普通字符处理
+// 				currentArg.WriteRune(char)
+// 			}
+// 		case ' ':
+// 			if inQuotes {
+// 				// 如果在引号内，空格作为参数的一部分
+// 				currentArg.WriteRune(char)
+// 			} else if currentArg.Len() > 0 {
+// 				// 如果不在引号内且当前参数不为空，结束当前参数
+// 				args = append(args, currentArg.String())
+// 				currentArg.Reset()
+// 			}
+// 		default:
+// 			// 其他字符直接添加到当前参数
+// 			currentArg.WriteRune(char)
+// 		}
+// 	}
+
+// 	// 处理最后一个参数
+// 	if currentArg.Len() > 0 {
+// 		args = append(args, currentArg.String())
+// 	}
+
+// 	// 去除参数两端的空格和引号
+// 	for i, arg := range args {
+// 		args[i] = strings.Trim(arg, "\" '\t")
+// 	}
+
+// 	return args
+// }
+
+// handlePauseUpload 处理暂停上传任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - taskID: 要暂停的上传任务ID
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handlePauseUpload(core *DefsCore, taskID string) error {
+	// 调用文件系统的强制暂停上传方法
+	if err := core.fs.Upload().PauseUpload(taskID); err != nil {
+		logger.Errorf("暂停上传失败: %v", err)
+		return err
+	}
+	fmt.Printf("成功暂停上传任务: %s\n", taskID)
+	return nil
+}
+
+// handleResumeUpload 处理恢复上传任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - taskID: 要恢复的上传任务ID
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleResumeUpload(core *DefsCore, taskID string) error {
+	// 调用文件系统的强制恢复上传方法
+	if err := core.fs.Upload().ResumeUpload(taskID); err != nil {
+		logger.Errorf("恢复上传失败: %v", err)
+		return err
+	}
+	fmt.Printf("成功恢复上传任务: %s\n", taskID)
+	return nil
+}
+
+// handleCancelUpload 处理取消上传任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - taskID: 要取消的上传任务ID
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleCancelUpload(core *DefsCore, taskID string) error {
+	// 调用文件系统的取消上传方法
+	if err := core.fs.Upload().CancelUpload(taskID); err != nil {
+		logger.Errorf("取消上传失败: %v", err)
+		return err
+	}
+	fmt.Printf("成功取消上传任务: %s\n", taskID)
+	return nil
+}
+
+// handlePauseDownload 处理暂停下载任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - taskID: 要暂停的下载任务ID
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handlePauseDownload(core *DefsCore, taskID string) error {
+	// 调用文件系统的暂停下载方法
+	if err := core.fs.Download().PauseDownload(taskID); err != nil {
+		logger.Errorf("暂停下载失败: %v", err)
+		return err
+	}
+	fmt.Printf("成功暂停下载任务: %s\n", taskID)
+	return nil
+}
+
+// handleResumeDownload 处理恢复下载任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - taskID: 要恢复的下载任务ID
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleResumeDownload(core *DefsCore, taskID string) error {
+	// 调用文件系统的恢复下载方法
+	if err := core.fs.Download().ResumeDownload(taskID); err != nil {
+		logger.Errorf("恢复下载失败: %v", err)
+		return err
+	}
+	fmt.Printf("成功恢复下载任务: %s\n", taskID)
+	return nil
+}
+
+// handleCancelDownload 处理取消下载任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - taskID: 要取消的下载任务ID
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleCancelDownload(core *DefsCore, taskID string) error {
+	// 调用文件系统的取消下载方法
+	if err := core.fs.Download().CancelDownload(taskID); err != nil {
+		logger.Errorf("取消下载失败: %v", err)
+		return err
+	}
+	fmt.Printf("成功取消下载任务: %s\n", taskID)
+	return nil
+}
+
+// handleQueryFileAssets 处理查询文件资产的请求
+// 参数:
+//   - core: DeFS核心实例
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleQueryFileAssets(core *DefsCore) error {
+	logger.Info("开始查询文件资产")
+	// 查询文件资产列表
+	assets, totalCount, currentPage, pageSize, err := uploads.QueryFileAssets(
+		core.fs.DB().BadgerDB, // 数据库实例
+		nil,                   // pubkeyHash，如果不需要可以传 nil
+		0,                     // start
+		10,                    // pageSize
+		"",                    // query
+	)
 	if err != nil {
-		return "", err
+		logger.Errorf("查询文件资产失败: %v", err)
+		return err
 	}
-	defer listener.Close()
 
-	// 获取监听的地址
-	address := listener.Addr().(*net.TCPAddr)
-	port := strconv.Itoa(address.Port)
+	// 打印查询结果
+	fmt.Println("\n文件资产列表:")
+	fmt.Printf("总记录数: %d, 当前页: %d, 每页记录数: %d\n", totalCount, currentPage, pageSize)
+	for i, asset := range assets {
+		fmt.Printf("\n资产 #%d:\n", i+1)
+		fmt.Printf("文件ID: %s\n", asset.FileId)
+		fmt.Printf("文件名: %s\n", asset.Name)
+		fmt.Printf("文件大小: %d 字节\n", asset.Size())
+		fmt.Printf("文件类型: %s\n", asset.ContentType)
+		fmt.Printf("扩展名: %s\n", asset.Extension)
+		fmt.Printf("标签: %s\n", asset.Labels)
+		fmt.Printf("类型: %s\n", getFileType(asset.Type))
+		fmt.Printf("是否共享: %v\n", asset.IsShared)
+		if asset.IsShared {
+			fmt.Printf("共金额: %.2f\n", asset.ShareAmount)
+		}
+		fmt.Printf("上传时间: %s\n", time.Unix(asset.UploadTime, 0).Format("2006-01-02 15:04:05"))
+		fmt.Printf("修改时间: %s\n", time.Unix(asset.ModTime, 0).Format("2006-01-02 15:04:05"))
+		fmt.Printf("------------------------\n")
+	}
 
-	return port, nil
+	logger.Infof("成功查询到 %d 个文件资产", len(assets))
+	return nil
 }
 
-// MBMultiplier 返回给定大小的1MB（兆字节）的倍数。
-// 参数 size 表示要计算的1MB的倍数。
-func MBMultiplier(size int) int {
-	mbInBytes := 1 * 1024 * 1024 // 1MB等于 1 * 1024 * 1024 字节
-	return size * mbInBytes
+// getFileType 根据类型值返回文件类型描述
+// 参数:
+//   - fileType: 文件类型的数值表示
+//
+// 返回值:
+//   - string: 文件类型的文字描述
+func getFileType(fileType int64) string {
+	switch fileType {
+	case 0:
+		return "文件"
+	case 1:
+		return "文件夹"
+	default:
+		return "未知类型"
+	}
+}
+
+// handleListUploads 处理列出所有上传任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleListUploads(core *DefsCore) error {
+	logger.Info("开始获取上传文件列表")
+	// 获取所有上传文件的摘要信息
+	summaries, err := core.fs.Upload().GetAllUploadFilesSummaries()
+	if err != nil {
+		logger.Errorf("获取上传文件列表失败: %v", err)
+		return err
+	}
+
+	// 打印上传文件列表
+	fmt.Println("\n上传文件列表:")
+	for i, summary := range summaries {
+		fmt.Printf("\n文件 #%d:\n", i+1)
+		fmt.Printf("任务ID: %s\n", summary.TaskId)
+		fmt.Printf("文件名: %s\n", summary.Name)
+		fmt.Printf("大小: %d 字节\n", summary.TotalSize)
+		fmt.Printf("状态: %s\n", summary.UploadStatus)
+		fmt.Printf("上传进度: %.2f%%\n", float64(summary.Progress))
+		fmt.Printf("------------------------\n")
+	}
+
+	logger.Infof("成功获取到 %d 个上传文件", len(summaries))
+	return nil
+}
+
+// handleTriggerUpload 处理触发上传任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - taskID: 要触发的上传���务ID
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleTriggerUpload(core *DefsCore, taskID string) error {
+	logger.Infof("开始触发上传任务: %s", taskID)
+	// 调用文件系统的触发上传方法
+	if err := core.fs.Upload().TriggerUpload(taskID); err != nil {
+		logger.Errorf("触发上传失败: %v", err)
+		return err
+	}
+
+	fmt.Printf("成功触发上传任务: %s\n", taskID)
+	return nil
+}
+
+// getDownloadStatusText 将下载状态枚举值转换为可读文本
+// 参数:
+//   - status: 下载状态的枚举值
+//
+// 返回值:
+//   - string: 下载状态的文字描述
+func getDownloadStatusText(status pb.DownloadStatus) string {
+	switch status {
+	case pb.DownloadStatus_DOWNLOAD_STATUS_UNSPECIFIED:
+		return "未指定"
+	case pb.DownloadStatus_DOWNLOAD_STATUS_FETCHING_INFO:
+		return "获取文件信息中"
+	case pb.DownloadStatus_DOWNLOAD_STATUS_PENDING:
+		return "待下载"
+	case pb.DownloadStatus_DOWNLOAD_STATUS_DOWNLOADING:
+		return "下载中"
+	case pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED:
+		return "已暂停"
+	case pb.DownloadStatus_DOWNLOAD_STATUS_COMPLETED:
+		return "已完成"
+	case pb.DownloadStatus_DOWNLOAD_STATUS_FAILED:
+		return "下载失败"
+	case pb.DownloadStatus_DOWNLOAD_STATUS_CANCELLED:
+		return "已取消"
+	default:
+		return "未知状态"
+	}
+}
+
+// handleListDownloads 处理列出所有下载任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleListDownloads(core *DefsCore) error {
+	logger.Info("开始获取下载文件列表")
+	// 查询下载记录
+	records, totalCount, currentPage, pageSize, err := core.fs.Download().QueryDownload(
+		0,  // start
+		10, // pageSize
+	)
+	if err != nil {
+		logger.Errorf("获取下载文件列表失败: %v", err)
+		return err
+	}
+
+	// 打印下载文件列表
+	fmt.Println("\n下载文件列表:")
+	fmt.Printf("总记录数: %d, 当前页: %d, 每页记录数: %d\n", totalCount, currentPage, pageSize)
+	for i, record := range records {
+		fmt.Printf("\n文件 #%d:\n", i+1)
+		fmt.Printf("任务ID: %s\n", record.TaskId)
+		fmt.Printf("文件ID: %s\n", record.FileId)
+		fmt.Printf("文件名: %s\n", record.FileMeta.Name)
+		fmt.Printf("文件大小: %d 字节\n", record.FileMeta.Size())
+		fmt.Printf("状态: %s\n", getDownloadStatusText(record.Status))
+		if record.StartedAt > 0 {
+			fmt.Printf("开始时间: %s\n", time.Unix(record.StartedAt, 0).Format("2006-01-02 15:04:05"))
+		}
+		if record.FinishedAt > 0 {
+			fmt.Printf("完成时间: %s\n", time.Unix(record.FinishedAt, 0).Format("2006-01-02 15:04:05"))
+		}
+		fmt.Printf("------------------------\n")
+	}
+
+	logger.Infof("成功获取到 %d 个下载文件", len(records))
+	return nil
+}
+
+// handleSize 处理获取节点数量的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - args: 可选的运行模式过滤器
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleSize(core *DefsCore, args ...string) error {
+	if len(args) > 0 {
+		// 解析运行模式
+		mode, err := strconv.Atoi(args[0])
+		if err != nil || (mode != 1 && mode != 2) {
+			return fmt.Errorf("运行模式必须为 1(客户端) 或 2(服务端)")
+		}
+		size := core.fs.RoutingTable().Size(mode)
+		fmt.Printf("节点数量 (mode=%d): %d\n", mode, size)
+	} else {
+		size := core.fs.RoutingTable().Size()
+		fmt.Printf("总节点数量: %d\n", size)
+	}
+	return nil
+}
+
+// handleListPeers 处理列出所有节点的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - args: 可选的运行模式过滤器
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleListPeers(core *DefsCore, args ...string) error {
+	var peers []peer.ID
+	if len(args) > 0 {
+		// 解析运行模式
+		mode, err := strconv.Atoi(args[0])
+		if err != nil || (mode != 1 && mode != 2) {
+			return fmt.Errorf("运行模式必须为 1(客户端) 或 2(服务端)")
+		}
+		peers = core.fs.RoutingTable().ListPeers(mode)
+		logger.Infof("获取到 %d 个节点 (mode=%d)", len(peers), mode)
+	} else {
+		peers = core.fs.RoutingTable().ListPeers()
+		logger.Infof("获取到 %d 个节点", len(peers))
+	}
+
+	// 遍历并显示每个节点的信息
+	for i, p := range peers {
+		addrs := core.fs.Host().Peerstore().Addrs(p)
+		connected := core.fs.Host().Network().Connectedness(p) == network.Connected
+		protocols, _ := core.fs.Host().Peerstore().GetProtocols(p)
+
+		fmt.Printf("\n节点 #%d:\n"+
+			"ID: %s\n"+
+			"地址: %v\n"+
+			"连接状态: %v\n"+
+			"支持协议: %v\n"+
+			"------------------------\n",
+			i+1, p, addrs, connected, protocols)
+	}
+	return nil
+}
+
+// handlePrintPeers 处理打印节点详细信息的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - args: 可选的运行模式过滤器
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handlePrintPeers(core *DefsCore, args ...string) error {
+	if len(args) > 0 {
+		// 解析运行模式
+		mode, err := strconv.Atoi(args[0])
+		if err != nil || (mode != 1 && mode != 2) {
+			return fmt.Errorf("运行模式必须为 1(客户端) 或 2(服务端)")
+		}
+		core.fs.RoutingTable().Print(mode)
+	} else {
+		core.fs.RoutingTable().Print()
+	}
+	return nil
+}
+
+// handleNearestPeers 处理查找最近节点的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - args: 要查找的目标节点ID和运行模式
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleNearestPeers(core *DefsCore, args ...string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("用法: nearestPeers <目标节点ID> [mode] [count]")
+	}
+
+	// 解析目标节点ID
+	targetID, err := peer.Decode(args[0])
+	if err != nil {
+		return fmt.Errorf("解析目标节点ID失败: %v", err)
+	}
+
+	// 默认返回10个节点
+	count := 10
+	var mode int
+
+	// 解析可选参数
+	if len(args) > 1 {
+		// 解析运行模式
+		mode, err = strconv.Atoi(args[1])
+		if err != nil || (mode != 1 && mode != 2) {
+			return fmt.Errorf("运行模式必须为 1(客户端) 或 2(服务端)")
+		}
+	}
+
+	// 解析返回数量
+	if len(args) > 2 {
+		count, err = strconv.Atoi(args[2])
+		if err != nil || count <= 0 {
+			return fmt.Errorf("返回数量必须为正整数")
+		}
+	}
+
+	// 查找最近的节点
+	var peers []peer.ID
+	if mode == 1 || mode == 2 {
+		peers = core.fs.RoutingTable().NearestPeers(kbucket.ConvertKey(targetID.String()), count, mode)
+		logger.Infof("找到 %d 个最近的节点 (mode=%d)", len(peers), mode)
+	} else {
+		peers = core.fs.RoutingTable().NearestPeers(kbucket.ConvertKey(targetID.String()), count)
+		logger.Infof("找到 %d 个最近的节点", len(peers))
+	}
+
+	// 显示节点信息
+	fmt.Printf("\n最近的节点列表 (目标节点: %s):\n", targetID)
+	for i, p := range peers {
+		addrs := core.fs.Host().Peerstore().Addrs(p)
+		connected := core.fs.Host().Network().Connectedness(p) == network.Connected
+		protocols, _ := core.fs.Host().Peerstore().GetProtocols(p)
+
+		fmt.Printf("\n节点 #%d:\n"+
+			"ID: %s\n"+
+			"地址: %v\n"+
+			"连接状态: %v\n"+
+			"支持协议: %v\n"+
+			"------------------------\n",
+			i+1, p, addrs, connected, protocols)
+	}
+
+	return nil
+}
+
+// handleShowNodeID 处理显示当前节点ID的请求
+// 参数:
+//   - core: DeFS核心实例
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleShowNodeID(core *DefsCore) error {
+	// 获取本地节点ID
+	nodeID := core.fs.Host().ID()
+	fmt.Printf("当前节点ID: %s\n", nodeID.String())
+	fmt.Printf("(可用于 addPubSubPeer 命令)\n")
+	return nil
+}
+
+// handleShowNodeAddr 处理显示当前节点完整地址的请求
+// 参数:
+//   - core: DeFS核心实例
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleShowNodeAddr(core *DefsCore) error {
+	// 获取本地节点的所有地址
+	addrs := core.fs.Host().Addrs()
+	nodeID := core.fs.Host().ID()
+
+	fmt.Println("当前节点地址:")
+	for _, addr := range addrs {
+		// 将地址和节点ID组合成完整的多地址
+		fullAddr := addr.String() + "/p2p/" + nodeID.String()
+		fmt.Printf("%s\n", fullAddr)
+		fmt.Printf("(可用于 addRoutingPeer 命令)\n")
+	}
+	return nil
 }

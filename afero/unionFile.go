@@ -5,9 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
-
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
 )
 
 // UnionFile 实现了 afero.File 接口，当读取目录时（至少在覆盖层中存在）或打开文件进行写入时返回该接口。
@@ -397,7 +394,7 @@ func copyFile(layer Afero, name string, bfh File) error {
 
 	n, err := io.Copy(lfh, bfh) // 复制文件内容
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("复制文件失败:", err)
 		// 如果出现错误，清理文件
 		layer.Remove(name)
 		lfh.Close()
@@ -413,7 +410,7 @@ func copyFile(layer Afero, name string, bfh File) error {
 
 	err = lfh.Close() // 关闭覆盖层文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("关闭文件失败:", err)
 		layer.Remove(name)
 		lfh.Close()
 		return err // 返回错误信息
@@ -432,7 +429,7 @@ func copyFile(layer Afero, name string, bfh File) error {
 func copyToLayer(base Afero, layer Afero, name string) error {
 	bfh, err := base.Open(name) // 打开基础层文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开基础层文件失败:", err)
 		return err // 返回错误信息
 	}
 
@@ -454,7 +451,7 @@ func copyToLayer(base Afero, layer Afero, name string) error {
 func copyFileToLayer(base Afero, layer Afero, name string, flag int, perm os.FileMode) error {
 	bfh, err := base.OpenFile(name, flag, perm) // 打开基础层文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开基础层文件失败:", err)
 		return err // 返回错误信息
 	}
 	defer bfh.Close()

@@ -4,9 +4,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
 )
 
 // Glob 返回所有与模式匹配的文件名，如果没有匹配的文件则返回 nil。
@@ -21,7 +18,7 @@ func Glob(fs Afero, pattern string) (matches []string, err error) {
 	if !hasMeta(pattern) {
 		// Lstat 不支持所有文件系统。
 		if _, err = lstatIfPossible(fs, pattern); err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("Lstat操作失败:", err)
 			return nil, nil // 如果文件不存在，返回 nil
 		}
 		return []string{pattern}, nil // 返回匹配的文件名
@@ -78,7 +75,7 @@ func glob(fs Afero, dir, pattern string, matches []string) (m []string, e error)
 	for _, n := range names {
 		matched, err := filepath.Match(pattern, n) // 检查文件名是否与模式匹配
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("文件名匹配失败:", err)
 			return m, err // 如果发生错误，返回错误信息
 		}
 		if matched {

@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bpfs/defs/internal/common"
+	"github.com/bpfs/defs/v2/utils/common"
 )
 
 // FilePathSeparator 是文件路径的分隔符

@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
+	logging "github.com/dep2p/log"
 )
+
+var logger = logging.Logger("unzip")
 
 /*
 * @description 解压压缩包
@@ -21,7 +22,7 @@ func UnZip(source, destination string) error {
 	// 1. 打开压缩文件
 	reader, err := zip.OpenReader(source)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开压缩文件失败:", err)
 		return err
 	}
 	defer reader.Close()
@@ -29,7 +30,7 @@ func UnZip(source, destination string) error {
 	// 2. 获取绝对目标路径
 	destination, err = filepath.Abs(destination)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取绝对路径失败:", err)
 		return err
 	}
 
@@ -37,7 +38,7 @@ func UnZip(source, destination string) error {
 	for _, f := range reader.File {
 		err := unzipFile(f, destination)
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("解压文件失败:", err)
 			return err
 		}
 	}
@@ -55,21 +56,21 @@ func unzipFile(f *zip.File, destination string) error {
 	// 5. 创建目录树
 	if f.FileInfo().IsDir() {
 		if err := os.MkdirAll(filePath, os.ModePerm); err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("创建目录失败:", err)
 			return err
 		}
 		return nil
 	}
 
 	if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("创建目录失败:", err)
 		return err
 	}
 
 	// 6. 为解压后的内容创建一个目标文件
 	destinationFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("创建目标文件失败:", err)
 		return err
 	}
 	defer destinationFile.Close()
@@ -77,13 +78,13 @@ func unzipFile(f *zip.File, destination string) error {
 	// 7. 解压缩一个文件的内容，并将其复制到目标文件。
 	zippedFile, err := f.Open()
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开压缩文件失败:", err)
 		return err
 	}
 	defer zippedFile.Close()
 
 	if _, err := io.Copy(destinationFile, zippedFile); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("复制文件内容失败:", err)
 		return err
 	}
 	return nil

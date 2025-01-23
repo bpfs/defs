@@ -1,243 +1,75 @@
 package downloads
 
 import (
-	"sync"
+	"context"
 
-	"github.com/bpfs/defs/afero"
-	"github.com/bpfs/defs/debug"
-	"github.com/bpfs/defs/opts"
-	"github.com/bpfs/defs/util"
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/sirupsen/logrus"
+	"github.com/bpfs/defs/v2/database"
+	"github.com/bpfs/defs/v2/pb"
+
+	"github.com/bpfs/defs/v2/utils/paths"
+	"github.com/dep2p/go-dep2p/core/host"
+	"github.com/dep2p/pubsub"
 )
 
-// DownloadFile 包含待下载文件的详细信息及其分片信息
-type DownloadFile struct {
-	FileID      string   // 文件唯一标识
-	Name        string   // 文件名，包括扩展名，描述文件的名称
-	Size        int64    // 文件大小，单位为字节，描述文件的总大小
-	ContentType string   // MIME类型，表示文件的内容类型，如"text/plain"
-	Segments    sync.Map // 使用并发安全的 sync.Map 存储文件分片信息，键是分片索引 (int)，值是指向 FileSegment 结构体的指针 (*FileSegment)
-}
-
-// AddSegment 添加文件分片信息
-// 参数：
-//   - index: int 分片索引
-//   - segment: *FileSegment 文件分片信息
-func (df *DownloadFile) AddSegment(index int, segment *FileSegment) {
-	if segment != nil {
-		df.Segments.Store(index, segment)
-	}
-}
-
-// GetSegment 获取文件分片信息
-// 参数：
-//   - index: int 分片索引
+// NewDownloadFile 创建并初始化一个新的下载文件实例
+// 参数:
+//   - ctx: 上下文对象,用于控制请求的生命周期
+//   - db: 数据库实例,用于存储下载记录
+//   - h: libp2p主机实例,用于网络通信
+//   - nps: 发布订阅系统实例,用于网络寻址
+//   - fileID: 要下载的文件ID
+//   - ownerPriv: 文件所有者的私钥,用于身份验证和加密
 //
-// 返回值：
-//   - *FileSegment 文件分片信息
-//   - bool 表示是否找到该索引的分片
-func (df *DownloadFile) GetSegment(index int) (*FileSegment, bool) {
-	value, ok := df.Segments.Load(index)
-	if ok {
-		return value.(*FileSegment), true
-	}
-	return nil, false
-}
-
-// DeleteSegment 删除文件分片信息
-// 参数：
-//   - index: int 分片索引
-func (df *DownloadFile) DeleteSegment(index int) {
-	df.Segments.Delete(index)
-}
-
-// UpdateSegmentStatus 更新文件分片的下载状态
-// 参数：
-//   - index: int 分片索引
-//   - status: SegmentDownloadStatus 新的下载状态
-func (df *DownloadFile) UpdateSegmentStatus(index int, status SegmentDownloadStatus) {
-	if segment, ok := df.GetSegment(index); ok {
-		segment.Status = status
-		df.Segments.Store(index, segment)
-	}
-}
-
-// UpdateSegmentNodes 更新文件分片的节点信息
-// 参数：
-//   - index: int 分片索引
-//   - peers: []peer.ID 节点ID列表
-func (df *DownloadFile) UpdateSegmentNodes(index int, peers []peer.ID) {
-	if segment, ok := df.GetSegment(index); ok {
-		segment.UpdateNodes(peers)
-		df.Segments.Store(index, segment)
-	}
-}
-
-// ListAllSegments 列出所有文件分片信息
-// 返回值：
-//   - map[int]*FileSegment 所有文件分片信息的映射
-func (df *DownloadFile) ListAllSegments() map[int]*FileSegment {
-	allSegments := make(map[int]*FileSegment)
-	df.Segments.Range(func(key, value interface{}) bool {
-		allSegments[key.(int)] = value.(*FileSegment)
-		return true
-	})
-	return allSegments
-}
-
-// GetSegmentsToDownload 获取需要下载的文件片段索引
-// 返回值：
-//   - []int: 需要下载的文件片段索引数组
-func (df *DownloadFile) GetSegmentsToDownload() []int {
-	var segmentsToDownload []int // 用于存储需要下载的文件片段索引
-
-	df.Segments.Range(func(key, value interface{}) bool {
-		index := key.(int)
-		segment := value.(*FileSegment)
-		if segment.IsStatus(SegmentStatusPending) || segment.IsStatus(SegmentStatusFailed) {
-			if segment.HasActiveNodes() {
-				segmentsToDownload = append(segmentsToDownload, index)
-			}
-		}
-		return true
-	})
-
-	return segmentsToDownload
-}
-
-// GetPendingSegmentsForNode 获取特定节点下的待下载文件片段索引和唯一标识的映射
-// 参数：
-//   - ID: peer.ID 节点ID
-//
-// 返回值：
-//   - map[int]string: 待下载文件片段的索引和唯一标识的映射
-func (df *DownloadFile) GetPendingSegmentsForNode(ID peer.ID) map[int]string {
-	pendingSegments := make(map[int]string) // 初始化待下载文件片段的索引和唯一标识的映射
-
-	df.Segments.Range(func(key, value interface{}) bool {
-		index := key.(int)
-		segment := value.(*FileSegment)
-		if segment.IsStatus(SegmentStatusPending) && segment.IsNodeActive(ID) {
-			pendingSegments[index] = segment.GetSegmentID()
-		}
-		return true
-	})
-
-	return pendingSegments
-}
-
-// SetNodeInactive 将特定节点下的所有文件片段的节点状态设置为不可用
-// 参数：
-//   - ID: peer.ID 节点ID
-func (df *DownloadFile) SetNodeInactive(ID peer.ID) {
-	df.Segments.Range(func(key, value interface{}) bool {
-		segment := value.(*FileSegment)
-		segment.SetNodeInactive(ID)
-		return true
-	})
-}
-
-// DownloadCompleteCount 检查已经完成的数量
-// 返回值：
-//   - int: 已经完成的文件片段数量
-func (df *DownloadFile) DownloadCompleteCount() int {
-	count := 0
-	df.Segments.Range(func(key, value interface{}) bool {
-		segment := value.(*FileSegment)
-		if segment.Status == SegmentStatusCompleted {
-			count++
-		}
-		return true
-	})
-	return count
-}
-
-// SetSegmentStatus 设置文件片段的下载状态
-// 参数：
-//   - index: int 文件片段的索引
-//   - status: SegmentDownloadStatus 文件片段的下载状态
-func (df *DownloadFile) SetSegmentStatus(index int, status SegmentDownloadStatus) {
-	if segment, ok := df.GetSegment(index); ok {
-		segment.Status = status
-		df.Segments.Store(index, segment)
-	}
-}
-
-// IsSegmentCompleted 检查文件片段是否存在以及是否已经下载完成
-// 参数：
-//   - opt: *opts.Options 文件存储选项配置
-//   - afe: afero.Afero 文件系统接口
-//   - index: int 文件片段的索引
-//   - subDir: string 子目录路径
-//
-// 返回值：
-//   - bool: 文件片段是否存在
-//   - bool: 文件片段是否下载完成
+// 返回值:
+//   - *pb.DownloadOperationInfo: 下载操作信息,包含任务ID、文件路径等
 //   - error: 错误信息
-func (df *DownloadFile) IsSegmentCompleted(opt *opts.Options, afe afero.Afero, index int, subDir string) (bool, bool, error) {
-	segment, exists := df.GetSegment(index)
-	if !exists {
-		return false, false, nil
-	}
-
-	// 下载状态
-	if segment.Status != SegmentStatusCompleted {
-		return true, false, nil
-	}
-
-	// 读取文件
-	sliceContent, err := util.Read(opt, afe, subDir, segment.SegmentID)
+//
+// 功能:
+//   - 生成下载任务ID和密钥分片
+//   - 通过P2P网络获取文件信息
+//   - 创建下载记录并保存到数据库
+func NewDownloadFile(ctx context.Context, db *database.DB, h host.Host, nps *pubsub.NodePubSub,
+	taskID string,
+	fileID string,
+	pubkeyHash []byte,
+	firstKeyShare []byte,
+) (*pb.DownloadOperationInfo, error) {
+	// 通过P2P网络发送文件信息请求并等待响应
+	response, err := RequestFileInfoPubSub(ctx, h, nps, taskID, fileID, pubkeyHash)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
-		return true, false, err
+		logger.Errorf("发送文件信息请求并等待响应失败: %v", err)
+		return nil, err
 	}
 
-	// 如果文件片段为空，则设置为下载失败
-	if len(sliceContent) == 0 {
-		df.SetSegmentStatus(index, SegmentStatusFailed)
-		return true, false, nil
+	// 设置下载任务的初始状态为待下载(PENDING)
+	status := pb.DownloadStatus_DOWNLOAD_STATUS_PENDING
+	// 获取系统默认的下载文件保存路径
+	filePath := paths.DefaultDownloadPath()
+
+	// 创建下载文件记录并保存到数据库中
+	_, err = CreateDownloadFileRecord(
+		db.BadgerDB,         // 数据库实例
+		taskID,              // 任务ID
+		fileID,              // 文件ID
+		pubkeyHash,          // 公钥哈希
+		firstKeyShare,       // 第一个密钥分片
+		filePath,            // 文件保存路径
+		response.FileMeta,   // 文件元数据
+		response.SliceTable, // 文件分片表
+		status,              // 下载状态
+	)
+	if err != nil {
+		logger.Errorf("创建下载文件记录失败: %v", err)
+		return nil, err
 	}
 
-	return true, true, nil
-}
-
-// CheckMissingNodes 检查文件信息中不是纠删码片段的片段，是否存在节点ID是空的
-// 如果有存在节点ID为空的片段，返回true，表示还有切片的节点ID没有拿到，否则返回false
-// 返回值：
-//   - bool: 是否存在节点ID为空的片段
-func (df *DownloadFile) CheckMissingNodes() bool {
-	missingNodes := false
-	df.Segments.Range(func(key, value interface{}) bool {
-		segment := value.(*FileSegment)
-		if !segment.IsRsCodes && !segment.HasNodes() {
-			missingNodes = true
-			return false
-		}
-		return true
-	})
-	return missingNodes
-}
-
-// AddSegmentNodes 添加文件片段所在的节点信息
-// 参数：
-//   - idx: int 文件片段的索引。
-//   - peers: []peer.ID 文件片段所在的节点ID。
-func (df *DownloadFile) AddSegmentNodes(idx int, peers []peer.ID) {
-	if segment, ok := df.GetSegment(idx); ok {
-		segment.UpdateNodes(peers)
-		df.Segments.Store(idx, segment)
+	// 构造并返回下载操作信息对象
+	downloadInfo := &pb.DownloadOperationInfo{
+		TaskId:   taskID,            // 任务ID
+		FilePath: filePath,          // 文件保存路径
+		FileId:   fileID,            // 文件ID
+		FileMeta: response.FileMeta, // 文件元数据
 	}
-}
 
-// SegmentCount 返回当前文件的分片数量
-// 返回值：
-//   - int: 当前文件的分片数量
-func (df *DownloadFile) SegmentCount() int {
-	count := 0
-	df.Segments.Range(func(key, value interface{}) bool {
-		count++
-		return true
-	})
-	return count
+	return downloadInfo, nil
 }

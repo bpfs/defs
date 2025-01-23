@@ -5,7 +5,7 @@ DeP2P 仍在开发中。这意味着我们的协议可能存在问题，或者�
 
 ## 报告漏洞
 
-如果您发现可能影响实时部署的漏洞（例如，通过公开远程执行漏洞），请[**私下报告**](https://github.com/bpfs/defs/security/advisories/new)。
+如果您发现可能影响实时部署的漏洞（例如，通过公开远程执行漏洞），请[**私下报告**](https://github.com/bpfs/defs/v2/security/advisories/new)。
 请**不要提交公共问题**。
 
 如果问题是无法立即利用的实施弱点或尚未部署的问题，请公开讨论。
@@ -13,4 +13,4 @@ DeP2P 仍在开发中。这意味着我们的协议可能存在问题，或者�
 
 ## 报告非安全错误
 
-对于非安全错误，请简单地提交 GitHub [问题](https://github.com/bpfs/defs/issues/new)。
+对于非安全错误，请简单地提交 GitHub [问题](https://github.com/bpfs/defs/v2/issues/new)。

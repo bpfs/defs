@@ -9,8 +9,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 // 定义或生成prime
@@ -35,9 +33,9 @@ func TestGenerateSharesAndRecoverSecret(t *testing.T) {
 	}
 
 	// 打印所有生成的份额
-	logrus.Printf("生成的所有密钥分片:\n")
+	logger.Infof("生成的所有密钥分片:\n")
 	for i, share := range shares {
-		logrus.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
+		logger.Infof("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
 	}
 
 	// 随机选择k个份额来恢复秘密
@@ -47,9 +45,9 @@ func TestGenerateSharesAndRecoverSecret(t *testing.T) {
 	}
 
 	// 打印用于恢复的份额
-	logrus.Printf("用于恢复的密钥分片:\n")
+	logger.Infof("用于恢复的密钥分片:\n")
 	for i, share := range selectedShares {
-		logrus.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
+		logger.Infof("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
 	}
 
 	// 使用RecoverSecret恢复秘密
@@ -62,7 +60,7 @@ func TestGenerateSharesAndRecoverSecret(t *testing.T) {
 	if !reflect.DeepEqual(secret, recoveredSecretBytes) {
 		t.Errorf("原始秘密与恢复后的秘密不匹配\n原始: %s\n恢复: %s", secret, recoveredSecretBytes)
 	} else {
-		logrus.Printf("\n成功恢复秘密\n原始: %s\n恢复: %s", secret, recoveredSecretBytes)
+		logger.Infof("\n成功恢复秘密\n原始: %s\n恢复: %s", secret, recoveredSecretBytes)
 	}
 }
 
@@ -116,9 +114,9 @@ func TestGenerateSharesWithFixedShare(t *testing.T) {
 	}
 
 	// 打印所有生成的份额，包括固定份额
-	logrus.Println("生成的所有份额:")
+	logger.Infof("生成的所有份额:")
 	for i, share := range shares {
-		logrus.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
+		logger.Infof("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
 	}
 
 	// 随机选择k个份额来恢复秘密，确保包括固定份额
@@ -126,9 +124,9 @@ func TestGenerateSharesWithFixedShare(t *testing.T) {
 	selectedShares := append(shares[:1], shares[1:k]...) // 此处简化选择过程，直接选取前k个，包含固定份额
 
 	// 打印用于恢复的份额
-	logrus.Println("用于恢复的份额:")
+	logger.Infof("用于恢复的份额:")
 	for i, share := range selectedShares {
-		logrus.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
+		logger.Infof("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
 	}
 
 	// 使用RecoverSecret恢复秘密
@@ -141,7 +139,7 @@ func TestGenerateSharesWithFixedShare(t *testing.T) {
 	if !reflect.DeepEqual(secret, recoveredSecretBytes) {
 		t.Errorf("原始秘密与恢复后的秘密不匹配\n原始: %s\n恢复: %s", secret, recoveredSecretBytes)
 	} else {
-		logrus.Printf("\n成功恢复秘密\n原始: %s\n恢复: %s", secret, recoveredSecretBytes)
+		logger.Infof("\n成功恢复秘密\n原始: %s\n恢复: %s", secret, recoveredSecretBytes)
 	}
 }
 

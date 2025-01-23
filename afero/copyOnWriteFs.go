@@ -6,9 +6,6 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
-
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
 )
 
 // 确保 CopyOnWriteFs 实现了 Lstater 接口
@@ -17,7 +14,7 @@ var _ Lstater = (*CopyOnWriteFs)(nil)
 // CopyOnWriteFs 是一个联合文件系统：一个只读的基础文件系统，
 // 在其上可能有一个可写的层。对文件系统的更改只会在覆盖层中进行：
 // 更改基础层中存在但覆盖层中不存在的文件会将文件复制到覆盖层
-// （“更改”包括调用例如 Chtimes()、Chmod() 和 Chown() 等函数）。
+// （"更改"包括调用例如 Chtimes()、Chmod() 和 Chown() 等函数）。
 //
 // 读取目录当前仅通过 Open() 支持，而不是 OpenFile()。
 type CopyOnWriteFs struct {
@@ -49,7 +46,7 @@ func (u *CopyOnWriteFs) isBaseFile(name string) (bool, error) {
 	}
 	_, err := u.base.Stat(name) // 检查文件是否在基础层中
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("检查文件是否在基础层中失败:", err)
 		if oerr, ok := err.(*os.PathError); ok {
 			if oerr.Err == os.ErrNotExist || oerr.Err == syscall.ENOENT || oerr.Err == syscall.ENOTDIR {
 				return false, nil // 如果文件不存在，返回 false
@@ -83,13 +80,13 @@ func (u *CopyOnWriteFs) copyToLayer(name string) error {
 func (u *CopyOnWriteFs) Chtimes(name string, atime, mtime time.Time) error {
 	b, err := u.isBaseFile(name) // 判断文件是否在基础层中
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("判断文件是否在基础层中失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 
 	if b {
 		if err := u.copyToLayer(name); err != nil { // 将文件复制到覆盖层
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("将文件复制到覆盖层失败:", err)
 			return err // 如果发生错误，返回错误信息
 		}
 	}
@@ -106,13 +103,13 @@ func (u *CopyOnWriteFs) Chtimes(name string, atime, mtime time.Time) error {
 func (u *CopyOnWriteFs) Chmod(name string, mode os.FileMode) error {
 	b, err := u.isBaseFile(name) // 判断文件是否在基础层中
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("判断文件是否在基础层中失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 
 	if b {
 		if err := u.copyToLayer(name); err != nil { // 将文件复制到覆盖层
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("将文件复制到覆盖层失败:", err)
 			return err // 如果发生错误，返回错误信息
 		}
 	}
@@ -130,13 +127,13 @@ func (u *CopyOnWriteFs) Chmod(name string, mode os.FileMode) error {
 func (u *CopyOnWriteFs) Chown(name string, uid, gid int) error {
 	b, err := u.isBaseFile(name) // 判断文件是否在基础层中
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("判断文件是否在基础层中失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 
 	if b {
 		if err := u.copyToLayer(name); err != nil { // 将文件复制到覆盖层
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("将文件复制到覆盖层失败:", err)
 			return err // 如果发生错误，返回错误信息
 		}
 	}
@@ -154,7 +151,7 @@ func (u *CopyOnWriteFs) Chown(name string, uid, gid int) error {
 func (u *CopyOnWriteFs) Stat(name string) (os.FileInfo, error) {
 	fi, err := u.layer.Stat(name) // 获取覆盖层中文件的信息
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取覆盖层中文件信息失败:", err)
 		isNotExist := u.isNotExist(err) // 判断错误是否是文件不存在
 		if isNotExist {
 			return u.base.Stat(name) // 获取基础层中文件的信息
@@ -270,7 +267,7 @@ func (u *CopyOnWriteFs) Rename(oldname, newname string) error {
 	// 检查文件是否在基础层
 	b, err := u.isBaseFile(oldname)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("检查文件是否在基础层失败:", err)
 		return err
 	}
 
@@ -345,7 +342,7 @@ func (u *CopyOnWriteFs) OpenFile(name string, flag int, perm os.FileMode) (File,
 	// 检查文件是否在基础层
 	b, err := u.isBaseFile(name)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("检查文件是否在基础层失败:", err)
 		return nil, err
 	}
 
@@ -354,7 +351,7 @@ func (u *CopyOnWriteFs) OpenFile(name string, flag int, perm os.FileMode) (File,
 		if b {
 			// 将文件从基础层复制到覆盖层
 			if err = u.copyToLayer(name); err != nil {
-				logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+				logger.Error("将文件从基础层复制到覆盖层失败:", err)
 				return nil, err
 			}
 			// 打开覆盖层中的文件
@@ -370,7 +367,7 @@ func (u *CopyOnWriteFs) OpenFile(name string, flag int, perm os.FileMode) (File,
 		if isaDir {
 			// 创建覆盖层中的目录
 			if err = u.layer.MkdirAll(dir, 0o777); err != nil {
-				logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+				logger.Error("创建覆盖层中的目录失败:", err)
 				return nil, err
 			}
 			// 打开覆盖层中的文件
@@ -380,7 +377,7 @@ func (u *CopyOnWriteFs) OpenFile(name string, flag int, perm os.FileMode) (File,
 		// 检查目录是否存在于覆盖层
 		isaDir, err = IsDir(u.layer, dir)
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("检查目录是否存在于覆盖层失败:", err)
 			return nil, err
 		}
 		if isaDir {
@@ -409,7 +406,7 @@ func (u *CopyOnWriteFs) Open(name string) (File, error) {
 	// 检查文件是否在基础层
 	b, err := u.isBaseFile(name)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("检查文件是否在基础层失败:", err)
 		return nil, err
 	}
 
@@ -421,7 +418,7 @@ func (u *CopyOnWriteFs) Open(name string) (File, error) {
 	// 检查覆盖层中的文件是否是目录
 	dir, err := IsDir(u.layer, name)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("检查覆盖层中的文件是否是目录失败:", err)
 		return nil, err
 	}
 	if !dir {
@@ -456,7 +453,7 @@ func (u *CopyOnWriteFs) Mkdir(name string, perm os.FileMode) error {
 	// 检查基础层中是否存在同名目录
 	dir, err := IsDir(u.base, name)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("检查基础层中是否存在同名目录失败:", err)
 		return u.layer.MkdirAll(name, perm)
 	}
 
@@ -485,7 +482,7 @@ func (u *CopyOnWriteFs) MkdirAll(name string, perm os.FileMode) error {
 	// 检查基础层中是否存在同名目录
 	dir, err := IsDir(u.base, name)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("检查基础层中是否存在同名目录失败:", err)
 		return u.layer.MkdirAll(name, perm)
 	}
 

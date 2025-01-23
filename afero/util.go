@@ -9,8 +9,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
@@ -42,7 +40,7 @@ func WriteReader(fs Afero, path string, r io.Reader) (err error) {
 
 	file, err := fs.Create(path) // 创建文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return
 	}
 	defer file.Close()
@@ -66,14 +64,14 @@ func SafeWriteReader(fs Afero, path string, r io.Reader) (err error) {
 	if ospath != "" {
 		err = fs.MkdirAll(ospath, 0o777) // 创建所有目录
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("应用选项失败:", err)
 			return // 返回错误信息
 		}
 	}
 
 	exists, err := Exists(fs, path) // 检查文件是否存在
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return // 返回错误信息
 	}
 	if exists {
@@ -82,7 +80,7 @@ func SafeWriteReader(fs Afero, path string, r io.Reader) (err error) {
 
 	file, err := fs.Create(path) // 创建文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return
 	}
 	defer file.Close()
@@ -124,7 +122,7 @@ func GetTempDir(fs Afero, subPath string) string {
 
 		err := fs.MkdirAll(dir, 0o777) // 创建所有目录
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("应用选项失败:", err)
 			panic(err) // 如果创建目录失败，触发恐慌
 		}
 		dir = addSlash(dir) // 添加尾部斜杠
@@ -190,7 +188,7 @@ func NeuterAccents(s string) string {
 func FileContainsBytes(fs Afero, filename string, subslice []byte) (bool, error) {
 	f, err := fs.Open(filename) // 打开文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return false, err // 返回错误信息
 	}
 
@@ -211,7 +209,7 @@ func FileContainsBytes(fs Afero, filename string, subslice []byte) (bool, error)
 func FileContainsAnyBytes(fs Afero, filename string, subslices [][]byte) (bool, error) {
 	f, err := fs.Open(filename) // 打开文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return false, err // 返回错误信息
 	}
 
@@ -311,7 +309,7 @@ func DirExists(fs Afero, path string) (bool, error) {
 func IsDir(fs Afero, path string) (bool, error) {
 	fi, err := fs.Stat(path) // 获取文件信息
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return false, err // 返回错误信息
 	}
 
@@ -333,21 +331,21 @@ func IsEmpty(fs Afero, path string) (bool, error) {
 
 	fi, err := fs.Stat(path) // 获取文件信息
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return false, err // 返回错误信息
 	}
 
 	if fi.IsDir() {
 		f, err := fs.Open(path) // 打开目录
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("应用选项失败:", err)
 			return false, err // 返回错误信息
 		}
 		defer f.Close()
 
 		list, err := f.Readdir(-1) // 读取目录内容
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("应用选项失败:", err)
 			return false, err // 返回错误信息
 		}
 		return len(list) == 0, nil // 返回目录是否为空

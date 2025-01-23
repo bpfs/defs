@@ -2,15 +2,18 @@ package reedsolomon_test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"math/rand"
 
-	"github.com/bpfs/defs/reedsolomon"
-	"github.com/sirupsen/logrus"
+	"github.com/bpfs/defs/v2/reedsolomon"
 )
 
+// fillRandom 用随机数据填充字节切片
+// 参数:
+//   - p: 要填充的字节切片
 func fillRandom(p []byte) {
 	for i := 0; i < len(p); i += 7 {
 		val := rand.Int63()
@@ -21,60 +24,60 @@ func fillRandom(p []byte) {
 	}
 }
 
-// Simple example of how to use all functions of the Encoder.
-// Note that all error checks have been removed to keep it short.
+// ExampleEncoder 演示了如何使用编码器的所有功能
+// 注意：为了保持简洁，所有错误检查都已被移除
 func ExampleEncoder() {
-	// Create some sample data
+	// 创建一些示例数据
 	var data = make([]byte, 250000)
 	fillRandom(data)
 
-	// Create an encoder with 17 data and 3 parity slices.
+	// 创建一个具有17个数据分片和3个奇偶校验分片的编码器
 	enc, _ := reedsolomon.New(17, 3)
 
-	// Split the data into shards
+	// 将数据分割成分片
 	shards, _ := enc.Split(data)
 
-	// Encode the parity set
+	// 编码奇偶校验集
 	_ = enc.Encode(shards)
 
-	// Verify the parity set
+	// 验证奇偶校验集
 	ok, _ := enc.Verify(shards)
 	if ok {
-		logrus.Println("ok")
+		fmt.Println("ok")
 	}
 
-	// Delete two shards
+	// 删除两个分片
 	shards[10], shards[11] = nil, nil
 
-	// Reconstruct the shards
+	// 重建分片
 	_ = enc.Reconstruct(shards)
 
-	// Verify the data set
+	// 验证数据集
 	ok, _ = enc.Verify(shards)
 	if ok {
-		logrus.Println("ok")
+		fmt.Println("ok")
 	}
 	// Output: ok
 	// ok
 }
 
-// Simple example of how to use all functions of the EncoderIdx.
-// Note that all error checks have been removed to keep it short.
+// ExampleEncoder_EncodeIdx 演示了如何使用EncoderIdx的所有功能
+// 注意：为了保持简洁，所有错误检查都已被移除
 func ExampleEncoder_EncodeIdx() {
 	const dataShards = 7
 	const erasureShards = 3
 
-	// Create some sample data
+	// 创建一些示例数据
 	var data = make([]byte, 250000)
 	fillRandom(data)
 
-	// Create an encoder with 7 data and 3 parity slices.
+	// 创建一个具有7个数据分片和3个奇偶校验分片的编码器
 	enc, _ := reedsolomon.New(dataShards, erasureShards)
 
-	// Split the data into shards
+	// 将数据分割成分片
 	shards, _ := enc.Split(data)
 
-	// Zero erasure shards.
+	// 将擦除分片置零
 	for i := 0; i < erasureShards; i++ {
 		clear := shards[dataShards+i]
 		for j := range clear {
@@ -83,46 +86,45 @@ func ExampleEncoder_EncodeIdx() {
 	}
 
 	for i := 0; i < dataShards; i++ {
-		// Encode one shard at the time.
-		// Note how this gives linear access.
-		// There is however no requirement on shards being delivered in order.
-		// All parity shards will be updated on each run.
+		// 一次编码一个分片
+		// 注意这如何提供线性访问
+		// 但是分片不需要按顺序传递
+		// 每次运行都会更新所有奇偶校验分片
 		_ = enc.EncodeIdx(shards[i], i, shards[dataShards:])
 	}
 
-	// Verify the parity set
+	// 验证奇偶校验集
 	ok, err := enc.Verify(shards)
 	if ok {
-		logrus.Println("ok")
+		fmt.Println("ok")
 	} else {
-		logrus.Println(err)
+		fmt.Println(err)
 	}
 
-	// Delete two shards
+	// 删除两个分片
 	shards[dataShards-2], shards[dataShards-2] = nil, nil
 
-	// Reconstruct the shards
+	// 重建分片
 	_ = enc.Reconstruct(shards)
 
-	// Verify the data set
+	// 验证数据集
 	ok, err = enc.Verify(shards)
 	if ok {
-		logrus.Println("ok")
+		fmt.Println("ok")
 	} else {
-		logrus.Println(err)
+		fmt.Println(err)
 	}
 	// Output: ok
 	// ok
 }
 
-// This demonstrates that shards can be arbitrary sliced and
-// merged and still remain valid.
+// ExampleEncoder_slicing 演示了分片可以被任意切片和合并，并且仍然保持有效
 func ExampleEncoder_slicing() {
-	// Create some sample data
+	// 创建一些示例数据
 	var data = make([]byte, 250000)
 	fillRandom(data)
 
-	// Create 5 data slices of 50000 elements each
+	// 创建5个各包含50000个元素的数据分片
 	enc, _ := reedsolomon.New(5, 3)
 	shards, _ := enc.Split(data)
 	err := enc.Encode(shards)
@@ -130,43 +132,43 @@ func ExampleEncoder_slicing() {
 		panic(err)
 	}
 
-	// Check that it verifies
+	// 检查是否验证通过
 	ok, err := enc.Verify(shards)
 	if ok && err == nil {
-		logrus.Println("encode ok")
+		fmt.Println("encode ok")
 	}
 
-	// Split the data set of 50000 elements into two of 25000
+	// 将50000个元素的数据集分割成两个25000个元素的集合
 	splitA := make([][]byte, 8)
 	splitB := make([][]byte, 8)
 
-	// Merge into a 100000 element set
+	// 合并成一个100000个元素的集合
 	merged := make([][]byte, 8)
 
-	// Split/merge the shards
+	// 分割/合并分片
 	for i := range shards {
 		splitA[i] = shards[i][:25000]
 		splitB[i] = shards[i][25000:]
 
-		// Concencate it to itself
+		// 将其与自身连接
 		merged[i] = append(make([]byte, 0, len(shards[i])*2), shards[i]...)
 		merged[i] = append(merged[i], shards[i]...)
 	}
 
-	// Each part should still verify as ok.
+	// 每个部分应该仍然验证为ok
 	ok, err = enc.Verify(shards)
 	if ok && err == nil {
-		logrus.Println("splitA ok")
+		fmt.Println("splitA ok")
 	}
 
 	ok, err = enc.Verify(splitB)
 	if ok && err == nil {
-		logrus.Println("splitB ok")
+		fmt.Println("splitB ok")
 	}
 
 	ok, err = enc.Verify(merged)
 	if ok && err == nil {
-		logrus.Println("merge ok")
+		fmt.Println("merge ok")
 	}
 	// Output: encode ok
 	// splitA ok
@@ -174,17 +176,16 @@ func ExampleEncoder_slicing() {
 	// merge ok
 }
 
-// This demonstrates that shards can xor'ed and
-// still remain a valid set.
+// ExampleEncoder_xor 演示了分片可以进行异或操作并且仍然保持有效集合
 //
-// The xor value must be the same for element 'n' in each shard,
-// except if you xor with a similar sized encoded shard set.
+// 每个分片中的第'n'个元素的异或值必须相同，
+// 除非你与类似大小的编码分片集进行异或
 func ExampleEncoder_xor() {
-	// Create some sample data
+	// 创建一些示例数据
 	var data = make([]byte, 25000)
 	fillRandom(data)
 
-	// Create 5 data slices of 5000 elements each
+	// 创建5个各包含5000个元素的数据分片
 	enc, _ := reedsolomon.New(5, 3)
 	shards, _ := enc.Split(data)
 	err := enc.Encode(shards)
@@ -192,17 +193,17 @@ func ExampleEncoder_xor() {
 		panic(err)
 	}
 
-	// Check that it verifies
+	// 检查是否验证通过
 	ok, err := enc.Verify(shards)
 	if !ok || err != nil {
-		logrus.Println("falied initial verify", err)
+		fmt.Println("falied initial verify", err)
 	}
 
-	// Create an xor'ed set
+	// 创建一个异或后的集合
 	xored := make([][]byte, 8)
 
-	// We xor by the index, so you can see that the xor can change,
-	// It should however be constant vertically through your slices.
+	// 我们按索引进行异或，所以你可以看到异或可以改变，
+	// 但是它应该在你的分片中垂直保持恒定
 	for i := range shards {
 		xored[i] = make([]byte, len(shards[i]))
 		for j := range xored[i] {
@@ -210,25 +211,22 @@ func ExampleEncoder_xor() {
 		}
 	}
 
-	// Each part should still verify as ok.
+	// 每个部分应该仍然验证为ok
 	ok, err = enc.Verify(xored)
 	if ok && err == nil {
-		logrus.Println("verified ok after xor")
+		fmt.Println("verified ok after xor")
 	}
 	// Output: verified ok after xor
 }
 
-// This will show a simple stream encoder where we encode from
-// a []io.Reader which contain a reader for each shard.
+// ExampleStreamEncoder 展示了一个简单的流编码器，我们从包含每个分片的读取器的[]io.Reader中进行编码
 //
-// Input and output can be exchanged with files, network streams
-// or what may suit your needs.
+// 输入和输出可以与文件、网络流或适合你需求的任何东西交换
 func ExampleStreamEncoder() {
 	dataShards := 5
 	parityShards := 2
 
-	// Create a StreamEncoder with the number of data and
-	// parity shards.
+	// 创建一个具有指定数据和奇偶校验分片数量的StreamEncoder
 	rs, err := reedsolomon.NewStream(dataShards, parityShards)
 	if err != nil {
 		log.Fatal(err)
@@ -236,31 +234,31 @@ func ExampleStreamEncoder() {
 
 	shardSize := 50000
 
-	// Create input data shards.
+	// 创建输入数据分片
 	input := make([][]byte, dataShards)
 	for s := range input {
 		input[s] = make([]byte, shardSize)
 		fillRandom(input[s])
 	}
 
-	// Convert our buffers to io.Readers
+	// 将我们的缓冲区转换为io.Readers
 	readers := make([]io.Reader, dataShards)
 	for i := range readers {
 		readers[i] = io.Reader(bytes.NewBuffer(input[i]))
 	}
 
-	// Create our output io.Writers
+	// 创建我们的输出io.Writers
 	out := make([]io.Writer, parityShards)
 	for i := range out {
 		out[i] = ioutil.Discard
 	}
 
-	// Encode from input to output.
+	// 从输入编码到输出
 	err = rs.Encode(readers, out)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	logrus.Println("ok")
+	fmt.Println("ok")
 	// OUTPUT: ok
 }

@@ -46,10 +46,12 @@ func (o *gcsFileResource) Close() error {
 // maybeCloseIo 关闭 IO 资源（读和写）
 func (o *gcsFileResource) maybeCloseIo() error {
 	if err := o.maybeCloseReader(); err != nil {
-		return fmt.Errorf("error closing reader: %v", err)
+		logger.Error("关闭读取器时发生错误", err)
+		return fmt.Errorf("关闭读取器时发生错误: %v", err)
 	}
 	if err := o.maybeCloseWriter(); err != nil {
-		return fmt.Errorf("error closing writer: %v", err)
+		logger.Error("关闭写入器时发生错误", err)
+		return fmt.Errorf("关闭写入器时发生错误: %v", err)
 	}
 
 	return nil
@@ -61,6 +63,7 @@ func (o *gcsFileResource) maybeCloseReader() error {
 		return nil
 	}
 	if err := o.reader.Close(); err != nil {
+		logger.Error("关闭读取器失败", err)
 		return err
 	}
 	o.reader = nil
@@ -79,18 +82,20 @@ func (o *gcsFileResource) maybeCloseWriter() error {
 	if o.currentGcsSize > o.offset {
 		currentFile, err := o.obj.NewRangeReader(o.ctx, o.offset, -1)
 		if err != nil {
+			logger.Error("无法模拟部分写入，关闭（因此整个文件写入）未提交到 GCS", err)
 			return fmt.Errorf(
-				"couldn't simulate a partial write; the closing (and thus"+
-					" the whole file write) is NOT committed to GCS. %v", err)
+				"无法模拟部分写入，关闭（因此整个文件写入）未提交到 GCS: %v", err)
 		}
 		if currentFile != nil && currentFile.Remain() > 0 {
 			if _, err := io.Copy(o.writer, currentFile); err != nil {
-				return fmt.Errorf("error writing: %v", err)
+				logger.Error("写入时发生错误", err)
+				return fmt.Errorf("写入时发生错误: %v", err)
 			}
 		}
 	}
 
 	if err := o.writer.Close(); err != nil {
+		logger.Error("关闭写入器失败", err)
 		return err
 	}
 	o.writer = nil
@@ -124,6 +129,7 @@ func (o *gcsFileResource) ReadAt(p []byte, off int64) (n int, err error) {
 		var info *FileInfo
 		info, err = newFileInfo(o.name, o.fs, o.fileMode)
 		if err != nil {
+			logger.Error("创建文件信息时发生错误", err)
 			return 0, err
 		}
 
@@ -135,12 +141,14 @@ func (o *gcsFileResource) ReadAt(p []byte, off int64) (n int, err error) {
 
 	// 如果任何 writer 已经写入任何内容；首先提交它，以便我们可以读回它。
 	if err = o.maybeCloseIo(); err != nil {
+		logger.Error("关闭 IO 时发生错误", err)
 		return 0, err
 	}
 
 	// 然后在正确的偏移量读取。
 	r, err := o.obj.NewRangeReader(o.ctx, off, -1)
 	if err != nil {
+		logger.Error("创建范围读取器时发生错误", err)
 		return 0, err
 	}
 	o.reader = r
@@ -169,6 +177,7 @@ func (o *gcsFileResource) WriteAt(b []byte, off int64) (n int, err error) {
 
 	// 确保 reader 必须重新打开，如果 writer 在另一个偏移量处活动，则首先提交它
 	if err = o.maybeCloseIo(); err != nil {
+		logger.Error("关闭 IO 时发生错误", err)
 		return 0, err
 	}
 
@@ -185,6 +194,7 @@ func (o *gcsFileResource) WriteAt(b []byte, off int64) (n int, err error) {
 	objAttrs, err := o.obj.Attrs(o.ctx)
 	if err != nil {
 		if off > 0 {
+			logger.Error("写入到不存在的文件", err)
 			return 0, err // 写入到一个不存在的文件
 		}
 
@@ -194,6 +204,7 @@ func (o *gcsFileResource) WriteAt(b []byte, off int64) (n int, err error) {
 	}
 
 	if off > o.currentGcsSize {
+		logger.Error("偏移量超出范围", nil)
 		return 0, ErrOutOfRange
 	}
 
@@ -201,12 +212,15 @@ func (o *gcsFileResource) WriteAt(b []byte, off int64) (n int, err error) {
 		var r stiface.Reader
 		r, err = o.obj.NewReader(o.ctx)
 		if err != nil {
+			logger.Error("创建读取器时发生错误", err)
 			return 0, err
 		}
 		if _, err = io.CopyN(w, r, off); err != nil {
+			logger.Error("复制数据时发生错误", err)
 			return 0, err
 		}
 		if err = r.Close(); err != nil {
+			logger.Error("关闭读取器时发生错误", err)
 			return 0, err
 		}
 	}
@@ -236,21 +250,25 @@ func min(x, y int) int {
 //   - err: 可能出现的错误
 func (o *gcsFileResource) Truncate(wantedSize int64) error {
 	if wantedSize < 0 {
+		logger.Error("截断大小超出范围", nil)
 		return ErrOutOfRange
 	}
 
 	if err := o.maybeCloseIo(); err != nil {
+		logger.Error("关闭 IO 时发生错误", err)
 		return err
 	}
 
 	r, err := o.obj.NewRangeReader(o.ctx, 0, wantedSize)
 	if err != nil {
+		logger.Error("创建范围读取器时发生错误", err)
 		return err
 	}
 
 	w := o.obj.NewWriter(o.ctx)
 	written, err := io.Copy(w, r)
 	if err != nil {
+		logger.Error("复制数据时发生错误", err)
 		return err
 	}
 
@@ -260,16 +278,19 @@ func (o *gcsFileResource) Truncate(wantedSize int64) error {
 
 		n := 0
 		if n, err = w.Write(paddingBytes); err != nil {
+			logger.Error("写入填充字节时发生错误", err)
 			return err
 		}
 
 		written += int64(n)
 	}
 	if err = r.Close(); err != nil {
-		return fmt.Errorf("error closing reader: %v", err)
+		logger.Error("关闭读取器时发生错误", err)
+		return fmt.Errorf("关闭读取器时发生错误: %v", err)
 	}
 	if err = w.Close(); err != nil {
-		return fmt.Errorf("error closing writer: %v", err)
+		logger.Error("关闭写入器时发生错误", err)
+		return fmt.Errorf("关闭写入器时发生错误: %v", err)
 	}
 	return nil
 }

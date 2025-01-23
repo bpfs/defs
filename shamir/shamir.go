@@ -3,10 +3,14 @@
 package shamir
 
 import (
-	"crypto/rand"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
+	logging "github.com/dep2p/log"
 	"math/big"
 )
+
+var logger = logging.Logger("shamir")
 
 // GenerateStandardShares 生成标准的秘密份额
 // 参数：
@@ -49,15 +53,17 @@ func GenerateStandardShares(secret []byte, n, k int, primeOptional ...*big.Int) 
 		return nil, errors.New("秘密大于素数模，需要一个更小的秘密或更大的素数模")
 	}
 
-	// 生成多项式系数，第一个系数是秘密本身
+	// 使用 secret 作为种子生成确定性的系数
 	coeffs := make([]*big.Int, k)
-	coeffs[0] = secretInt
+	coeffs[0] = secretInt // 第一个系数是秘密本身
+
+	hasher := sha256.New()
 	for i := 1; i < k; i++ {
-		coeff, err := rand.Int(rand.Reader, prime)
-		if err != nil {
-			return nil, errors.New("生成多项式系数时出错")
-		}
-		coeffs[i] = coeff
+		hasher.Reset()
+		hasher.Write(secret)
+		binary.Write(hasher, binary.BigEndian, int64(i))
+		coeff := new(big.Int).SetBytes(hasher.Sum(nil))
+		coeffs[i] = coeff.Mod(coeff, prime)
 	}
 
 	// 生成份额

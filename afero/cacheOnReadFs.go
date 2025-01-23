@@ -4,9 +4,6 @@ import (
 	"os"
 	"syscall"
 	"time"
-
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
 )
 
 // CacheOnReadFs 类型用于在读取时进行缓存
@@ -68,7 +65,7 @@ func (u *CacheOnReadFs) cacheStatus(name string) (state cacheState, fi os.FileIn
 		if lfi.ModTime().Add(u.cacheTime).Before(time.Now()) { // 检查文件是否过期
 			bfi, err = u.base.Stat(name) // 在基础层中获取文件信息
 			if err != nil {
-				logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+				logger.Error("获取基础层文件信息失败:", err)
 				return cacheLocal, lfi, nil
 			}
 			if bfi.ModTime().After(lfi.ModTime()) { // 如果基础层中文件更新，则返回 cacheStale
@@ -118,7 +115,7 @@ func (u *CacheOnReadFs) copyFileToLayer(name string, flag int, perm os.FileMode)
 func (u *CacheOnReadFs) Chtimes(name string, atime, mtime time.Time) error {
 	st, _, err := u.cacheStatus(name) // 获取文件的缓存状态
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取文件缓存状态失败:", err)
 		return err
 	}
 
@@ -128,14 +125,14 @@ func (u *CacheOnReadFs) Chtimes(name string, atime, mtime time.Time) error {
 		err = u.base.Chtimes(name, atime, mtime) // 更改基础层中的访问和修改时间
 	case cacheStale, cacheMiss:
 		if err := u.copyToLayer(name); err != nil { // 将文件复制到覆盖层
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("复制文件到覆盖层失败:", err)
 			return err
 		}
 		err = u.base.Chtimes(name, atime, mtime) // 更改基础层中的访问和修改时间
 	}
 
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("更改基础层文件时间失败:", err)
 		return err
 	}
 	return u.layer.Chtimes(name, atime, mtime) // 更改覆盖层中的访问和修改时间
@@ -151,7 +148,7 @@ func (u *CacheOnReadFs) Chtimes(name string, atime, mtime time.Time) error {
 func (u *CacheOnReadFs) Chmod(name string, mode os.FileMode) error {
 	st, _, err := u.cacheStatus(name) // 获取文件的缓存状态
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取文件缓存状态失败:", err)
 		return err
 	}
 
@@ -161,14 +158,14 @@ func (u *CacheOnReadFs) Chmod(name string, mode os.FileMode) error {
 		err = u.base.Chmod(name, mode) // 更改基础层中的文件模式
 	case cacheStale, cacheMiss:
 		if err := u.copyToLayer(name); err != nil { // 将文件复制到覆盖层
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("复制文件到覆盖层失败:", err)
 			return err
 		}
 		err = u.base.Chmod(name, mode) // 更改基础层中的文件模式
 	}
 
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("更改基础层文件模式失败:", err)
 		return err
 	}
 	return u.layer.Chmod(name, mode) // 更改覆盖层中的文件模式
@@ -185,7 +182,7 @@ func (u *CacheOnReadFs) Chmod(name string, mode os.FileMode) error {
 func (u *CacheOnReadFs) Chown(name string, uid, gid int) error {
 	st, _, err := u.cacheStatus(name) // 获取文件的缓存状态
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取文件缓存状态失败:", err)
 		return err
 	}
 
@@ -195,14 +192,14 @@ func (u *CacheOnReadFs) Chown(name string, uid, gid int) error {
 		err = u.base.Chown(name, uid, gid) // 更改基础层中的 uid 和 gid
 	case cacheStale, cacheMiss:
 		if err := u.copyToLayer(name); err != nil { // 将文件复制到覆盖层
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("复制文件到覆盖层失败:", err)
 			return err
 		}
 		err = u.base.Chown(name, uid, gid) // 更改基础层中的 uid 和 gid
 	}
 
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("更改基础层文件所有者失败:", err)
 		return err
 	}
 	return u.layer.Chown(name, uid, gid) // 更改覆盖层中的 uid 和 gid
@@ -218,7 +215,7 @@ func (u *CacheOnReadFs) Chown(name string, uid, gid int) error {
 func (u *CacheOnReadFs) Stat(name string) (os.FileInfo, error) {
 	st, fi, err := u.cacheStatus(name) // 获取文件的缓存状态
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取文件缓存状态失败:", err)
 		return nil, err
 	}
 
@@ -240,7 +237,7 @@ func (u *CacheOnReadFs) Stat(name string) (os.FileInfo, error) {
 func (u *CacheOnReadFs) Rename(oldname, newname string) error {
 	st, _, err := u.cacheStatus(oldname) // 获取旧文件的缓存状态
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取文件缓存状态失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 
@@ -250,14 +247,14 @@ func (u *CacheOnReadFs) Rename(oldname, newname string) error {
 		err = u.base.Rename(oldname, newname) // 在基础层重命名文件
 	case cacheStale, cacheMiss:
 		if err := u.copyToLayer(oldname); err != nil { // 将旧文件复制到覆盖层
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("复制文件到覆盖层失败:", err)
 			return err // 如果发生错误，返回错误信息
 		}
 		err = u.base.Rename(oldname, newname) // 在基础层重命名文件
 	}
 
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("重命名基础层文件失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 	return u.layer.Rename(oldname, newname) // 在覆盖层重命名文件
@@ -272,7 +269,7 @@ func (u *CacheOnReadFs) Rename(oldname, newname string) error {
 func (u *CacheOnReadFs) Remove(name string) error {
 	st, _, err := u.cacheStatus(name) // 获取文件的缓存状态
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取文件缓存状态失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 
@@ -283,7 +280,7 @@ func (u *CacheOnReadFs) Remove(name string) error {
 	}
 
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("删除基础层文件失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 	return u.layer.Remove(name) // 在覆盖层删除文件
@@ -298,7 +295,7 @@ func (u *CacheOnReadFs) Remove(name string) error {
 func (u *CacheOnReadFs) RemoveAll(name string) error {
 	st, _, err := u.cacheStatus(name) // 获取路径的缓存状态
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取文件缓存状态失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 	switch st {
@@ -308,7 +305,7 @@ func (u *CacheOnReadFs) RemoveAll(name string) error {
 	}
 
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("删除基础层目录及其内容失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 	return u.layer.RemoveAll(name) // 在覆盖层删除路径及其子目录
@@ -326,7 +323,7 @@ func (u *CacheOnReadFs) RemoveAll(name string) error {
 func (u *CacheOnReadFs) OpenFile(name string, flag int, perm os.FileMode) (File, error) {
 	st, _, err := u.cacheStatus(name) // 获取文件的缓存状态
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取文件缓存状态失败:", err)
 		return nil, err // 如果发生错误，返回错误信息
 	}
 
@@ -334,7 +331,7 @@ func (u *CacheOnReadFs) OpenFile(name string, flag int, perm os.FileMode) (File,
 	case cacheLocal, cacheHit:
 	default:
 		if err := u.copyFileToLayer(name, flag, perm); err != nil { // 将文件复制到覆盖层
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("复制文件到覆盖层失败:", err)
 			return nil, err // 如果发生错误，返回错误信息
 		}
 	}
@@ -342,12 +339,12 @@ func (u *CacheOnReadFs) OpenFile(name string, flag int, perm os.FileMode) (File,
 	if flag&(os.O_WRONLY|syscall.O_RDWR|os.O_APPEND|os.O_CREATE|os.O_TRUNC) != 0 {
 		bfi, err := u.base.OpenFile(name, flag, perm) // 在基础层打开文件
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("打开基础层文件失败:", err)
 			return nil, err // 如果发生错误，返回错误信息
 		}
 		lfi, err := u.layer.OpenFile(name, flag, perm) // 在覆盖层打开文件
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("打开覆盖层文件失败:", err)
 			bfi.Close()     // 关闭基础层文件
 			return nil, err // 如果发生错误，返回错误信息
 		}
@@ -366,7 +363,7 @@ func (u *CacheOnReadFs) OpenFile(name string, flag int, perm os.FileMode) (File,
 func (u *CacheOnReadFs) Open(name string) (File, error) {
 	st, fi, err := u.cacheStatus(name) // 获取文件的缓存状态
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取文件缓存状态失败:", err)
 		return nil, err // 如果发生错误，返回错误信息
 	}
 
@@ -377,14 +374,14 @@ func (u *CacheOnReadFs) Open(name string) (File, error) {
 	case cacheMiss:
 		bfi, err := u.base.Stat(name) // 获取基础层中文件的状态
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("获取基础层文件状态失败:", err)
 			return nil, err // 如果发生错误，返回错误信息
 		}
 		if bfi.IsDir() {
 			return u.base.Open(name) // 如果是目录，则在基础层打开
 		}
 		if err := u.copyToLayer(name); err != nil { // 将文件复制到覆盖层
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("复制文件到覆盖层失败:", err)
 			return nil, err // 如果发生错误，返回错误信息
 		}
 		return u.layer.Open(name) // 在覆盖层打开文件
@@ -392,7 +389,7 @@ func (u *CacheOnReadFs) Open(name string) (File, error) {
 	case cacheStale:
 		if !fi.IsDir() {
 			if err := u.copyToLayer(name); err != nil { // 将文件复制到覆盖层
-				logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+				logger.Error("复制文件到覆盖层失败:", err)
 				return nil, err // 如果发生错误，返回错误信息
 			}
 			return u.layer.Open(name) // 在覆盖层打开文件
@@ -421,7 +418,7 @@ func (u *CacheOnReadFs) Open(name string) (File, error) {
 func (u *CacheOnReadFs) Mkdir(name string, perm os.FileMode) error {
 	err := u.base.Mkdir(name, perm) // 在基础层创建目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("在基础层创建目录失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 	return u.layer.MkdirAll(name, perm) // 在覆盖层创建目录及其所有父目录
@@ -444,7 +441,7 @@ func (u *CacheOnReadFs) Name() string {
 func (u *CacheOnReadFs) MkdirAll(name string, perm os.FileMode) error {
 	err := u.base.MkdirAll(name, perm) // 在基础层创建路径及其所有父目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("在基础层创建目录及其父目录失败:", err)
 		return err // 如果发生错误，返回错误信息
 	}
 	return u.layer.MkdirAll(name, perm) // 在覆盖层创建路径及其所有父目录
@@ -460,13 +457,13 @@ func (u *CacheOnReadFs) MkdirAll(name string, perm os.FileMode) error {
 func (u *CacheOnReadFs) Create(name string) (File, error) {
 	bfh, err := u.base.Create(name) // 在基础层创建文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("在基础层创建文件失败:", err)
 		return nil, err // 如果发生错误，返回错误信息
 	}
 
 	lfh, err := u.layer.Create(name) // 在覆盖层创建文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("在覆盖层创建文件失败:", err)
 		bfh.Close()     // 关闭基础层文件
 		return nil, err // 如果发生错误，返回错误信息
 	}

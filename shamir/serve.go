@@ -37,9 +37,9 @@ func NewShamirScheme(totalShares, threshold int, prime *big.Int) *ShamirScheme {
 // 	}
 
 // 	// 打印所有生成的份额
-// 	logrus.Printf("生成的所有密钥分片:\n")
+// 	logger.Printf("生成的所有密钥分片:\n")
 // 	for i, share := range shares {
-// 		logrus.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
+// 		logger.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
 // 	}
 
 // 	// 将分享转换为[][]byte格式
@@ -64,9 +64,9 @@ func NewShamirScheme(totalShares, threshold int, prime *big.Int) *ShamirScheme {
 // 	}
 
 // 	// 打印用于恢复的份额，确保它们正确
-// 	logrus.Printf("用于恢复的密钥分片:\n")
+// 	logger.Printf("用于恢复的密钥分片:\n")
 // 	for i, share := range shares {
-// 		logrus.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
+// 		logger.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
 // 	}
 
 // 	return RecoverSecret(shares, s.Prime)
@@ -80,6 +80,13 @@ func NewShamirScheme(totalShares, threshold int, prime *big.Int) *ShamirScheme {
 //   - [][]byte 生成的秘密份额
 //   - error 可能的错误
 func (s *ShamirScheme) GenerateShares(secret []byte) ([][]byte, error) {
+	// 打印GenerateStandardShares的参数
+	// logger.Printf("GenerateStandardShares参数:")
+	// logger.Printf("- secret (hex): %x", secret)
+	// logger.Printf("- totalShares: %d", s.TotalShares)
+	// logger.Printf("- threshold: %d", s.Threshold)
+	// logger.Printf("- prime: %s", s.Prime.Text(16))
+
 	// 使用GenerateStandardShares生成秘密份额
 	shares, err := GenerateStandardShares(secret, s.TotalShares, s.Threshold, s.Prime)
 	if err != nil {
@@ -87,9 +94,9 @@ func (s *ShamirScheme) GenerateShares(secret []byte) ([][]byte, error) {
 	}
 
 	// 打印所有生成的份额
-	// logrus.Printf("生成的所有密钥分片:\n")
+	// logger.Printf("生成的所有密钥分片:\n")
 	// for i, share := range shares {
-	// 	logrus.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
+	// 	logger.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
 	// }
 
 	// 对每个份额进行gob编码
@@ -128,9 +135,9 @@ func (s *ShamirScheme) RecoverSecretFromShares(sharesBytes ...[]byte) ([]byte, e
 	}
 
 	// 打印用于恢复的份额，确保它们正确
-	// logrus.Printf("用于恢复的密钥分片:\n")
+	// logger.Printf("用于恢复的密钥分片:\n")
 	// for i, share := range shares {
-	// 	logrus.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
+	// 	logger.Printf("份额 #%d: (x=%s, y=%s)\n", i+1, share[0].Text(10), share[1].Text(10))
 	// }
 
 	// 使用RecoverSecret从份额中恢复秘密

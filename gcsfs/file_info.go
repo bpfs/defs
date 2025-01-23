@@ -43,6 +43,7 @@ func newFileInfo(name string, fs *Fs, fileMode os.FileMode) (*FileInfo, error) {
 	// 获取对象信息
 	obj, err := fs.getObj(name)
 	if err != nil {
+		logger.Error("获取对象信息失败", "错误", err)
 		return nil, err
 	}
 
@@ -65,8 +66,10 @@ func newFileInfo(name string, fs *Fs, fileMode os.FileMode) (*FileInfo, error) {
 				return res, nil
 			}
 
+			logger.Error("文件未找到", "错误", ErrFileNotFound)
 			return nil, ErrFileNotFound
 		}
+		logger.Error("获取对象属性失败", "错误", err)
 		return nil, err
 	}
 

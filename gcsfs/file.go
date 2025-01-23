@@ -99,6 +99,7 @@ func NewGcsFileFromOldFH(
 func (o *GcsFile) Close() error {
 	if o.closed {
 		// Afero 规范期望在已关闭文件上调用 Close 返回错误
+		logger.Error("尝试关闭已关闭的文件")
 		return ErrFileClosed
 	}
 	o.closed = true
@@ -115,6 +116,7 @@ func (o *GcsFile) Close() error {
 //   - error: 可能出现的错误
 func (o *GcsFile) Seek(newOffset int64, whence int) (int64, error) {
 	if o.closed {
+		logger.Error("尝试在已关闭的文件上执行 Seek 操作")
 		return 0, ErrFileClosed
 	}
 
@@ -122,15 +124,17 @@ func (o *GcsFile) Seek(newOffset int64, whence int) (int64, error) {
 	if (whence == 0 && newOffset == o.fhOffset) || (whence == 1 && newOffset == 0) {
 		return o.fhOffset, nil
 	}
-	log.Printf("WARNING: Seek behavior triggered, highly inefficient. Offset before seek is at %d\n", o.fhOffset)
+	log.Printf("警告：触发了 Seek 行为，效率极低。Seek 前的偏移量为 %d\n", o.fhOffset)
 
 	// 重新打开读写器（在正确的偏移量处）
 	err := o.Sync()
 	if err != nil {
+		logger.Error("Seek 操作中同步文件失败", "错误", err)
 		return 0, err
 	}
 	stat, err := o.Stat()
 	if err != nil {
+		logger.Error("Seek 操作中获取文件状态失败", "错误", err)
 		return 0, nil
 	}
 
@@ -166,6 +170,7 @@ func (o *GcsFile) Read(p []byte) (n int, err error) {
 //   - error: 可能出现的错误
 func (o *GcsFile) ReadAt(p []byte, off int64) (n int, err error) {
 	if o.closed {
+		logger.Error("尝试从已关闭的文件中读取数据")
 		return 0, ErrFileClosed
 	}
 
@@ -195,21 +200,25 @@ func (o *GcsFile) Write(p []byte) (n int, err error) {
 //   - error: 可能出现的错误
 func (o *GcsFile) WriteAt(b []byte, off int64) (n int, err error) {
 	if o.closed {
-		return 0, ErrFileClosed // 文件已关闭，返回错误
+		logger.Error("尝试向已关闭的文件写入数据")
+		return 0, ErrFileClosed
 	}
 
 	if o.openFlags&os.O_RDONLY != 0 {
-		return 0, fmt.Errorf("file is opened as read only") // 文件以只读模式打开，返回错误
+		logger.Error("尝试向只读文件写入数据")
+		return 0, fmt.Errorf("文件以只读模式打开")
 	}
 
 	_, err = o.resource.obj.Attrs(o.resource.ctx)
 	if err != nil {
 		if err == storage.ErrObjectNotExist {
 			if o.openFlags&os.O_CREATE == 0 {
-				return 0, ErrFileNotFound // 文件不存在且未设置创建标志，返回错误
+				logger.Error("尝试写入不存在的文件，且未设置创建标志")
+				return 0, ErrFileNotFound
 			}
 		} else {
-			return 0, fmt.Errorf("error getting file attributes: %v", err) // 获取文件属性时出错，返回错误
+			logger.Error("获取文件属性时出错", "错误", err)
+			return 0, fmt.Errorf("获取文件属性时出错：%v", err)
 		}
 	}
 
@@ -233,22 +242,24 @@ func (o *GcsFile) Name() string {
 func (o *GcsFile) readdirImpl(count int) ([]*FileInfo, error) {
 	err := o.Sync()
 	if err != nil {
+		logger.Error("同步文件失败", "错误", err)
 		return nil, err
 	}
 
 	var ownInfo os.FileInfo
 	ownInfo, err = o.Stat()
 	if err != nil {
+		logger.Error("获取文件状态失败", "错误", err)
 		return nil, err
 	}
 
 	if !ownInfo.IsDir() {
-		return nil, syscall.ENOTDIR // 文件不是目录，返回错误
+		logger.Error("尝试读取非目录文件的目录内容")
+		return nil, syscall.ENOTDIR
 	}
 
 	path := o.resource.fs.ensureTrailingSeparator(o.resource.name)
 	if o.ReadDirIt == nil {
-		// log.Printf("Querying path : %s\n", path)
 		bucketName, bucketPath := o.resource.fs.splitName(path)
 
 		o.ReadDirIt = o.resource.fs.client.Bucket(bucketName).Objects(
@@ -268,6 +279,7 @@ func (o *GcsFile) readdirImpl(count int) ([]*FileInfo, error) {
 			return res, io.EOF // 读取完成，返回 EOF
 		}
 		if err != nil {
+			logger.Error("读取目录项时出错", "错误", err)
 			return res, err
 		}
 
@@ -325,6 +337,7 @@ func (o *GcsFile) Readdir(count int) ([]os.FileInfo, error) {
 func (o *GcsFile) Readdirnames(n int) ([]string, error) {
 	fi, err := o.Readdir(n)
 	if err != nil && err != io.EOF {
+		logger.Error("读取目录名称失败", "错误", err)
 		return nil, err
 	}
 	names := make([]string, len(fi))
@@ -342,6 +355,7 @@ func (o *GcsFile) Readdirnames(n int) ([]string, error) {
 func (o *GcsFile) Stat() (os.FileInfo, error) {
 	err := o.Sync()
 	if err != nil {
+		logger.Error("同步文件失败", "错误", err)
 		return nil, err
 	}
 
@@ -363,10 +377,12 @@ func (o *GcsFile) Sync() error {
 //   - error: 可能出现的错误
 func (o *GcsFile) Truncate(wantedSize int64) error {
 	if o.closed {
-		return ErrFileClosed // 文件已关闭，返回错误
+		logger.Error("尝试截断已关闭的文件")
+		return ErrFileClosed
 	}
 	if o.openFlags == os.O_RDONLY {
-		return fmt.Errorf("file was opened as read only") // 文件以只读模式打开，返回错误
+		logger.Error("尝试截断只读文件")
+		return fmt.Errorf("文件以只读模式打开")
 	}
 	return o.resource.Truncate(wantedSize)
 }

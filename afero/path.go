@@ -4,9 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
 )
 
 // readDirNames 读取指定目录的内容，并返回排序后的目录条目列表。
@@ -20,14 +17,14 @@ import (
 func readDirNames(fs Afero, dirname string) ([]string, error) {
 	f, err := fs.Open(dirname) // 打开目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开目录失败:", err)
 		return nil, err // 如果发生错误，返回错误信息
 	}
 
 	names, err := f.Readdirnames(-1) // 读取目录中的所有条目名称
 	f.Close()                        // 关闭目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("读取目录名称失败:", err)
 		return nil, err // 如果发生错误，返回错误信息
 	}
 
@@ -50,7 +47,7 @@ func walk(fs Afero, path string, info os.FileInfo, walkFn filepath.WalkFunc) err
 		if info.IsDir() && err == filepath.SkipDir {
 			return nil // 如果跳过目录，返回 nil
 		}
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("处理路径失败:", err)
 		return err // 返回错误信息
 	}
 
@@ -60,7 +57,7 @@ func walk(fs Afero, path string, info os.FileInfo, walkFn filepath.WalkFunc) err
 
 	names, err := readDirNames(fs, path) // 读取目录中的所有条目名称
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("读取目录名称失败:", err)
 		return walkFn(path, info, err) // 调用处理函数处理错误
 	}
 
@@ -68,14 +65,14 @@ func walk(fs Afero, path string, info os.FileInfo, walkFn filepath.WalkFunc) err
 		filename := filepath.Join(path, name)          // 拼接完整路径
 		fileInfo, err := lstatIfPossible(fs, filename) // 获取文件信息
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("获取文件信息失败:", err)
 			if err := walkFn(filename, fileInfo, err); err != nil && err != filepath.SkipDir {
 				return err // 返回错误信息
 			}
 		} else {
 			err = walk(fs, filename, fileInfo, walkFn) // 递归遍历子目录
 			if err != nil {
-				logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+				logger.Error("遍历子目录失败:", err)
 				if !fileInfo.IsDir() || err != filepath.SkipDir {
 					return err // 返回错误信息
 				}
@@ -112,7 +109,7 @@ func lstatIfPossible(fs Afero, path string) (os.FileInfo, error) {
 func Walk(fs Afero, root string, walkFn filepath.WalkFunc) error {
 	info, err := lstatIfPossible(fs, root) // 获取根目录的文件信息
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取根目录信息失败:", err)
 		return walkFn(root, nil, err) // 调用处理函数处理错误
 	}
 	return walk(fs, root, info, walkFn) // 递归遍历文件树

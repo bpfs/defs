@@ -60,7 +60,7 @@ func (e ErrScriptNotCanonical) Error() string {
 //		// Handle the error.
 //		return
 //	}
-//	logrus.Printf("Final multi-sig script: %x\n", script)
+//	logger.Printf("Final multi-sig script: %x\n", script)
 type ScriptBuilder struct {
 	script []byte
 	err    error

@@ -20,10 +20,18 @@ func prepareFileForWriting(file *os.File, xref *FileXref) (int64, error) {
 	isEmptyPage := len(xref.XrefTable) == 0
 	if isEmptyPage {
 		// 如果是空页，则从文件末尾开始写入
-		return file.Seek(0, io.SeekEnd)
+		pos, err := file.Seek(0, io.SeekEnd)
+		if err != nil {
+			logger.Errorf("定位文件末尾失败: %v", err)
+		}
+		return pos, err
 	}
 	// 否则从交叉引用表的起始位置开始写入
-	return file.Seek(xref.StartXref, io.SeekStart)
+	pos, err := file.Seek(xref.StartXref, io.SeekStart)
+	if err != nil {
+		logger.Errorf("定位交叉引用表起始位置失败: %v", err)
+	}
+	return pos, err
 }
 
 // writeXrefTableAndStartXref 写入交叉引用表和startxref标记
@@ -38,6 +46,7 @@ func writeXrefTableAndStartXref(file *os.File, xref *FileXref, newXrefStart int6
 	// 移动文件指针到新的交叉引用表起始位置
 	_, err := file.Seek(newXrefStart, io.SeekStart)
 	if err != nil {
+		logger.Errorf("定位新的交叉引用表位置失败: %v", err)
 		return err
 	}
 
@@ -45,25 +54,30 @@ func writeXrefTableAndStartXref(file *os.File, xref *FileXref, newXrefStart int6
 	for segmentType, entry := range xref.XrefTable {
 		// 写入段类型的长度（以大端序写入）
 		if err := binary.Write(file, binary.BigEndian, uint32(len(segmentType))); err != nil {
+			logger.Errorf("写入段类型长度失败: %v", err)
 			return err
 		}
 		// 写入段类型字符串
 		if _, err := file.WriteString(segmentType); err != nil {
+			logger.Errorf("写入段类型失败: %v", err)
 			return err
 		}
 		// 写入条目
 		if err := binary.Write(file, binary.BigEndian, entry); err != nil {
+			logger.Errorf("写入交叉引用表条目失败: %v", err)
 			return err
 		}
 	}
 
 	// 写入 "startxref" 标记
 	if _, err := file.WriteString("startxref"); err != nil {
+		logger.Errorf("写入startxref标记失败: %v", err)
 		return err
 	}
 
 	// 写入新的交叉引用表起始位置
 	if err := binary.Write(file, binary.BigEndian, newXrefStart); err != nil {
+		logger.Errorf("写入新的交叉引用表起始位置失败: %v", err)
 		return err
 	}
 
@@ -88,18 +102,21 @@ func AppendSegmentToFile(file *os.File, segmentType string, data []byte, xref *F
 
 	// 检查段类型是否为空
 	if len(segmentType) == 0 {
-		return fmt.Errorf("segmentType cannot be empty")
+		logger.Errorf("段类型不能为空")
+		return fmt.Errorf("段类型不能为空")
 	}
 
 	// 准备文件以进行写入，获取写入起始位置
 	offset, err := prepareFileForWriting(file, xref)
 	if err != nil {
+		logger.Errorf("%v", err)
 		return err
 	}
 
 	// 写入段数据
 	totalWritten, err := writeSegmentInternal(file, segmentType, data, xref, offset)
 	if err != nil {
+		logger.Errorf("%v", err)
 		return err
 	}
 
@@ -125,6 +142,7 @@ func AppendSegmentsToFile(file *os.File, segments map[string][]byte, xref *FileX
 	// 准备文件以进行写入，获取写入起始位置
 	offset, err := prepareFileForWriting(file, xref)
 	if err != nil {
+		logger.Errorf("%v", err)
 		return err
 	}
 
@@ -132,12 +150,14 @@ func AppendSegmentsToFile(file *os.File, segments map[string][]byte, xref *FileX
 	for segmentType, data := range segments {
 		// 检查段类型是否为空
 		if len(segmentType) == 0 {
-			return fmt.Errorf("segmentType cannot be empty")
+			logger.Errorf("段类型不能为空")
+			return fmt.Errorf("段类型不能为空")
 		}
 
 		// 写入段数据
 		totalWritten, err := writeSegmentInternal(file, segmentType, data, xref, offset)
 		if err != nil {
+			logger.Errorf("%v", err)
 			return err
 		}
 		// 更新偏移量
@@ -292,4 +312,5 @@ func AppendSegmentsToFile(file *os.File, segments map[string][]byte, xref *FileX
 // 	xref.StartXref = newXrefStart
 
 // 	return nil
+// }
 // }

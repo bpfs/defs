@@ -7,7 +7,8 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
-	"github.com/bpfs/defs/afero"
+	"github.com/bpfs/defs/v2/afero"
+
 	"github.com/googleapis/google-cloud-go-testing/storage/stiface"
 	"google.golang.org/api/iterator"
 )
@@ -112,12 +113,14 @@ func (o *objectMock) NewWriter(_ context.Context) stiface.Writer {
 //   - error: 可能出现的错误
 func (o *objectMock) NewRangeReader(_ context.Context, offset, length int64) (stiface.Reader, error) {
 	if o.name == "" {
+		logger.Error("对象名称为空")
 		return nil, ErrEmptyObjectName
 	}
 
 	// 打开文件
 	file, err := o.fs.Open(o.name)
 	if err != nil {
+		logger.Errorf("打开文件失败: %v", err)
 		return nil, err
 	}
 
@@ -125,6 +128,7 @@ func (o *objectMock) NewRangeReader(_ context.Context, offset, length int64) (st
 	if offset > 0 {
 		_, err = file.Seek(offset, io.SeekStart)
 		if err != nil {
+			logger.Errorf("文件定位失败: %v", err)
 			return nil, err
 		}
 	}
@@ -135,6 +139,7 @@ func (o *objectMock) NewRangeReader(_ context.Context, offset, length int64) (st
 		res.buf = make([]byte, length)
 		_, err = file.Read(res.buf)
 		if err != nil {
+			logger.Errorf("读取文件失败: %v", err)
 			return nil, err
 		}
 	}
@@ -150,9 +155,14 @@ func (o *objectMock) NewRangeReader(_ context.Context, offset, length int64) (st
 //   - error: 可能出现的错误
 func (o *objectMock) Delete(_ context.Context) error {
 	if o.name == "" {
+		logger.Error("对象名称为空")
 		return ErrEmptyObjectName
 	}
-	return o.fs.Remove(o.name)
+	err := o.fs.Remove(o.name)
+	if err != nil {
+		logger.Errorf("删除对象失败: %v", err)
+	}
+	return err
 }
 
 // Attrs 返回对象属性
@@ -164,6 +174,7 @@ func (o *objectMock) Delete(_ context.Context) error {
 //   - error: 可能出现的错误
 func (o *objectMock) Attrs(_ context.Context) (*storage.ObjectAttrs, error) {
 	if o.name == "" {
+		logger.Error("对象名称为空")
 		return nil, ErrEmptyObjectName
 	}
 
@@ -173,10 +184,12 @@ func (o *objectMock) Attrs(_ context.Context) (*storage.ObjectAttrs, error) {
 		pathError, ok := err.(*os.PathError)
 		if ok {
 			if pathError.Err == os.ErrNotExist {
+				logger.Error("对象不存在")
 				return nil, storage.ErrObjectNotExist
 			}
 		}
 
+		logger.Errorf("获取文件信息失败: %v", err)
 		return nil, err
 	}
 
@@ -185,6 +198,7 @@ func (o *objectMock) Attrs(_ context.Context) (*storage.ObjectAttrs, error) {
 
 	if info.IsDir() {
 		// 如果是目录，则返回错误
+		logger.Error("对象是一个目录")
 		return nil, ErrObjectDoesNotExist
 	}
 
@@ -210,6 +224,7 @@ type writerMock struct {
 //   - error: 可能出现的错误
 func (w *writerMock) Write(p []byte) (n int, err error) {
 	if w.name == "" {
+		logger.Error("对象名称为空")
 		return 0, ErrEmptyObjectName
 	}
 
@@ -217,12 +232,17 @@ func (w *writerMock) Write(p []byte) (n int, err error) {
 	if w.file == nil {
 		w.file, err = w.fs.Create(w.name)
 		if err != nil {
+			logger.Errorf("创建文件失败: %v", err)
 			return 0, err
 		}
 	}
 
 	// 写入数据到文件
-	return w.file.Write(p)
+	n, err = w.file.Write(p)
+	if err != nil {
+		logger.Errorf("写入数据失败: %v", err)
+	}
+	return n, err
 }
 
 // Close 关闭模拟写入器
@@ -230,6 +250,7 @@ func (w *writerMock) Write(p []byte) (n int, err error) {
 //   - error: 可能出现的错误
 func (w *writerMock) Close() error {
 	if w.name == "" {
+		logger.Error("对象名称为空")
 		return ErrEmptyObjectName
 	}
 	// 如果文件句柄为空，处理特殊情况
@@ -238,18 +259,24 @@ func (w *writerMock) Close() error {
 		if strings.HasSuffix(w.name, "/") {
 			err = w.fs.Mkdir(w.name, 0o755)
 			if err != nil {
+				logger.Errorf("创建目录失败: %v", err)
 				return err
 			}
 		} else {
 			_, err = w.Write([]byte{})
 			if err != nil {
+				logger.Errorf("写入空数据失败: %v", err)
 				return err
 			}
 		}
 	}
 	// 关闭文件句柄
 	if w.file != nil {
-		return w.file.Close()
+		err := w.file.Close()
+		if err != nil {
+			logger.Errorf("关闭文件失败: %v", err)
+		}
+		return err
 	}
 	return nil
 }
@@ -284,14 +311,22 @@ func (r *readerMock) Read(p []byte) (int, error) {
 		return len(r.buf), nil
 	}
 	// 从文件读取数据
-	return r.file.Read(p)
+	n, err := r.file.Read(p)
+	if err != nil {
+		logger.Errorf("读取数据失败: %v", err)
+	}
+	return n, err
 }
 
 // Close 关闭模拟读取器
 // 返回：
 //   - error: 可能出现的错误
 func (r *readerMock) Close() error {
-	return r.file.Close()
+	err := r.file.Close()
+	if err != nil {
+		logger.Errorf("关闭文件失败: %v", err)
+	}
+	return err
 }
 
 // objectItMock 模拟对象迭代器结构体
@@ -315,12 +350,14 @@ func (it *objectItMock) Next() (*storage.ObjectAttrs, error) {
 	if it.dir == nil {
 		it.dir, err = it.fs.Open(it.name)
 		if err != nil {
+			logger.Errorf("打开目录失败: %v", err)
 			return nil, err
 		}
 
 		var isDir bool
 		isDir, err = afero.IsDir(it.fs, it.name)
 		if err != nil {
+			logger.Errorf("判断是否为目录失败: %v", err)
 			return nil, err
 		}
 
@@ -331,6 +368,7 @@ func (it *objectItMock) Next() (*storage.ObjectAttrs, error) {
 			var info os.FileInfo
 			info, err = it.dir.Stat()
 			if err != nil {
+				logger.Errorf("获取文件信息失败: %v", err)
 				return nil, err
 			}
 			it.infos = append(it.infos, &storage.ObjectAttrs{Name: normSeparators(info.Name()), Size: info.Size(), Updated: info.ModTime()})
@@ -338,6 +376,7 @@ func (it *objectItMock) Next() (*storage.ObjectAttrs, error) {
 			var fInfos []os.FileInfo
 			fInfos, err = it.dir.Readdir(0)
 			if err != nil {
+				logger.Errorf("读取目录内容失败: %v", err)
 				return nil, err
 			}
 			// 如果是目录，则添加前缀

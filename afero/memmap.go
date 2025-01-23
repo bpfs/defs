@@ -3,19 +3,15 @@ package afero
 import (
 	"fmt"
 	"io"
-
-	"log"
 	"os"
 	"path/filepath"
-
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/bpfs/defs/debug"
-	"github.com/bpfs/defs/mem"
-	"github.com/sirupsen/logrus"
+	"github.com/bpfs/defs/v2/mem"
+	// 使用自定义的 logger 包
 )
 
 const chmodBits = os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky // 仅允许更改部分位。记录在 os.Chmod() 中
@@ -80,12 +76,12 @@ func (m *MemMapFs) Create(name string) (File, error) {
 func (m *MemMapFs) unRegisterWithParent(fileName string) error {
 	f, err := m.lockfreeOpen(fileName) // 打开文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return err // 返回错误信息
 	}
 	parent := m.findParent(f) // 查找父目录
 	if parent == nil {
-		log.Panic("parent of ", f.Name(), " is nil") // 如果父目录为空，记录日志并退出
+		logger.Error("应用选项失败:", "parent of "+f.Name()+" is nil")
 	}
 
 	parent.Lock()                   // 加锁
@@ -105,7 +101,7 @@ func (m *MemMapFs) findParent(f *mem.FileData) *mem.FileData {
 	pdir = filepath.Clean(pdir)         // 规范化目录路径
 	pfile, err := m.lockfreeOpen(pdir)  // 打开目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return nil // 如果发生错误，返回 nil
 	}
 
@@ -150,7 +146,7 @@ func (m *MemMapFs) registerWithParent(f *mem.FileData, perm os.FileMode) {
 		pdir := filepath.Dir(filepath.Clean(f.Name())) // 获取父目录路径
 		err := m.lockfreeMkdir(pdir, perm)             // 创建父目录
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("应用选项失败:", err)
 			return // 如果发生错误，直接返回
 		}
 
@@ -233,7 +229,7 @@ func (m *MemMapFs) Mkdir(name string, perm os.FileMode) error {
 func (m *MemMapFs) MkdirAll(path string, perm os.FileMode) error {
 	err := m.Mkdir(path, perm) // 创建目录
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		if err.(*os.PathError).Err == ErrFileExists {
 			return nil // 如果目录已存在，返回 nil
 		}
@@ -348,7 +344,7 @@ func (m *MemMapFs) OpenFile(name string, flag int, perm os.FileMode) (File, erro
 		chmod = true
 	}
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return nil, err // 返回错误信息
 	}
 
@@ -367,7 +363,7 @@ func (m *MemMapFs) OpenFile(name string, flag int, perm os.FileMode) (File, erro
 	if flag&os.O_TRUNC > 0 && flag&(os.O_RDWR|os.O_WRONLY) > 0 {
 		err = file.Truncate(0) // 截断文件
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("应用选项失败:", err)
 			file.Close()    // 关闭文件
 			return nil, err // 返回错误信息
 		}
@@ -394,7 +390,7 @@ func (m *MemMapFs) Remove(name string) error {
 	if _, ok := m.getData()[name]; ok {
 		err := m.unRegisterWithParent(name) // 从父目录中注销文件
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("应用选项失败:", err)
 			return &os.PathError{Op: "remove", Path: name, Err: err} // 返回错误信息
 		}
 		delete(m.getData(), name) // 从数据映射中删除文件
@@ -453,7 +449,7 @@ func (m *MemMapFs) Rename(oldname, newname string) error {
 		m.mu.Lock()                            // 加锁
 		err := m.unRegisterWithParent(oldname) // 从父目录中注销旧名称
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("应用选项失败:", err)
 			return err // 返回错误信息
 		}
 
@@ -463,7 +459,7 @@ func (m *MemMapFs) Rename(oldname, newname string) error {
 
 		err = m.renameDescendants(oldname, newname) // 重命名子孙文件
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("应用选项失败:", err)
 			return err // 返回错误信息
 		}
 
@@ -492,7 +488,7 @@ func (m *MemMapFs) renameDescendants(oldname, newname string) error {
 		descNewName := strings.Replace(desc.Name(), oldname, newname, 1) // 替换旧名称为新名称
 		err := m.unRegisterWithParent(desc.Name())                       // 从父目录中注销子孙文件
 		if err != nil {
-			logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+			logger.Error("应用选项失败:", err)
 			return err // 返回错误信息
 		}
 
@@ -532,7 +528,7 @@ func (m *MemMapFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
 func (m *MemMapFs) Stat(name string) (os.FileInfo, error) {
 	f, err := m.Open(name) // 打开文件
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("应用选项失败:", err)
 		return nil, err // 返回错误信息
 	}
 	fi := mem.GetFileInfo(f.(*mem.File).Data()) // 获取文件信息

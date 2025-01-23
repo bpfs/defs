@@ -76,6 +76,7 @@ func writeSegmentInternal(writer io.Writer, segmentType string, data []byte, xre
 	// 写入段类型的长度
 	segmentTypeLength := uint32(len(segmentType))
 	if err := binary.Write(writer, binary.BigEndian, segmentTypeLength); err != nil {
+		logger.Errorf("写入段类型长度失败: %v", err)
 		return totalWritten, err
 	}
 	totalWritten += 4 // uint32 的长度
@@ -83,6 +84,7 @@ func writeSegmentInternal(writer io.Writer, segmentType string, data []byte, xre
 	// 写入段类型
 	n, err := io.WriteString(writer, segmentType)
 	if err != nil {
+		logger.Errorf("写入段类型失败: %v", err)
 		return totalWritten, err
 	}
 	totalWritten += n
@@ -90,12 +92,14 @@ func writeSegmentInternal(writer io.Writer, segmentType string, data []byte, xre
 	// 写入数据长度
 	dataLength := uint32(len(data))
 	if err := binary.Write(writer, binary.BigEndian, dataLength); err != nil {
+		logger.Errorf("写入数据长度失败: %v", err)
 		return totalWritten, err
 	}
 	totalWritten += 4 // uint32 的长度
 
 	// 写入CRC32校验和
 	if err := binary.Write(writer, binary.BigEndian, checksum); err != nil {
+		logger.Errorf("写入CRC32校验和失败: %v", err)
 		return totalWritten, err
 	}
 	totalWritten += 4 // uint32 的长度
@@ -103,6 +107,7 @@ func writeSegmentInternal(writer io.Writer, segmentType string, data []byte, xre
 	// 写入数据
 	n, err = writer.Write(data)
 	if err != nil {
+		logger.Errorf("写入数据失败: %v", err)
 		return totalWritten, err
 	}
 	totalWritten += n
@@ -137,11 +142,14 @@ func WriteSegmentToFile(file *os.File, segmentType string, data []byte, xref *Fi
 	// 获取当前文件偏移量，这将是此段的起始位置
 	offset, err := file.Seek(0, io.SeekCurrent)
 	if err != nil {
+		logger.Errorf("获取文件偏移量失败: %v", err)
 		return err
 	}
 
+	// 将当前段写入文件
 	_, err = writeSegmentInternal(file, segmentType, data, xref, offset)
 	if err != nil {
+		logger.Errorf("写入段到文件失败: %v", err)
 		return err
 	}
 
@@ -171,6 +179,7 @@ func WriteSegmentToBuffer(buffer *bytes.Buffer, segmentType string, data []byte,
 
 	_, err := writeSegmentInternal(buffer, segmentType, data, xref, offset)
 	if err != nil {
+		logger.Errorf("写入段到缓冲区失败: %v", err)
 		return err
 	}
 
@@ -205,6 +214,7 @@ func WriteSegmentsToFile(file *os.File, segments map[string][]byte, xref *FileXr
 		// 将当前段写入文件
 		_, err := writeSegmentInternal(file, segmentType, data, xref, offset)
 		if err != nil {
+			logger.Errorf("批量写入段到文件失败: %v", err)
 			return err
 		}
 
@@ -240,6 +250,7 @@ func WriteSegmentsToBuffer(buffer *bytes.Buffer, segments map[string][]byte, xre
 		// 将当前段写入缓冲区
 		_, err := writeSegmentInternal(buffer, segmentType, data, xref, offset)
 		if err != nil {
+			logger.Errorf("批量写入段到缓冲区失败: %v", err)
 			return err
 		}
 

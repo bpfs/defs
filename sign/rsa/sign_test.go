@@ -2,8 +2,6 @@ package rsa
 
 import (
 	"testing"
-
-	"github.com/sirupsen/logrus"
 )
 
 func TestSignData(t *testing.T) {
@@ -28,7 +26,7 @@ func TestSignData(t *testing.T) {
 	// 验证签名
 	isVerified := VerifySignature(publicKey, data, signature)
 	if isVerified {
-		logrus.Printf("Signature verified.")
+		logger.Info("Signature verified.")
 	} else {
 		t.Error("Signature verification failed.")
 	}

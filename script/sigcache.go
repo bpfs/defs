@@ -25,7 +25,7 @@ type sigCacheEntry struct {
 // 只有有效的签名才会被添加到缓存中。SigCache的好处有两方面：
 // 首先，使用SigCache可以缓解一种DoS攻击，攻击会导致受害者的客户端由于处理攻击者
 // 构造的无效交易时触发的最坏情况行为而挂起。关于被缓解的DoS攻击的详细描述可以在此处找到：
-// https://bitslogrus.wordpress.com/2013/01/23/fixed-bitcoin-vulnerability-explanation-why-the-signature-cache-is-a-dos-protection/。
+// https://bitslogger.wordpress.com/2013/01/23/fixed-bitcoin-vulnerability-explanation-why-the-signature-cache-is-a-dos-protection/。
 // 其次，使用SigCache引入了签名验证优化，如果交易已经在mempool中被看到并验证过，
 // 则可以加速区块中交易的验证。
 type SigCache struct {

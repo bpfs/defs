@@ -7,9 +7,6 @@ import (
 	"runtime"
 	"strings"
 	"time"
-
-	"github.com/bpfs/defs/debug"
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -73,7 +70,7 @@ func NewBasePathFs(source Afero, path string) Afero {
 //   - error: 错误信息
 func (b *BasePathFs) RealPath(name string) (path string, err error) {
 	if err := validateBasePathName(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("验证基本路径名称失败:", err)
 		return name, err
 	}
 
@@ -116,7 +113,7 @@ func validateBasePathName(name string) error {
 //   - error: 错误信息
 func (b *BasePathFs) Chtimes(name string, atime, mtime time.Time) (err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return &os.PathError{Op: "chtimes", Path: name, Err: err}
 	}
 	return b.source.Chtimes(name, atime, mtime)
@@ -131,7 +128,7 @@ func (b *BasePathFs) Chtimes(name string, atime, mtime time.Time) (err error) {
 //   - error: 错误信息
 func (b *BasePathFs) Chmod(name string, mode os.FileMode) (err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return &os.PathError{Op: "chmod", Path: name, Err: err}
 	}
 	return b.source.Chmod(name, mode)
@@ -147,7 +144,7 @@ func (b *BasePathFs) Chmod(name string, mode os.FileMode) (err error) {
 //   - error: 错误信息
 func (b *BasePathFs) Chown(name string, uid, gid int) (err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return &os.PathError{Op: "chown", Path: name, Err: err}
 	}
 	return b.source.Chown(name, uid, gid)
@@ -169,7 +166,7 @@ func (b *BasePathFs) Name() string {
 //   - error: 错误信息
 func (b *BasePathFs) Stat(name string) (fi os.FileInfo, err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return nil, &os.PathError{Op: "stat", Path: name, Err: err}
 	}
 	return b.source.Stat(name)
@@ -184,11 +181,11 @@ func (b *BasePathFs) Stat(name string) (fi os.FileInfo, err error) {
 //   - error: 错误信息
 func (b *BasePathFs) Rename(oldname, newname string) (err error) {
 	if oldname, err = b.RealPath(oldname); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取旧文件真实路径失败:", err)
 		return &os.PathError{Op: "rename", Path: oldname, Err: err}
 	}
 	if newname, err = b.RealPath(newname); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取新文件真实路径失败:", err)
 		return &os.PathError{Op: "rename", Path: newname, Err: err}
 	}
 	return b.source.Rename(oldname, newname)
@@ -202,7 +199,7 @@ func (b *BasePathFs) Rename(oldname, newname string) (err error) {
 //   - error: 错误信息
 func (b *BasePathFs) RemoveAll(name string) (err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return &os.PathError{Op: "remove_all", Path: name, Err: err}
 	}
 	return b.source.RemoveAll(name)
@@ -216,7 +213,7 @@ func (b *BasePathFs) RemoveAll(name string) (err error) {
 //   - error: 错误信息
 func (b *BasePathFs) Remove(name string) (err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return &os.PathError{Op: "remove", Path: name, Err: err}
 	}
 	return b.source.Remove(name)
@@ -233,12 +230,12 @@ func (b *BasePathFs) Remove(name string) (err error) {
 //   - error: 错误信息
 func (b *BasePathFs) OpenFile(name string, flag int, mode os.FileMode) (f File, err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return nil, &os.PathError{Op: "openfile", Path: name, Err: err}
 	}
 	sourcef, err := b.source.OpenFile(name, flag, mode)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开文件失败:", err)
 		return nil, err
 	}
 	return &BasePathFile{sourcef, b.path}, nil
@@ -253,12 +250,12 @@ func (b *BasePathFs) OpenFile(name string, flag int, mode os.FileMode) (f File, 
 //   - error: 错误信息
 func (b *BasePathFs) Open(name string) (f File, err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return nil, &os.PathError{Op: "open", Path: name, Err: err}
 	}
 	sourcef, err := b.source.Open(name)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("打开文件失败:", err)
 		return nil, err
 	}
 	return &BasePathFile{File: sourcef, path: b.path}, nil
@@ -273,7 +270,7 @@ func (b *BasePathFs) Open(name string) (f File, err error) {
 //   - error: 错误信息
 func (b *BasePathFs) Mkdir(name string, mode os.FileMode) (err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return &os.PathError{Op: "mkdir", Path: name, Err: err}
 	}
 	return b.source.Mkdir(name, mode)
@@ -288,7 +285,7 @@ func (b *BasePathFs) Mkdir(name string, mode os.FileMode) (err error) {
 //   - error: 错误信息
 func (b *BasePathFs) MkdirAll(name string, mode os.FileMode) (err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return &os.PathError{Op: "mkdir", Path: name, Err: err}
 	}
 	return b.source.MkdirAll(name, mode)
@@ -303,12 +300,12 @@ func (b *BasePathFs) MkdirAll(name string, mode os.FileMode) (err error) {
 //   - error: 错误信息
 func (b *BasePathFs) Create(name string) (f File, err error) {
 	if name, err = b.RealPath(name); err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return nil, &os.PathError{Op: "create", Path: name, Err: err}
 	}
 	sourcef, err := b.source.Create(name)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("创建文件失败:", err)
 		return nil, err
 	}
 	return &BasePathFile{File: sourcef, path: b.path}, nil
@@ -325,7 +322,7 @@ func (b *BasePathFs) Create(name string) (f File, err error) {
 func (b *BasePathFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
 	name, err := b.RealPath(name)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return nil, false, &os.PathError{Op: "lstat", Path: name, Err: err}
 	}
 	if lstater, ok := b.source.(Lstater); ok {
@@ -345,12 +342,12 @@ func (b *BasePathFs) LstatIfPossible(name string) (os.FileInfo, bool, error) {
 func (b *BasePathFs) SymlinkIfPossible(oldname, newname string) error {
 	oldname, err := b.RealPath(oldname)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取旧文件真实路径失败:", err)
 		return &os.LinkError{Op: "symlink", Old: oldname, New: newname, Err: err}
 	}
 	newname, err = b.RealPath(newname)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取新文件真实路径失败:", err)
 		return &os.LinkError{Op: "symlink", Old: oldname, New: newname, Err: err}
 	}
 	if linker, ok := b.source.(Linker); ok {
@@ -369,7 +366,7 @@ func (b *BasePathFs) SymlinkIfPossible(oldname, newname string) error {
 func (b *BasePathFs) ReadlinkIfPossible(name string) (string, error) {
 	name, err := b.RealPath(name)
 	if err != nil {
-		logrus.Errorf("[%s]: %v", debug.WhereAmI(), err)
+		logger.Error("获取真实路径失败:", err)
 		return "", &os.PathError{Op: "readlink", Path: name, Err: err}
 	}
 	if reader, ok := b.source.(LinkReader); ok {

@@ -9,8 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	logging "github.com/dep2p/log"
 	"github.com/googleapis/google-cloud-go-testing/storage/stiface"
 )
+
+var logger = logging.Logger("gcsfs")
 
 const (
 	defaultFileMode = 0o755   // 默认文件模式
@@ -116,6 +119,7 @@ func ensureNoPrefix(s string) string {
 //   - 可能的错误
 func validateName(s string) error {
 	if len(s) == 0 {
+		logger.Error("名称为空")
 		return ErrNoBucketInName
 	}
 	return nil
@@ -146,6 +150,7 @@ func (fs *Fs) getBucket(name string) (stiface.BucketHandle, error) {
 		bucket = fs.client.Bucket(name)
 		_, err := bucket.Attrs(fs.ctx)
 		if err != nil {
+			logger.Error("获取桶属性失败", "错误", err)
 			return nil, err
 		}
 	}
@@ -164,6 +169,7 @@ func (fs *Fs) getObj(name string) (stiface.ObjectHandle, error) {
 
 	bucket, err := fs.getBucket(bucketName)
 	if err != nil {
+		logger.Error("获取桶失败", "错误", err)
 		return nil, err
 	}
 
@@ -183,6 +189,7 @@ func (fs *Fs) Name() string { return "GcsFs" }
 func (fs *Fs) Create(name string) (*GcsFile, error) {
 	name = fs.ensureNoLeadingSeparator(fs.normSeparators(ensureNoPrefix(name)))
 	if err := validateName(name); err != nil {
+		logger.Error("文件名称无效", "错误", err)
 		return nil, err
 	}
 
@@ -191,6 +198,7 @@ func (fs *Fs) Create(name string) (*GcsFile, error) {
 		if stat, err := fs.Stat(baseDir); err != nil || !stat.IsDir() {
 			err = fs.MkdirAll(baseDir, 0)
 			if err != nil {
+				logger.Error("创建目录失败", "错误", err)
 				return nil, err
 			}
 		}
@@ -198,11 +206,13 @@ func (fs *Fs) Create(name string) (*GcsFile, error) {
 
 	obj, err := fs.getObj(name)
 	if err != nil {
+		logger.Error("获取对象失败", "错误", err)
 		return nil, err
 	}
 	w := obj.NewWriter(fs.ctx)
 	err = w.Close()
 	if err != nil {
+		logger.Error("关闭写入器失败", "错误", err)
 		return nil, err
 	}
 	file := NewGcsFile(fs.ctx, fs, obj, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0, name)
@@ -221,20 +231,23 @@ func (fs *Fs) Create(name string) (*GcsFile, error) {
 func (fs *Fs) Mkdir(name string, _ os.FileMode) error {
 	name = fs.ensureNoLeadingSeparator(fs.ensureTrailingSeparator(fs.normSeparators(ensureNoPrefix(name))))
 	if err := validateName(name); err != nil {
+		logger.Error("目录名称无效", "错误", err)
 		return err
 	}
 	// 目录创建逻辑需要额外检查目录名称是否存在
 	bucketName, path := fs.splitName(name)
 	if bucketName == "" {
+		logger.Error("桶名称为空")
 		return ErrNoBucketInName
 	}
 	if path == "" {
-		// API 会抛出 "googleapi: Error 400: No object name, required"，但这个错误更一致
+		logger.Error("对象名称为空")
 		return ErrEmptyObjectName
 	}
 
 	obj, err := fs.getObj(name)
 	if err != nil {
+		logger.Error("获取对象失败", "错误", err)
 		return err
 	}
 	w := obj.NewWriter(fs.ctx)
@@ -251,15 +264,17 @@ func (fs *Fs) Mkdir(name string, _ os.FileMode) error {
 func (fs *Fs) MkdirAll(path string, perm os.FileMode) error {
 	path = fs.ensureNoLeadingSeparator(fs.ensureTrailingSeparator(fs.normSeparators(ensureNoPrefix(path))))
 	if err := validateName(path); err != nil {
+		logger.Error("路径名称无效", "错误", err)
 		return err
 	}
 	// 目录创建逻辑需要额外检查目录名称是否存在
 	bucketName, splitPath := fs.splitName(path)
 	if bucketName == "" {
+		logger.Error("桶名称为空")
 		return ErrNoBucketInName
 	}
 	if splitPath == "" {
-		// API 会抛出 "googleapi: Error 400: No object name, required"，但这个错误更一致
+		logger.Error("对象名称为空")
 		return ErrEmptyObjectName
 	}
 
@@ -279,6 +294,7 @@ func (fs *Fs) MkdirAll(path string, perm os.FileMode) error {
 		}
 
 		if err := fs.Mkdir(root, perm); err != nil {
+			logger.Error("创建目录失败", "错误", err)
 			return err
 		}
 	}
@@ -311,6 +327,7 @@ func (fs *Fs) OpenFile(name string, flag int, fileMode os.FileMode) (*GcsFile, e
 
 	name = fs.ensureNoLeadingSeparator(fs.normSeparators(ensureNoPrefix(name)))
 	if err = validateName(name); err != nil {
+		logger.Error("文件名称无效", "错误", err)
 		return nil, err
 	}
 
@@ -321,6 +338,7 @@ func (fs *Fs) OpenFile(name string, flag int, fileMode os.FileMode) (*GcsFile, e
 		var obj stiface.ObjectHandle
 		obj, err = fs.getObj(name)
 		if err != nil {
+			logger.Error("获取对象失败", "错误", err)
 			return nil, err
 		}
 		file = NewGcsFile(fs.ctx, fs, obj, flag, fileMode, name)
@@ -329,6 +347,7 @@ func (fs *Fs) OpenFile(name string, flag int, fileMode os.FileMode) (*GcsFile, e
 	if flag == os.O_RDONLY {
 		_, err = file.Stat()
 		if err != nil {
+			logger.Error("获取文件状态失败", "错误", err)
 			return nil, err
 		}
 	}
@@ -336,6 +355,7 @@ func (fs *Fs) OpenFile(name string, flag int, fileMode os.FileMode) (*GcsFile, e
 	if flag&os.O_TRUNC != 0 {
 		err = file.resource.obj.Delete(fs.ctx)
 		if err != nil {
+			logger.Error("删除文件失败", "错误", err)
 			return nil, err
 		}
 		return fs.Create(name)
@@ -344,6 +364,7 @@ func (fs *Fs) OpenFile(name string, flag int, fileMode os.FileMode) (*GcsFile, e
 	if flag&os.O_APPEND != 0 {
 		_, err = file.Seek(0, 2)
 		if err != nil {
+			logger.Error("移动文件指针失败", "错误", err)
 			return nil, err
 		}
 	}
@@ -351,11 +372,13 @@ func (fs *Fs) OpenFile(name string, flag int, fileMode os.FileMode) (*GcsFile, e
 	if flag&os.O_CREATE != 0 {
 		_, err = file.Stat()
 		if err == nil { // 文件实际存在
+			logger.Error("文件已存在")
 			return nil, syscall.EPERM
 		}
 
 		_, err = file.WriteString("")
 		if err != nil {
+			logger.Error("写入文件失败", "错误", err)
 			return nil, err
 		}
 	}
@@ -371,15 +394,18 @@ func (fs *Fs) OpenFile(name string, flag int, fileMode os.FileMode) (*GcsFile, e
 func (fs *Fs) Remove(name string) error {
 	name = fs.ensureNoLeadingSeparator(fs.normSeparators(ensureNoPrefix(name)))
 	if err := validateName(name); err != nil {
+		logger.Error("名称无效", "错误", err)
 		return err
 	}
 
 	obj, err := fs.getObj(name)
 	if err != nil {
+		logger.Error("获取对象失败", "错误", err)
 		return err
 	}
 	info, err := fs.Stat(name)
 	if err != nil {
+		logger.Error("获取文件状态失败", "错误", err)
 		return err
 	}
 	delete(fs.rawGcsObjects, name)
@@ -389,14 +415,17 @@ func (fs *Fs) Remove(name string) error {
 		var dir *GcsFile
 		dir, err = fs.Open(name)
 		if err != nil {
+			logger.Error("打开目录失败", "错误", err)
 			return err
 		}
 		var infos []os.FileInfo
 		infos, err = dir.Readdir(0)
 		if err != nil {
+			logger.Error("读取目录内容失败", "错误", err)
 			return err
 		}
 		if len(infos) > 0 {
+			logger.Error("目录不为空")
 			return syscall.ENOTEMPTY
 		}
 
@@ -404,6 +433,7 @@ func (fs *Fs) Remove(name string) error {
 		name = fs.ensureTrailingSeparator(name)
 		obj, err = fs.getObj(name)
 		if err != nil {
+			logger.Error("获取对象失败", "错误", err)
 			return err
 		}
 
@@ -421,6 +451,7 @@ func (fs *Fs) Remove(name string) error {
 func (fs *Fs) RemoveAll(path string) error {
 	path = fs.ensureNoLeadingSeparator(fs.normSeparators(ensureNoPrefix(path)))
 	if err := validateName(path); err != nil {
+		logger.Error("路径名称无效", "错误", err)
 		return err
 	}
 
@@ -430,6 +461,7 @@ func (fs *Fs) RemoveAll(path string) error {
 		return nil
 	}
 	if err != nil {
+		logger.Error("获取路径状态失败", "错误", err)
 		return err
 	}
 
@@ -440,18 +472,21 @@ func (fs *Fs) RemoveAll(path string) error {
 	var dir *GcsFile
 	dir, err = fs.Open(path)
 	if err != nil {
+		logger.Error("打开目录失败", "错误", err)
 		return err
 	}
 
 	var infos []os.FileInfo
 	infos, err = dir.Readdir(0)
 	if err != nil {
+		logger.Error("读取目录内容失败", "错误", err)
 		return err
 	}
 	for _, info := range infos {
 		nameToRemove := fs.normSeparators(info.Name())
 		err = fs.RemoveAll(path + fs.separator + nameToRemove)
 		if err != nil {
+			logger.Error("删除子项失败", "错误", err)
 			return err
 		}
 	}
@@ -469,24 +504,29 @@ func (fs *Fs) RemoveAll(path string) error {
 func (fs *Fs) Rename(oldName, newName string) error {
 	oldName = fs.ensureNoLeadingSeparator(fs.normSeparators(ensureNoPrefix(oldName)))
 	if err := validateName(oldName); err != nil {
+		logger.Error("旧名称无效", "错误", err)
 		return err
 	}
 
 	newName = fs.ensureNoLeadingSeparator(fs.normSeparators(ensureNoPrefix(newName)))
 	if err := validateName(newName); err != nil {
+		logger.Error("新名称无效", "错误", err)
 		return err
 	}
 
 	src, err := fs.getObj(oldName)
 	if err != nil {
+		logger.Error("获取源对象失败", "错误", err)
 		return err
 	}
 	dst, err := fs.getObj(newName)
 	if err != nil {
+		logger.Error("获取目标对象失败", "错误", err)
 		return err
 	}
 
 	if _, err = dst.CopierFrom(src).Run(fs.ctx); err != nil {
+		logger.Error("复制对象失败", "错误", err)
 		return err
 	}
 	delete(fs.rawGcsObjects, oldName)
@@ -503,6 +543,7 @@ func (fs *Fs) Rename(oldName, newName string) error {
 func (fs *Fs) Stat(name string) (os.FileInfo, error) {
 	name = fs.ensureNoLeadingSeparator(fs.normSeparators(ensureNoPrefix(name)))
 	if err := validateName(name); err != nil {
+		logger.Error("名称无效", "错误", err)
 		return nil, err
 	}
 
@@ -517,7 +558,8 @@ func (fs *Fs) Stat(name string) (os.FileInfo, error) {
 // 返回：
 //   - 错误（因为此方法未实现）
 func (fs *Fs) Chmod(_ string, _ os.FileMode) error {
-	return errors.New("method Chmod is not implemented in GCS")
+	logger.Error("Chmod方法未实现")
+	return errors.New("Chmod方法在GCS中未实现")
 }
 
 // Chtimes 修改文件或目录的访问时间和修改时间
@@ -529,7 +571,8 @@ func (fs *Fs) Chmod(_ string, _ os.FileMode) error {
 // 返回：
 //   - 错误（因为此方法未实现）
 func (fs *Fs) Chtimes(_ string, _, _ time.Time) error {
-	return errors.New("method Chtimes is not implemented. Create, Delete, Updated times are read only fields in GCS and set implicitly")
+	logger.Error("Chtimes方法未实现")
+	return errors.New("Chtimes方法未实现。创建、删除、更新时间是GCS中的只读字段，并且是隐式设置的")
 }
 
 // Chown 修改文件或目录的所有者
@@ -541,5 +584,6 @@ func (fs *Fs) Chtimes(_ string, _, _ time.Time) error {
 // 返回：
 //   - 错误（因为此方法未实现）
 func (fs *Fs) Chown(_ string, _, _ int) error {
-	return errors.New("method Chown is not implemented for GCS")
+	logger.Error("Chown方法未实现")
+	return errors.New("Chown方法在GCS中未实现")
 }

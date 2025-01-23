@@ -4,8 +4,6 @@ import (
 	"encoding/hex"
 	"math/big"
 	"testing"
-
-	"github.com/sirupsen/logrus"
 )
 
 func TestGenerateShares(t *testing.T) {
@@ -23,7 +21,7 @@ func TestGenerateShares(t *testing.T) {
 	}
 
 	for i, share := range shares {
-		logrus.Printf("#%d: %s\n", i, hex.EncodeToString(share))
+		logger.Infof("#%d: %s\n", i, hex.EncodeToString(share))
 	}
 
 	// 使用前三个份额恢复秘密
@@ -32,5 +30,5 @@ func TestGenerateShares(t *testing.T) {
 		panic(err)
 	}
 
-	logrus.Println("Recovered secret:", string(recoveredSecret))
+	logger.Infof("Recovered secret:", string(recoveredSecret))
 }

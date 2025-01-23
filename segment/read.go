@@ -30,6 +30,7 @@ func readSegmentInternal(reader io.Reader, segmentTypes []string, xref *FileXref
 	// 检查 reader 是否支持寻址
 	seeker, ok := reader.(io.Seeker)
 	if !ok {
+		logger.Errorf("读取器不支持寻址")
 		return nil, fmt.Errorf("读取器不支持寻址")
 	}
 
@@ -44,10 +45,12 @@ func readSegmentInternal(reader io.Reader, segmentTypes []string, xref *FileXref
 		// 初始化段读取结果
 		result := new(SegmentReadResult)
 		if !ok {
-			result.Error = fmt.Errorf("ErrNoSuchField") // 段不存在
+			logger.Errorf("段不存在: %s", segmentType)
+			result.Error = fmt.Errorf("段不存在") // 段不存在
 		} else {
 			// 尝试寻址到段的起始位置
 			if _, err := seeker.Seek(entry.Offset, io.SeekStart); err != nil {
+				logger.Errorf("寻址失败: %v", err)
 				result.Error = fmt.Errorf("寻址失败: %v", err)
 				continue
 			}
@@ -55,6 +58,7 @@ func readSegmentInternal(reader io.Reader, segmentTypes []string, xref *FileXref
 			// 读取 segmentType 的长度
 			var segmentTypeLength uint32
 			if err := binary.Read(reader, binary.BigEndian, &segmentTypeLength); err != nil {
+				logger.Errorf("读取段类型长度失败: %v", err)
 				result.Error = fmt.Errorf("读取段类型长度失败: %v", err)
 				continue
 			}
@@ -62,6 +66,7 @@ func readSegmentInternal(reader io.Reader, segmentTypes []string, xref *FileXref
 			// 读取 segmentType
 			readSegmentType := make([]byte, segmentTypeLength)
 			if _, err := io.ReadFull(reader, readSegmentType); err != nil {
+				logger.Errorf("读取段类型失败: %v", err)
 				result.Error = fmt.Errorf("读取段类型失败: %v", err)
 				continue
 			}
@@ -70,10 +75,12 @@ func readSegmentInternal(reader io.Reader, segmentTypes []string, xref *FileXref
 			var length uint32
 			var checksum uint32
 			if err := binary.Read(reader, binary.BigEndian, &length); err != nil {
+				logger.Errorf("读取数据长度失败: %v", err)
 				result.Error = fmt.Errorf("读取数据长度失败: %v", err)
 				continue
 			}
 			if err := binary.Read(reader, binary.BigEndian, &checksum); err != nil {
+				logger.Errorf("读取校验和失败: %v", err)
 				result.Error = fmt.Errorf("读取校验和失败: %v", err)
 				continue
 			}
@@ -86,12 +93,14 @@ func readSegmentInternal(reader io.Reader, segmentTypes []string, xref *FileXref
 				// 读取实际数据
 				data := make([]byte, length)
 				if _, err := io.ReadFull(reader, data); err != nil {
+					logger.Errorf("读取数据失败: %v", err)
 					result.Error = fmt.Errorf("读取数据失败: %v", err)
 					continue
 				}
 
 				// 校验数据
 				if checksum != crc32.ChecksumIEEE(data) {
+					logger.Errorf("段 '%s' 数据损坏", segmentType)
 					result.Error = fmt.Errorf("段 '%s' 数据损坏", segmentType)
 				} else {
 					result.Data = data
@@ -121,6 +130,7 @@ func ReadSegmentToBuffer(buffer *bytes.Buffer, segmentType string, xref *FileXre
 	// 调用内部读取函数
 	segmentResults, err := readSegmentInternal(bytesReader, []string{segmentType}, xref)
 	if err != nil {
+		logger.Errorf("读取段失败: %v", err)
 		return nil, err
 	}
 
@@ -128,8 +138,10 @@ func ReadSegmentToBuffer(buffer *bytes.Buffer, segmentType string, xref *FileXre
 	result, found := segmentResults[segmentType]
 	if !found || result.Error != nil {
 		if result.Error != nil {
+			logger.Errorf("读取段结果错误: %v", result.Error)
 			return nil, result.Error
 		}
+		logger.Errorf("未找到段: %s", segmentType)
 		return nil, result.Error
 	}
 
@@ -151,6 +163,7 @@ func ReadSegmentsFromBuffer(buffer *bytes.Buffer, segmentTypes []string, xref *F
 	// 调用内部读取函数
 	segmentResults, err := readSegmentInternal(bytesReader, segmentTypes, xref)
 	if err != nil {
+		logger.Errorf("读取多个段失败: %v", err)
 		return nil, err
 	}
 
@@ -178,6 +191,7 @@ func ReadFieldFromBytes(data []byte, fieldType string, xref *FileXref) ([]byte, 
 	// 调用内部读取函数
 	fieldResults, err := readSegmentInternal(bytesReader, []string{fieldType}, xref)
 	if err != nil {
+		logger.Errorf("读取字段失败: %v", err)
 		return nil, err
 	}
 
@@ -185,9 +199,11 @@ func ReadFieldFromBytes(data []byte, fieldType string, xref *FileXref) ([]byte, 
 	result, found := fieldResults[fieldType]
 	if !found || result.Error != nil {
 		if result.Error != nil {
+			logger.Errorf("读取字段结果错误: %v", result.Error)
 			return nil, result.Error
 		}
-		return nil, errors.New("field not found")
+		logger.Errorf("未找到字段: %s", fieldType)
+		return nil, errors.New("未找到字段")
 	}
 
 	return result.Data, nil
@@ -208,6 +224,7 @@ func ReadFieldsFromBytes(data []byte, fieldTypes []string, xref *FileXref) (map[
 	// 调用内部读取函数
 	fieldResults, err := readSegmentInternal(bytesReader, fieldTypes, xref)
 	if err != nil {
+		logger.Errorf("读取多个字段失败: %v", err)
 		return nil, err
 	}
 
@@ -235,7 +252,8 @@ func findStartXref(file *os.File) (int64, error) {
 	// 获取文件大小
 	fileSize, err := file.Seek(0, io.SeekEnd)
 	if err != nil {
-		return 0, fmt.Errorf("failed to seek file end: %w", err)
+		logger.Errorf("定位文件末尾失败: %v", err)
+		return 0, fmt.Errorf("定位文件末尾失败: %v", err)
 	}
 
 	// 从文件末尾向前搜索 "startxref"
@@ -246,7 +264,8 @@ func findStartXref(file *os.File) (int64, error) {
 		buffer := make([]byte, endPos-startPos)
 		_, err := file.ReadAt(buffer, startPos)
 		if err != nil && err != io.EOF {
-			return 0, fmt.Errorf("failed to read file: %w", err)
+			logger.Errorf("读取文件失败: %v", err)
+			return 0, fmt.Errorf("读取文件失败: %v", err)
 		}
 
 		index := bytes.LastIndex(buffer, []byte("startxref"))
@@ -255,7 +274,8 @@ func findStartXref(file *os.File) (int64, error) {
 		}
 	}
 
-	return 0, errors.New("startxref not found")
+	logger.Errorf("未找到startxref标记")
+	return 0, errors.New("未找到startxref标记")
 }
 
 // max 返回两个 int64 类型值中的最大值。
@@ -285,17 +305,20 @@ func parseXref(file *os.File, startXrefPos int64) (*FileXref, error) {
 	// 定位到 "startxref" 后面的位置
 	_, err := file.Seek(startXrefPos+int64(len("startxref")), io.SeekStart)
 	if err != nil {
-		return nil, fmt.Errorf("failed to seek xref position: %w", err)
+		logger.Errorf("定位xref位置失败: %v", err)
+		return nil, fmt.Errorf("定位xref位置失败: %v", err)
 	}
 
 	var xrefOffset int64
 	// 读取 xref 表的偏移位置
 	if err := binary.Read(file, binary.BigEndian, &xrefOffset); err != nil {
-		return nil, fmt.Errorf("failed to read xref offset: %w", err)
+		logger.Errorf("读取xref偏移量失败: %v", err)
+		return nil, fmt.Errorf("读取xref偏移量失败: %v", err)
 	}
 
 	// 定位到 xref 表并读取它
 	if _, err := file.Seek(xrefOffset, io.SeekStart); err != nil {
+		logger.Errorf("定位到xref表失败: %v", err)
 		return nil, err
 	}
 
@@ -309,12 +332,14 @@ func parseXref(file *os.File, startXrefPos int64) (*FileXref, error) {
 		} else if segmentTypeLen > maxSegmentTypeLen {
 			break
 		} else if err != nil {
+			logger.Errorf("读取段类型长度失败: %v", err)
 			return nil, err
 		}
 
 		segmentTypeBytes := make([]byte, segmentTypeLen)
 		// 读取段类型
 		if _, err := io.ReadFull(file, segmentTypeBytes); err != nil {
+			logger.Errorf("读取段类型失败: %v", err)
 			return nil, err
 		}
 
@@ -323,6 +348,7 @@ func parseXref(file *os.File, startXrefPos int64) (*FileXref, error) {
 		entry := XrefEntry{}
 		// 读取 xref 表中的条目
 		if err := binary.Read(file, binary.BigEndian, &entry); err != nil {
+			logger.Errorf("读取xref表条目失败: %v", err)
 			return nil, err
 		}
 
@@ -353,10 +379,12 @@ func readSegment(file *os.File, segmentTypes []string, xref *FileXref) (map[stri
 
 		result := new(SegmentReadResult)
 		if !exists {
-			result.Error = fmt.Errorf("ErrNoSuchField") // 段不存在
+			logger.Errorf("段不存在: %s", segmentType)
+			result.Error = fmt.Errorf("段不存在") // 段不存在
 		} else {
 			// 定位到段的起始位置
 			if _, err := file.Seek(entry.Offset, io.SeekStart); err != nil {
+				logger.Errorf("寻址失败: %v", err)
 				result.Error = fmt.Errorf("寻址失败: %v", err)
 				continue
 			}
@@ -364,6 +392,7 @@ func readSegment(file *os.File, segmentTypes []string, xref *FileXref) (map[stri
 			// 读取 segmentType 的长度
 			var segmentTypeLength uint32
 			if err := binary.Read(file, binary.BigEndian, &segmentTypeLength); err != nil {
+				logger.Errorf("读取段类型长度失败: %v", err)
 				result.Error = fmt.Errorf("读取段类型长度失败: %v", err)
 				continue
 			}
@@ -371,6 +400,7 @@ func readSegment(file *os.File, segmentTypes []string, xref *FileXref) (map[stri
 			// 读取 segmentType
 			readSegmentType := make([]byte, segmentTypeLength)
 			if _, err := io.ReadFull(file, readSegmentType); err != nil {
+				logger.Errorf("读取段类型失败: %v", err)
 				result.Error = fmt.Errorf("读取段类型失败: %v", err)
 				continue
 			}
@@ -379,10 +409,12 @@ func readSegment(file *os.File, segmentTypes []string, xref *FileXref) (map[stri
 			var length uint32
 			var checksum uint32
 			if err := binary.Read(file, binary.BigEndian, &length); err != nil {
+				logger.Errorf("读取数据长度失败: %v", err)
 				result.Error = fmt.Errorf("读取数据长度失败: %v", err)
 				continue
 			}
 			if err := binary.Read(file, binary.BigEndian, &checksum); err != nil {
+				logger.Errorf("读取校验和失败: %v", err)
 				result.Error = fmt.Errorf("读取校验和失败: %v", err)
 				continue
 			}
@@ -394,12 +426,14 @@ func readSegment(file *os.File, segmentTypes []string, xref *FileXref) (map[stri
 				// 读取实际数据
 				data := make([]byte, length)
 				if _, err := io.ReadFull(file, data); err != nil {
+					logger.Errorf("读取数据失败: %v", err)
 					result.Error = fmt.Errorf("读取数据失败: %v", err)
 					continue
 				}
 
 				// 校验数据
 				if checksum != crc32.ChecksumIEEE(data) {
+					logger.Errorf("段 '%s' 数据损坏", segmentType)
 					result.Error = fmt.Errorf("段 '%s' 数据损坏", segmentType)
 				} else {
 					result.Data = data
