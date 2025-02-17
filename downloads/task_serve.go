@@ -42,7 +42,6 @@ func (t *DownloadTask) Start() error {
 				go t.safeHandle(t.handleNodeDispatch)
 
 			case item := <-t.chNetworkTransfer:
-
 				// 网络传输：向目标节点传输文件片段
 				logger.Infof("收到网络传输请求: segments=%d", len(item.Segments))
 				go func(transferItem *NetworkTransferItem) {
@@ -73,17 +72,6 @@ func (t *DownloadTask) Start() error {
 				}
 				return // 文件处理完成，退出循环
 
-			case <-t.chPause:
-				// 暂停：暂停当前上传任务
-				fmt.Println("收到暂停信号")
-				logger.Info("收到暂停信号")
-				// 先取消上下文
-				t.cancel()
-				if err := t.handlePause(); err != nil {
-					logger.Errorf("处理暂停请求失败: %v", err)
-					t.NotifyTaskError(err)
-				}
-				return
 			}
 		}
 	}()

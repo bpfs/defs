@@ -31,12 +31,6 @@ func (m *UploadManager) NewUpload(
 	ownerPriv *ecdsa.PrivateKey,
 	immediate ...bool,
 ) (*pb.UploadOperationInfo, error) {
-	// 检查服务端节点数量是否足够
-	// minNodes := m.opt.GetMinUploadServerNodes()
-	// if m.routingTable.Size(2) < minNodes {
-	// 	logger.Warnf("上传时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
-	// 	return nil, fmt.Errorf("上传时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
-	// }
 
 	// 检查是否存在可用的发送节点
 	if !m.ps.Client().HasAvailableNodes(protocol.ID(SendingToNetworkProtocol)) {
@@ -258,9 +252,17 @@ func (m *UploadManager) PauseUpload(taskID string) error {
 	switch fileRecord.Status {
 	case pb.UploadStatus_UPLOAD_STATUS_PENDING,
 		pb.UploadStatus_UPLOAD_STATUS_UPLOADING:
-		// 可以暂停的状态
-		if err := task.ForcePause(); err != nil {
-			logger.Errorf("触发暂停失败: taskID=%s, err=%v", taskID, err)
+
+		// 取消上下文
+		task.cancel()
+		// 更新文件状态为暂停
+		uploadFileStore := database.NewUploadFileStore(task.db)
+		if err := uploadFileStore.UpdateUploadFileStatus(
+			task.taskId,
+			pb.UploadStatus_UPLOAD_STATUS_PAUSED,
+			time.Now().Unix(),
+		); err != nil {
+			logger.Errorf("更新文件状态失败: taskID=%s, err=%v", task.taskId, err)
 			return err
 		}
 

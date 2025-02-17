@@ -301,11 +301,20 @@ func (m *DownloadManager) PauseDownload(taskID string) error {
 	switch fileRecord.Status {
 	case pb.DownloadStatus_DOWNLOAD_STATUS_PENDING,
 		pb.DownloadStatus_DOWNLOAD_STATUS_DOWNLOADING:
-		// 可以暂停的状态
-		if err := task.Pause(); err != nil {
-			logger.Errorf("暂停下载失败: taskID=%s, err=%v", taskID, err)
+
+		// 更新文件状态为暂停
+		downloadFileStore := database.NewDownloadFileStore(task.db)
+		record := &pb.DownloadFileRecord{
+			TaskId: task.taskId,
+			Status: pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED,
+		}
+		// 更新文件状态为暂停
+		if err := downloadFileStore.Update(record); err != nil {
+			logger.Errorf("更新文件状态失败: taskID=%s, err=%v", task.taskId, err)
 			return err
 		}
+		// 取消上下文
+		task.cancel()
 		return nil
 
 	case pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED:

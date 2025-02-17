@@ -26,7 +26,6 @@ func (t *UploadTask) Start() error {
 
 			case <-t.chSegmentProcess:
 				// 处理文件片段：将文件片段整合并写入队列
-
 				if err := t.handleSegmentProcess(); err != nil {
 					logger.Errorf("处理文件片段失败: %v", err)
 					t.NotifyTaskError(err)
@@ -34,11 +33,14 @@ func (t *UploadTask) Start() error {
 
 			case segmentID := <-t.chSendClosest:
 				// 发送最近的节点: 分片ID
+				fmt.Println("收到了开始发送-----")
+
 				logger.Infof("收到发送最近的节点请求: segmentID=%s", segmentID)
 				if err := t.handleSendClosest(segmentID); err != nil {
 					logger.Errorf("发送最近的节点失败: segmentID=%s, err=%v", segmentID, err)
 					t.NotifyTaskError(err)
 				}
+
 			case <-t.chSegmentVerify:
 				// 片段验证：验证已传输片段的完整性
 				logger.Info("收到片段验证请求")
@@ -55,41 +57,6 @@ func (t *UploadTask) Start() error {
 					t.NotifyTaskError(err)
 				}
 				return // 文件处理完成，退出循环
-
-			case <-t.chPause:
-				// 暂停：暂停当前上传任务
-				fmt.Println("==收到暂停")
-				logger.Info("收到暂停信号")
-				// 先取消上下文
-				t.cancel()
-				if err := t.handlePause(); err != nil {
-					logger.Errorf("处理暂停请求失败: %v", err)
-					t.NotifyTaskError(err)
-				}
-				return
-				// TODO:暂停的时候上下文已经取消，就算发送取消或者删除也接收不到消息，所以直接处理就行
-				// case <-t.chCancel:
-				// 	// 取消：取消当前上传任务
-				// 	fmt.Println("==收到取消信号")
-				// 	logger.Info("收到取消信号")
-				// 	// 先取消上下文
-				// 	t.cancel()
-				// 	if err := t.handleCancel(); err != nil {
-				// 		logger.Errorf("处理取消请求失败: %v", err)
-				// 		t.NotifyTaskError(err)
-				// 	}
-				// 	return
-
-				// case <-t.chDelete:
-				// 	// 删除：删除当前上传任务及相关资源
-				// 	logger.Info("收到删除信号")
-				// 	// 先取消上下文
-				// 	t.cancel()
-				// 	if err := t.handleDelete(); err != nil {
-				// 		logger.Errorf("处理删除请求失败: %v", err)
-				// 		t.NotifyTaskError(err)
-				// 	}
-				// 	return
 
 			}
 		}

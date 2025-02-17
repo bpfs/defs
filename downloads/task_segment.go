@@ -107,7 +107,6 @@ func (t *DownloadTask) handleSegmentProcess() error {
 
 		return t.ForceSegmentVerify()
 	}
-
 	// 强制触发节点分发
 	return t.ForceNodeDispatch()
 }

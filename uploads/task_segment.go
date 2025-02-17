@@ -1,6 +1,7 @@
 package uploads
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -466,7 +467,7 @@ func (t *UploadTask) handleSendClosest(segmentID string) error {
 	}
 
 	// 发送最近的节点请求
-	sendResult, err := t.ps.SendClosest(t.ctx, protocol.ID(SendingToNetworkProtocol), data)
+	sendResult, err := t.ps.SendClosest(context.Background(), protocol.ID(SendingToNetworkProtocol), data)
 	if err != nil {
 		// 发送失败，更新状态并记录日志
 		if err := uploadSegmentStore.UpdateSegmentStatus(segmentID, pb.SegmentUploadStatus_SEGMENT_UPLOAD_STATUS_FAILED); err != nil {
