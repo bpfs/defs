@@ -8,9 +8,9 @@ import (
 	"github.com/bpfs/defs/v2/afero"
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/fscfg"
-	"github.com/bpfs/defs/v2/kbucket"
 
 	"github.com/dep2p/go-dep2p/core/host"
+	"github.com/dep2p/pointsub"
 	"github.com/dep2p/pubsub"
 	npspb "github.com/dep2p/pubsub/pb"
 	"go.uber.org/fx"
@@ -58,14 +58,15 @@ var AllowedTopics = []Topic{
 type RegisterPubsubProtocolInput struct {
 	fx.In
 
-	Ctx          context.Context       // 全局上下文，用于管理整个应用的生命周期
-	Opt          *fscfg.Options        // 文件存储配置选项
-	DB           *database.DB          // 本地数据存储实例
-	FS           afero.Afero           // 文件系统接口
-	Host         host.Host             // libp2p网络主机实例
-	RoutingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
-	NPS          *pubsub.NodePubSub    // 发布订阅系统
-	Download     *DownloadManager      // 下载管理器实例
+	Ctx  context.Context    // 全局上下文，用于管理整个应用的生命周期
+	Opt  *fscfg.Options     // 文件存储配置选项
+	DB   *database.DB       // 本地数据存储实例
+	FS   afero.Afero        // 文件系统接口
+	Host host.Host          // libp2p网络主机实例
+	PS   *pointsub.PointSub // 点对点传输实例
+	// RoutingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
+	NPS      *pubsub.NodePubSub // 发布订阅系统
+	Download *DownloadManager   // 下载管理器实例
 }
 
 // RegisterDownloadPubsubProtocol 注册所有下载相关的PubSub协议处理器

@@ -34,13 +34,6 @@ func (m *DownloadManager) NewDownload(
 	ownerPriv *ecdsa.PrivateKey,
 	fileID string,
 ) (string, error) {
-	// 检查服务端节点数量是否足够
-	minNodes := m.opt.GetMinDownloadServerNodes()
-	if m.routingTable.Size(2) < minNodes {
-		logger.Warnf("下载时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
-		return "", fmt.Errorf("下载时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
-	}
-
 	// 删除文件ID两端的空白字符
 	fileID = strings.TrimSpace(fileID)
 	if fileID == "" {
@@ -137,13 +130,6 @@ func (m *DownloadManager) NewShareDownload(
 	keyShare []byte,
 	pubkeyHash []byte,
 ) (string, error) {
-	// 检查服务端节点数量是否足够
-	minNodes := m.opt.GetMinDownloadServerNodes()
-	if m.routingTable.Size(2) < minNodes {
-		logger.Warnf("下载时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
-		return "", fmt.Errorf("下载时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
-	}
-
 	// 删除文件ID两端的空白字符
 	fileID = strings.TrimSpace(fileID)
 	if fileID == "" {
@@ -212,13 +198,6 @@ func (m *DownloadManager) NewShareDownload(
 func (m *DownloadManager) TriggerDownload(taskID string) error {
 	logger.Infof("开始触发下载任务: %s", taskID)
 
-	// 检查服务端节点数量是否足够
-	minNodes := m.opt.GetMinDownloadServerNodes()
-	if m.routingTable.Size(2) < minNodes {
-		logger.Warnf("下载时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
-		return fmt.Errorf("下载时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
-	}
-
 	// 检查是否达到下载允许的最大并发数
 	if m.IsMaxConcurrencyReached() {
 		logger.Errorf("已达到下载允许的最大并发数 %d", MaxSessions)
@@ -227,19 +206,21 @@ func (m *DownloadManager) TriggerDownload(taskID string) error {
 
 	// 移除指定任务ID的下载任务，如果存在
 	m.removeTask(taskID)
+	// 检查是否关闭了manage的statusChan
+	m.EnsureChannelOpen()
 
 	// 创建并初始化新的下载任务
 	downloadTask, err := NewDownloadTask(
-		m.ctx, // 上下文
-		m.opt, // 配置选项
-		m.db,  // 数据库实例
-		m.fs,
-		m.host,         // 主机实例
-		m.routingTable, // 路由表
-		m.nps,          // 发布订阅系统
-		m.statusChan,
-		m.errChan,
-		taskID, // 任务ID
+		m.ctx,        // 上下文
+		m.opt,        // 配置选项
+		m.db,         // 数据库实例
+		m.fs,         // 文件系统
+		m.host,       // 主机实例
+		m.ps,         // 点对点传输实例
+		m.nps,        // 发布订阅系统
+		m.statusChan, // 状态更新通道
+		m.errChan,    // 错误通知通道
+		taskID,       // 任务ID
 	)
 	if err != nil {
 		logger.Errorf("初始化下载实例时失败: %v", err)
@@ -263,6 +244,22 @@ func (m *DownloadManager) TriggerDownload(taskID string) error {
 		// 果 5 秒内无法发送，则返回超时错误
 		logger.Errorf("触发任务 %s 下载超时", taskID)
 		return fmt.Errorf("触发任务 %s 下载超时", taskID)
+	}
+}
+
+// EnsureChannelOpen 检查通道是否关闭，并在关闭时重新初始化
+func (m *DownloadManager) EnsureChannelOpen() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// 确保通道未关闭
+	select {
+	case _, ok := <-m.statusChan:
+		if !ok {
+			// 通道已关闭
+			m.statusChan = make(chan *pb.DownloadChan, 1)
+		}
+	default:
+
 	}
 }
 
@@ -398,7 +395,7 @@ func (m *DownloadManager) CancelDownload(taskID string) error {
 	task := taskValue.(*DownloadTask)
 
 	// 创建存储实例
-	downloadFileStore := database.NewDownloadFileStore(m.db.BadgerDB)
+	downloadFileStore := database.NewDownloadFileStore(task.db)
 
 	// 获取下载文件记录
 	fileRecord, exists, err := downloadFileStore.Get(taskID)
@@ -407,7 +404,7 @@ func (m *DownloadManager) CancelDownload(taskID string) error {
 		return err
 	}
 	if !exists {
-		return fmt.Errorf("未找到下载文件记录: %s", taskID)
+		return fmt.Errorf("未找到下载文件记录: %s", task.taskId)
 	}
 
 	// 检查任务状态
@@ -419,19 +416,15 @@ func (m *DownloadManager) CancelDownload(taskID string) error {
 		return fmt.Errorf("任务已经处于取消状态: %s", taskID)
 
 	default:
-		// 先从数据库中移除
-		if err := downloadFileStore.Delete(taskID); err != nil {
-			logger.Errorf("取消下载失败: taskID=%s, err=%v", taskID, err)
-			return err
-		}
-		// 其他状态都可以取消
-		if err := task.Cancel(); err != nil {
-			logger.Errorf("取消下载失败: taskID=%s, err=%v", taskID, err)
+		// 更新任务状态为取消
+		fileRecord.Status = pb.DownloadStatus_DOWNLOAD_STATUS_CANCELLED
+		if err := downloadFileStore.Update(fileRecord); err != nil {
+			logger.Errorf("更新任务状态失败: taskID=%s, err=%v", taskID, err)
 			return err
 		}
 
 		// 从任务管理器中移除任务
-		m.tasks.Delete(taskID)
+		//m.tasks.Delete(taskID)
 		return nil
 	}
 }
@@ -456,15 +449,49 @@ func (m *DownloadManager) DeleteDownload(taskID string) error {
 	}
 	task := taskValue.(*DownloadTask)
 
-	// 触发删除操作
-	if err := task.Delete(); err != nil {
-		logger.Errorf("删除下载任务失败: taskID=%s, err=%v", taskID, err)
+	// 创建存储实例
+	downloadFileStore := database.NewDownloadFileStore(task.db)
+
+	// 获取下载文件记录
+	fileRecord, exists, err := downloadFileStore.Get(taskID)
+	if err != nil {
+		logger.Errorf("获取下载文件记录失败: taskID=%s, err=%v", taskID, err)
 		return err
 	}
+	if !exists {
+		return fmt.Errorf("未找到下载文件记录: %s", task.taskId)
+	}
 
-	// 从任务管理器中移除任务
-	m.tasks.Delete(taskID)
-	return nil
+	// 检查任务状态
+	switch fileRecord.Status {
+
+	case pb.DownloadStatus_DOWNLOAD_STATUS_DOWNLOADING:
+		return fmt.Errorf("任务正在下载中，无法删除: %s", taskID)
+	default:
+		logger.Infof("处理删除请求: taskID=%s", task.taskId)
+
+		// 创建存储实例
+		downloadFileStore := database.NewDownloadFileStore(task.db)
+		downloadSegmentStore := database.NewDownloadSegmentStore(task.db)
+
+		// 删除文件记录
+		if err := downloadFileStore.Delete(task.taskId); err != nil {
+			logger.Errorf("删除文件记录失败: taskID=%s, err=%v", task.taskId, err)
+			return err
+		}
+
+		// 删除所有文件片段
+		err := downloadSegmentStore.DeleteDownloadSegmentByTaskID(task.taskId)
+		if err != nil {
+			logger.Errorf("删除所有文件片段失败: taskID=%s, err=%v", task.taskId, err)
+			return err
+		}
+
+		// 从任务管理器中移除任务
+		m.tasks.Delete(taskID)
+		return nil
+	}
+
 }
 
 // QueryDownload 查询下载任务记录并返回分页信息

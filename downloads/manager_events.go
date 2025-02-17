@@ -46,6 +46,7 @@ func (m *DownloadManager) handleNewDownloadTask(taskID string) {
 		return
 	}
 
+	// 启动下载任务
 	if err := task.Start(); err != nil {
 		logger.Errorf("启动下载任务 %s 失败: %v", taskID, err)
 		m.NotifyError("启动任务[%s]失败", taskID)

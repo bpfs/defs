@@ -7,15 +7,17 @@ require (
 	github.com/dep2p/go-dep2p v0.0.2
 	github.com/dep2p/kaddht v0.0.3
 	github.com/dep2p/log v0.0.1
-	github.com/dep2p/pubsub v1.0.4
+	github.com/dep2p/pointsub v1.1.4
+	github.com/dep2p/pubsub v1.0.6
 	github.com/dgraph-io/badger/v4 v4.5.0
+	github.com/dustin/go-humanize v1.0.1
 	github.com/gin-gonic/gin v1.10.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/googleapis/google-cloud-go-testing v0.0.0-20210719221736-1c9a4c676720
 	github.com/jbenet/go-temp-err-catcher v0.1.0
 	github.com/klauspost/cpuid/v2 v2.2.9
 	github.com/mattn/go-sqlite3 v1.14.24
-	github.com/minio/sha256-simd v1.0.1
+	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.6
 	github.com/pterm/pterm v0.12.80
@@ -25,6 +27,7 @@ require (
 	github.com/tyler-smith/go-bip32 v1.0.0
 	go.uber.org/fx v1.23.0
 	golang.org/x/crypto v0.32.0
+	golang.org/x/sys v0.29.0
 	golang.org/x/text v0.21.0
 	google.golang.org/api v0.188.0
 )
@@ -55,7 +58,6 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elastic/gosigar v0.14.3 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
@@ -102,13 +104,13 @@ require (
 	github.com/miekg/dns v1.1.62 // indirect
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
+	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/onsi/ginkgo/v2 v2.22.2 // indirect
 	github.com/opencontainers/runtime-spec v1.2.0 // indirect
-	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect
 	github.com/pion/dtls/v2 v2.2.12 // indirect
@@ -168,7 +170,6 @@ require (
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/oauth2 v0.24.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/term v0.28.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.29.0 // indirect

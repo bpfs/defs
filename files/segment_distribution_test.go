@@ -24,13 +24,15 @@ func TestAddDistribution(t *testing.T) {
 	sd := NewSegmentDistribution()
 
 	// 准备测试数据
-	distribution := map[peer.ID][]string{
-		"peer1": {"segment1", "segment2", "segment3"},
-		"peer2": {"segment4", "segment5", "segment6"},
+	peerID1 := peer.ID("peer1")
+	peerInfo1 := peer.AddrInfo{
+		ID: peerID1,
+		// Addrs 可以为空，因为测试不需要实际的网络地址
 	}
+	segments1 := []string{"segment1", "segment2", "segment3"}
 
 	// 添加分配
-	sd.AddDistribution(distribution)
+	sd.AddDistribution(peerInfo1, segments1)
 
 	// 验证长度
 	length := sd.GetLength()
@@ -39,7 +41,8 @@ func TestAddDistribution(t *testing.T) {
 	// 获取并验证内容
 	nextDist, ok := sd.GetNextDistribution()
 	assert.True(t, ok, "应成功获取分配")
-	assert.Equal(t, distribution, nextDist, "获取的分配应与添加的相同")
+	assert.Equal(t, peerInfo1, nextDist.PeerInfo, "获取的节点信息应与添加的相同")
+	assert.Equal(t, segments1, nextDist.Segments, "获取的分片列表应与添加的相同")
 }
 
 // TestGetNextDistribution 测试获取下一个分配
@@ -47,16 +50,17 @@ func TestGetNextDistribution(t *testing.T) {
 	sd := NewSegmentDistribution()
 
 	// 准备测试数据
-	distribution1 := map[peer.ID][]string{
-		"peer1": {"segment1", "segment2"},
-	}
-	distribution2 := map[peer.ID][]string{
-		"peer2": {"segment3", "segment4"},
-	}
+	peerID1 := peer.ID("peer1")
+	peerInfo1 := peer.AddrInfo{ID: peerID1}
+	segments1 := []string{"segment1", "segment2"}
+
+	peerID2 := peer.ID("peer2")
+	peerInfo2 := peer.AddrInfo{ID: peerID2}
+	segments2 := []string{"segment3", "segment4"}
 
 	// 添加两个分配
-	sd.AddDistribution(distribution1)
-	sd.AddDistribution(distribution2)
+	sd.AddDistribution(peerInfo1, segments1)
+	sd.AddDistribution(peerInfo2, segments2)
 
 	// 验证初始长度
 	assert.Equal(t, 2, sd.GetLength(), "添加两个分配后长度应为2")
@@ -64,13 +68,15 @@ func TestGetNextDistribution(t *testing.T) {
 	// 获取第一个分配
 	nextDist1, ok1 := sd.GetNextDistribution()
 	assert.True(t, ok1, "应成功获取第一个分配")
-	assert.Equal(t, distribution1, nextDist1, "第一个分配应匹配")
+	assert.Equal(t, peerInfo1, nextDist1.PeerInfo, "第一个分配的节点信息应匹配")
+	assert.Equal(t, segments1, nextDist1.Segments, "第一个分配的分片列表应匹配")
 	assert.Equal(t, 1, sd.GetLength(), "获取一个后长度应为1")
 
 	// 获取第二个分配
 	nextDist2, ok2 := sd.GetNextDistribution()
 	assert.True(t, ok2, "应成功获取第二个分配")
-	assert.Equal(t, distribution2, nextDist2, "第二个分配应匹配")
+	assert.Equal(t, peerInfo2, nextDist2.PeerInfo, "第二个分配的节点信息应匹配")
+	assert.Equal(t, segments2, nextDist2.Segments, "第二个分配的分片列表应匹配")
 	assert.Equal(t, 0, sd.GetLength(), "获取两个后长度应为0")
 
 	// 尝试从空列表获取
@@ -83,12 +89,13 @@ func TestGetNextDistribution(t *testing.T) {
 func TestClear(t *testing.T) {
 	sd := NewSegmentDistribution()
 
+	// 准备测试数据
+	peerID1 := peer.ID("peer1")
+	peerInfo1 := peer.AddrInfo{ID: peerID1}
+	segments1 := []string{"segment1", "segment2"}
+
 	// 添加测试数据
-	distribution := map[peer.ID][]string{
-		"peer1": {"segment1", "segment2"},
-		"peer2": {"segment3", "segment4"},
-	}
-	sd.AddDistribution(distribution)
+	sd.AddDistribution(peerInfo1, segments1)
 
 	// 验证添加成功
 	assert.Equal(t, 1, sd.GetLength(), "添加后长度应为1")
@@ -100,7 +107,7 @@ func TestClear(t *testing.T) {
 	assert.Equal(t, 0, sd.GetLength(), "清空后长度应为0")
 
 	// 验证可以继续添加
-	sd.AddDistribution(distribution)
+	sd.AddDistribution(peerInfo1, segments1)
 	assert.Equal(t, 1, sd.GetLength(), "清空后重新添加的长度应为1")
 }
 
@@ -112,10 +119,10 @@ func TestConcurrentAccess(t *testing.T) {
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func(id int) {
-			distribution := map[peer.ID][]string{
-				peer.ID(string(rune(id))): {string(rune(id))},
-			}
-			sd.AddDistribution(distribution)
+			peerID := peer.ID(string(rune(id)))
+			peerInfo := peer.AddrInfo{ID: peerID}
+			segments := []string{string(rune(id))}
+			sd.AddDistribution(peerInfo, segments)
 			done <- true
 		}(i)
 	}

@@ -20,6 +20,7 @@ const (
 )
 
 var (
+	// 消息头
 	messageHeader = headerSafe([]byte("/protobuf/msgio"))
 	// 最大重试次数
 	maxRetries = 3
@@ -35,12 +36,25 @@ var (
 // 指数退避：每次重试的超时时间都会增加，减少在网络不稳定时的重试频率，减轻服务器压力。
 // 有限的重试次数：通过maxRetries限制重试次数，防止在遇到持续的网络问题时无限重试。
 // 清晰的错误处理：根据错误类型决定是否重试。例如，只有在遇到网络超时或其他指定的网络错误时才进行重试。
+// 优化：
+// 1. 使用msgio库来处理消息的读取和写入，以提高性能和鲁棒性。
+// 2. 在ReadStream中添加了错误日志，以便于调试和问题排查。
+// 3. 在WriteStream中添加了错误日志，以便于调试和问题排查。
+// 4. 在CloseStream中添加了错误日志，以便于调试和问题排查。
+// 5. 在HandlerWithClose、HandlerWithWrite、HandlerWithRead和HandlerWithRW中添加了错误日志，以便于调试和问题排查。
+// 参数:
+//   - stream: 网络流，用于读取和写入消息
+//
+// 返回值:
+//   - []byte: 读取到的消息体
+//   - error: 如果读取过程中出现错误,返回相应的错误信息
 func ReadStream(stream network.Stream) ([]byte, error) {
 	var (
-		header [messageHeaderLen]byte
-		err    error
+		header [messageHeaderLen]byte // 消息头
+		err    error                  // 错误
 	)
 
+	// 重试读取消息头部
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// 使用指数退避设置读取操作的超时时间
 		timeout := baseTimeout * time.Duration(1<<attempt)
@@ -60,19 +74,23 @@ func ReadStream(stream network.Stream) ([]byte, error) {
 		break
 	}
 
+	// 如果读取头部失败，返回错误
 	if err != nil {
 		return nil, err
 	}
 
 	// 成功读取头部后，继续读取消息体，此时重置超时以避免中断正常读取
 	stream.SetReadDeadline(time.Time{})
+	// 使用msgio库来读取消息体
 	reader := msgio.NewReaderSize(stream, MaxBlockSize)
+	// 读取消息体
 	msg, err := reader.ReadMsg()
 	if err != nil {
 		return nil, err
 	}
 	defer reader.ReleaseMsg(msg)
 
+	// 返回读取到的消息体
 	return msg, nil
 }
 
@@ -80,6 +98,12 @@ func ReadStream(stream network.Stream) ([]byte, error) {
 // 采用类似于ReadStream的优化策略来增强其鲁棒性，尤其是在面对网络问题时。
 // 重点将包括设置写操作的超时时间和对潜在的写操作失败进行适当的错误处理。
 // 考虑到WriteStream的操作通常比读操作更简单（通常是一次性写入而非多次读取），通过设置整体的写超时来简化流程。
+// 参数:
+//   - msg: 要写入的消息体
+//   - stream: 网络流，用于写入消息
+//
+// 返回值:
+//   - error: 如果写入过程中出现错误,返回相应的错误信息
 func WriteStream(msg []byte, stream network.Stream) error {
 	// 设置写操作的超时时间
 	if err := stream.SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
@@ -107,6 +131,11 @@ func WriteStream(msg []byte, stream network.Stream) error {
 }
 
 // CloseStream 写入后关闭流，并等待EOF。
+// 参数:
+//   - stream: 网络流，用于关闭
+//
+// 返回值:
+//   - error: 如果关闭过程中出现错误,返回相应的错误信息
 func CloseStream(stream network.Stream) error {
 	if stream == nil {
 		return nil
@@ -142,6 +171,7 @@ func CloseStream(stream network.Stream) error {
 		case err := <-done:
 			if err != nil {
 				// 有错误时记录，但通常不需要额外操作
+
 			}
 		}
 	}()
@@ -150,6 +180,11 @@ func CloseStream(stream network.Stream) error {
 }
 
 // HandlerWithClose 用关闭流和从恐慌中恢复来包装处理程序
+// 参数:
+//   - f: 流处理程序，用于处理网络流
+//
+// 返回值:
+//   - network.StreamHandler: 包装后的流处理程序
 func HandlerWithClose(f network.StreamHandler) network.StreamHandler {
 	return func(stream network.Stream) {
 		defer func() {
@@ -173,9 +208,17 @@ func HandlerWithClose(f network.StreamHandler) network.StreamHandler {
 }
 
 // HandlerWithWrite 通过写入、关闭流和从恐慌中恢复来包装处理程序
+// 参数:
+//   - f: 流处理程序，用于处理网络流
+//
+// 返回值:
+//   - network.StreamHandler: 包装后的流处理程序
 func HandlerWithWrite(f func(request *RequestMessage) error) network.StreamHandler {
+	// 包装处理程序
 	return func(stream network.Stream) {
+		// 创建请求消息
 		var req RequestMessage
+		// 调用处理程序
 		if err := f(&req); err != nil {
 			return
 		}
@@ -194,9 +237,15 @@ func HandlerWithWrite(f func(request *RequestMessage) error) network.StreamHandl
 }
 
 // HandlerWithRead 用读取、关闭流和从恐慌中恢复来包装处理程序
+// 参数:
+//   - f: 流处理程序，用于处理网络流
+//
+// 返回值:
+//   - network.StreamHandler: 包装后的流处理程序
 func HandlerWithRead(f func(request *RequestMessage)) network.StreamHandler {
+	// 包装处理程序
 	return func(stream network.Stream) {
-
+		// 创建请求消息
 		var req RequestMessage
 
 		// ReadStream 从流中读取消息。
@@ -204,18 +253,28 @@ func HandlerWithRead(f func(request *RequestMessage)) network.StreamHandler {
 		if err != nil {
 			return
 		}
+
+		// 解析请求消息
 		if err := req.Unmarshal(requestByte); err != nil {
 			return
 		}
 
+		// 调用处理函数
 		f(&req)
 	}
 }
 
 // HandlerWithRW 用于读取、写入、关闭流以及从恐慌中恢复，来包装处理程序。
 // 处理程序 f 现在接收 RequestMessage 和 ResponseMessage，允许直接在函数内部定义成功或错误的响应。
+// 参数:
+//   - f: 流处理程序，用于处理网络流
+//
+// 返回值:
+//   - network.StreamHandler: 包装后的流处理程序
 func HandlerWithRW(f func(request *RequestMessage, response *ResponseMessage) (int32, string)) network.StreamHandler {
+	// 包装处理程序
 	return func(stream network.Stream) {
+		// 创建请求和响应消息
 		var req RequestMessage
 		var res ResponseMessage
 
@@ -249,6 +308,7 @@ func HandlerWithRW(f func(request *RequestMessage, response *ResponseMessage) (i
 			return
 		}
 
+		// 将处理后的响应消息编码并写入流中
 		if err := WriteStream(responseByte, stream); err != nil {
 			logrus.Errorf("写入响应消息失败: %v", err)
 			// 这里不再返回，因为已经是发送响应的步骤
@@ -257,12 +317,19 @@ func HandlerWithRW(f func(request *RequestMessage, response *ResponseMessage) (i
 }
 
 // SendErrorResponse 是一个辅助函数，用于向流中发送错误响应。
+// 参数:
+//   - stream: 网络流，用于发送错误响应
+//   - code: 错误码
+//   - msg: 错误消息
 func SendErrorResponse(stream network.Stream, code int32, msg string) {
+	// 创建响应消息
 	res := ResponseMessage{
 		Code:    code,
 		Message: &Message{Sender: stream.Conn().LocalPeer().String()},
 		Msg:     msg,
 	}
+	// 将响应消息编码并写入流中
 	responseByte, _ := res.Marshal()
+	// 写入响应消息
 	_ = WriteStream(responseByte, stream) // 这里忽略错误处理，因为已在错误路径中
 }

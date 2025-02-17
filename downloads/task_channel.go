@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/bpfs/defs/v2/pb"
-
-	"github.com/dep2p/go-dep2p/core/peer"
 )
 
 // ForceSegmentIndex 强制触发片段索引请求
@@ -81,16 +79,16 @@ func (t *DownloadTask) ForceNodeDispatch() error {
 
 // ForceNetworkTransfer 强制触发网络传输
 // 向目标节点传输文件片段，支持重试机制
-func (t *DownloadTask) ForceNetworkTransfer(peerSegments map[peer.ID][]string) error {
+func (t *DownloadTask) ForceNetworkTransfer(item *NetworkTransferItem) error {
 	for {
 		select {
 		case <-t.ctx.Done():
 			return fmt.Errorf("任务已取消")
-		case t.chNetworkTransfer <- peerSegments:
-			logger.Debugf("成功将片段分配加入传输队列: segments=%d", len(peerSegments))
+		case t.chNetworkTransfer <- item:
+			logger.Debugf("成功将片段分配加入传输队列: segments=%d", len(item.Segments))
 			return nil
 		default:
-			logger.Debugf("网络传输通道已满，等待重试: segments=%d", len(peerSegments))
+			logger.Debugf("网络传输通道已满，等待重试: segments=%d", len(item.Segments))
 			select {
 			case <-time.After(100 * time.Millisecond):
 				continue
@@ -259,4 +257,16 @@ func (t *DownloadTask) NotifyTaskError(err error) {
 	case <-time.After(100 * time.Millisecond):
 		logger.Warnf("任务错误通知超时: taskID=%s, err=%v", t.taskId, err)
 	}
+}
+
+// 通用异步错误处理封装
+func (t *DownloadTask) safeHandle(fn func() error) {
+	go func() {
+		if err := fn(); err != nil {
+			select {
+			case t.chError <- err:
+			case <-t.ctx.Done():
+			}
+		}
+	}()
 }

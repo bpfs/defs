@@ -2,7 +2,6 @@ package downloads
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/pb"
@@ -20,9 +19,6 @@ import (
 func (t *DownloadTask) Start() error {
 	// 启动goroutine处理各种事件
 	go func() {
-		// 创建定时器，每30秒触发一次
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
 
 		// 无限循环处理事件,直到任务完成或取消
 		for {
@@ -32,59 +28,34 @@ func (t *DownloadTask) Start() error {
 				logger.Info("任务上下文已取消，退出处理循环")
 				return
 
-			case <-ticker.C:
-				// 每30秒触发一次片段索引请求
-				logger.Info("定时触发片段索引请求")
-				go func() {
-					if err := t.ForceSegmentIndex(); err != nil {
-						logger.Errorf("定时触发片段索引请求失败: %v", err)
-						t.NotifyTaskError(err)
-					}
-
-				}()
-
 			case <-t.chSegmentIndex:
 				// 处理片段索引请求
 				logger.Info("收到片段索引请求")
-				go func() {
-					if err := t.handleSegmentIndex(); err != nil {
-						logger.Errorf("处理片段索引请求失败: %v", err)
-						t.NotifyTaskError(err)
-					}
-				}()
+				go t.safeHandle(t.handleSegmentIndex) // 异步处理
+
 			case <-t.chSegmentProcess:
 				// 处理文件片段：将文件片段整合并写入队列
-				go func() {
-					if err := t.handleSegmentProcess(); err != nil {
-						logger.Errorf("处理文件片段失败: %v", err)
-						t.NotifyTaskError(err)
-					}
-				}()
+				go t.safeHandle(t.handleSegmentProcess)
+
 			case <-t.chNodeDispatch:
 				// 节点分发：以节点为单位从队列中读取文件片段
-				go func() {
-					if err := t.handleNodeDispatch(); err != nil {
-						logger.Errorf("处理节点分发请求失败: %v", err)
-						t.NotifyTaskError(err)
-					}
-				}()
-			case peerSegments := <-t.chNetworkTransfer:
+				go t.safeHandle(t.handleNodeDispatch)
+
+			case item := <-t.chNetworkTransfer:
+
 				// 网络传输：向目标节点传输文件片段
-				logger.Infof("收到网络传输请求: segments=%d", len(peerSegments))
-				go func() {
-					if err := t.handleNetworkTransfer(peerSegments); err != nil {
+				logger.Infof("收到网络传输请求: segments=%d", len(item.Segments))
+				go func(transferItem *NetworkTransferItem) {
+					if err := t.handleNetworkTransfer(transferItem); err != nil {
 						logger.Errorf("处理网络传输请求失败: %v", err)
 						t.NotifyTaskError(err)
 					}
-				}()
+				}(item)
+
 			case <-t.chSegmentVerify:
 				// 片段验证：验证已传输片段的完整性
 				logger.Info("收到片段验证请求")
-				if err := t.handleSegmentVerify(); err != nil {
-					logger.Errorf("处理片段验证失败: %v", err)
-					t.NotifyTaskError(err)
-				}
-
+				go t.safeHandle(t.handleSegmentVerify)
 			case <-t.chSegmentMerge:
 				// 处理片段合并
 				logger.Info("收到片段合并请求")
@@ -104,6 +75,7 @@ func (t *DownloadTask) Start() error {
 
 			case <-t.chPause:
 				// 暂停：暂停当前上传任务
+				fmt.Println("收到暂停信号")
 				logger.Info("收到暂停信号")
 				// 先取消上下文
 				t.cancel()
@@ -112,29 +84,6 @@ func (t *DownloadTask) Start() error {
 					t.NotifyTaskError(err)
 				}
 				return
-
-			case <-t.chCancel:
-				// 取消：取消当前上传任务
-				logger.Info("收到取消信号")
-				// 先取消上下文
-				t.cancel()
-				if err := t.handleCancel(); err != nil {
-					logger.Errorf("处理取消请求失败: %v", err)
-					t.NotifyTaskError(err)
-				}
-				return
-
-			case <-t.chDelete:
-				// 删除：删除当前上传任务及相关资源
-				logger.Info("收到删除信号")
-				// 先取消上下文
-				t.cancel()
-				if err := t.handleDelete(); err != nil {
-					logger.Errorf("处理删除请求失败: %v", err)
-					t.NotifyTaskError(err)
-				}
-				return
-
 			}
 		}
 	}()

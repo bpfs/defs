@@ -9,11 +9,11 @@ import (
 	"github.com/bpfs/defs/v2/badgerhold"
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/fscfg"
-	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/pb"
 	"github.com/bpfs/defs/v2/shamir"
 
 	"github.com/dep2p/go-dep2p/core/host"
+	"github.com/dep2p/pointsub"
 	"github.com/dep2p/pubsub"
 	"go.uber.org/fx"
 )
@@ -25,15 +25,15 @@ const (
 // UploadManager 管理所有上传任务，提供文件上传的统一入口和管理功能
 // 它负责协调上传任务的执行，管理任务的生命周期，以及通知任务的状态更新和错误事件
 type UploadManager struct {
-	ctx          context.Context       // 上下文，用于管理 UploadManager 的生命周期和取消操作
-	cancel       context.CancelFunc    // 取消函数，用于取消上下文，停止所有相关的goroutine
-	mu           sync.Mutex            // 互斥锁，用于保护并发访问共享资源，确保线程安全
-	opt          *fscfg.Options        // 文件存储选项配置，包含各种存储相关的设置参数
-	db           *database.DB          // 数据库存储，用于持久化上传任务和相关元数据
-	fs           afero.Afero           // 文件系统接口，提供跨平台的文件操作能力
-	host         host.Host             // libp2p网络主机实例
-	routingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
-	nps          *pubsub.NodePubSub    // 发布订阅系统，用于节点之间的消息传递
+	ctx    context.Context    // 上下文，用于管理 UploadManager 的生命周期和取消操作
+	cancel context.CancelFunc // 取消函数，用于取消上下文，停止所有相关的goroutine
+	mu     sync.Mutex         // 互斥锁，用于保护并发访问共享资源，确保线程安全
+	opt    *fscfg.Options     // 文件存储选项配置，包含各种存储相关的设置参数
+	db     *database.DB       // 数据库存储，用于持久化上传任务和相关元数据
+	fs     afero.Afero        // 文件系统接口，提供跨平台的文件操作能力
+	host   host.Host          // libp2p网络主机实例
+	ps     *pointsub.PointSub // 点对点传输实例
+	nps    *pubsub.NodePubSub // 发布订阅系统，用于节点之间的消息传递
 
 	scheme          *shamir.ShamirScheme      // Shamir秘密共享方案，用于文件加密和分片
 	tasks           sync.Map                  // 上传任务映射，存储所有正在进行的上传任务
@@ -87,12 +87,14 @@ func (m *UploadManager) Host() host.Host {
 	return m.host
 }
 
-// RoutingTable 获取客户端实例
+// PS 获取点对点传输实例
 // 返回值:
-//   - *kbucket.RoutingTable : 路由表实例
-func (m *UploadManager) RoutingTable() *kbucket.RoutingTable {
-	return m.routingTable
+//   - *pointsub.PointSub: 点对点传输实例
+func (m *UploadManager) PS() *pointsub.PointSub {
+	return m.ps
 }
+
+// NodePubSub 返回发布订阅系统
 
 // NodePubSub 返回发布订阅系统
 // 返回值:
@@ -164,13 +166,14 @@ func (m *UploadManager) removeTask(taskID string) {
 type NewUploadManagerInput struct {
 	fx.In
 
-	Ctx          context.Context       // 全局上下文，用于管理整个应用的生命周期和取消操作
-	Opt          *fscfg.Options        // 文件存储选项配置，包含各种系统设置和参数
-	DB           *database.DB          // 持久化存储，用于本地数据的存储和检索
-	FS           afero.Afero           // 文件文件系统接口，提供跨平台的文件操作能力统接口
-	Host         host.Host             // libp2p网络主机实例
-	RoutingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
-	NPS          *pubsub.NodePubSub    // 发布订阅系统，用于节点之间的消息传递
+	Ctx  context.Context    // 全局上下文，用于管理整个应用的生命周期和取消操作
+	Opt  *fscfg.Options     // 文件存储选项配置，包含各种系统设置和参数
+	DB   *database.DB       // 持久化存储，用于本地数据的存储和检索
+	FS   afero.Afero        // 文件文件系统接口，提供跨平台的文件操作能力统接口
+	Host host.Host          // libp2p网络主机实例
+	PS   *pointsub.PointSub // 点对点传输实例
+	// RoutingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
+	NPS *pubsub.NodePubSub // 发布订阅系统，用于节点之间的消息传递
 }
 
 // NewUploadManagerOutput 定义了 NewUploadManager 函数的输出
@@ -194,15 +197,16 @@ func NewUploadManager(lc fx.Lifecycle, input NewUploadManagerInput) (out NewUplo
 
 	// 创建并初始化 UploadManager 实例
 	upload := &UploadManager{
-		ctx:             ctx,
-		cancel:          cancel,
-		mu:              sync.Mutex{},
-		opt:             input.Opt,
-		nps:             input.NPS,
-		db:              input.DB,
-		fs:              input.FS,
-		host:            input.Host,
-		routingTable:    input.RoutingTable,
+		ctx:    ctx,
+		cancel: cancel,
+		mu:     sync.Mutex{},
+		opt:    input.Opt,
+		nps:    input.NPS,
+		db:     input.DB,
+		fs:     input.FS,
+		host:   input.Host,
+		ps:     input.PS,
+		// routingTable:    input.RoutingTable,
 		tasks:           sync.Map{},
 		segmentStatuses: make(map[string]*SegmentStatus),
 		uploadChan:      make(chan string, 5),                   // 上传操作通知通道，传递任务ID以触发新的上传任务
@@ -352,7 +356,13 @@ func (m *UploadManager) LoadExistingTasks() error {
 			continue
 		}
 
-		m.TriggerUpload(uploadFile.TaskId)
+		// 先创建状态对象
+		taskStatus := NewSegmentStatus(&m.mu)
+		taskStatus.SetState(true)
+		// 在回调函数中设置状态
+		m.segmentStatuses[uploadFile.TaskId] = taskStatus
+
+		m.TriggerUpload(uploadFile.TaskId, false)
 
 		logger.Infof("已加载上传任务: taskID=%s", uploadFile.TaskId)
 	}

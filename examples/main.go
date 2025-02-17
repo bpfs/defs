@@ -14,18 +14,18 @@ import (
 
 	"github.com/bpfs/defs/v2/badgerhold"
 	"github.com/bpfs/defs/v2/database"
-	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/pb"
 	"github.com/bpfs/defs/v2/uploads"
 	"github.com/bpfs/defs/v2/utils/log"
 	"github.com/dep2p/go-dep2p/core/host"
-	"github.com/dep2p/go-dep2p/core/network"
 	"github.com/dep2p/go-dep2p/core/peer"
 	"github.com/dep2p/go-dep2p/multiformats/multiaddr"
 	dht "github.com/dep2p/kaddht"
 	logging "github.com/dep2p/log"
 	"github.com/pterm/pterm"
 )
+
+// go run main.go defs_core.go
 
 var logger = logging.Logger("examples")
 
@@ -125,10 +125,7 @@ func handleCommand(core *DefsCore, args []string) {
 		if err := handleDownload(core, fileID); err != nil {
 			pterm.Error.Printf("下载失败: %v\n", err)
 		}
-	case "list":
-		if err := handleListPeers(core); err != nil {
-			pterm.Error.Printf("列出节点失败: %v\n", err)
-		}
+
 	case "addRoutingPeer":
 		if len(args) < 2 {
 			pterm.Error.Println("用法: addRoutingPeer <节点地址> <运行模式(1:客户端 2:服务端)>")
@@ -170,6 +167,15 @@ func handleCommand(core *DefsCore, args []string) {
 		if err := handleCancelUpload(core, args[1]); err != nil {
 			pterm.Error.Printf("取消上传失败: %v\n", err)
 		}
+	case "deleteUpload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: deleteUpload <taskID>")
+			return
+		}
+		if err := handleDeleteUpload(core, args[1]); err != nil {
+			pterm.Error.Printf("删除上传失败: %v\n", err)
+		}
+
 	case "pauseDownload":
 		if len(args) < 2 {
 			pterm.Error.Println("用法: pauseDownload <taskID>")
@@ -194,6 +200,15 @@ func handleCommand(core *DefsCore, args []string) {
 		if err := handleCancelDownload(core, args[1]); err != nil {
 			pterm.Error.Printf("取消下载失败: %v\n", err)
 		}
+
+	case "deleteDownload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: deleteDownload <taskID>")
+			return
+		}
+		if err := handleDeleteDownload(core, args[1]); err != nil {
+			pterm.Error.Printf("删除下载失败: %v\n", err)
+		}
 	case "queryAssets":
 		if err := handleQueryFileAssets(core); err != nil {
 			pterm.Error.Printf("查询文件资产失败: %v\n", err)
@@ -214,48 +229,7 @@ func handleCommand(core *DefsCore, args []string) {
 		if err := handleListDownloads(core); err != nil {
 			pterm.Error.Printf("获取下载文件列表失败: %v\n", err)
 		}
-	case "size":
-		if len(args) > 1 {
-			// 将完整的参数传递给处理函数
-			if err := handleSize(core, args[1:]...); err != nil {
-				pterm.Error.Printf("获取节点数量失败: %v\n", err)
-			}
-		} else {
-			if err := handleSize(core); err != nil {
-				pterm.Error.Printf("获取节点数量失败: %v\n", err)
-			}
-		}
-	case "listPeers":
-		if len(args) > 1 {
-			// 将完整的参数传递给处理函数
-			if err := handleListPeers(core, args[1:]...); err != nil {
-				pterm.Error.Printf("列出节点失败: %v\n", err)
-			}
-		} else {
-			if err := handleListPeers(core); err != nil {
-				pterm.Error.Printf("列出节点失败: %v\n", err)
-			}
-		}
-	case "printPeers":
-		if len(args) > 1 {
-			// 将完整的参数传递给处理函数
-			if err := handlePrintPeers(core, args[1:]...); err != nil {
-				pterm.Error.Printf("打印节点信息失败: %v\n", err)
-			}
-		} else {
-			if err := handlePrintPeers(core); err != nil {
-				pterm.Error.Printf("打印节点信息失败: %v\n", err)
-			}
-		}
-	case "nearestPeers":
-		if len(args) < 2 {
-			pterm.Error.Println("用法: nearestPeers <目标节点ID> [mode] [count]")
-			return
-		}
-		// 将完整的参数传递给处理函数
-		if err := handleNearestPeers(core, args[1:]...); err != nil {
-			pterm.Error.Printf("查找最近节点失败: %v\n", err)
-		}
+
 	case "id":
 		if err := handleShowNodeID(core); err != nil {
 			pterm.Error.Printf("获取节点ID失败: %v\n", err)
@@ -657,6 +631,23 @@ func handleCancelUpload(core *DefsCore, taskID string) error {
 	return nil
 }
 
+// handleDeleteUpload 处理删除上传任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - taskID: 要取消的上传任务ID
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleDeleteUpload(core *DefsCore, taskID string) error {
+	// 调用文件系统的删除上传方法
+	if err := core.fs.Upload().DeleteUpload(taskID); err != nil {
+		logger.Errorf("删除上传失败: %v", err)
+		return err
+	}
+	fmt.Printf("成功删除上传任务: %s\n", taskID)
+	return nil
+}
+
 // handlePauseDownload 处理暂停下载任务的请求
 // 参数:
 //   - core: DeFS核心实例
@@ -705,6 +696,23 @@ func handleCancelDownload(core *DefsCore, taskID string) error {
 		return err
 	}
 	fmt.Printf("成功取消下载任务: %s\n", taskID)
+	return nil
+}
+
+// handleDeleteDownload 处理删除下载任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - taskID: 要删除的下载任务ID
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleDeleteDownload(core *DefsCore, taskID string) error {
+	// 调用文件系统的删除下载方法
+	if err := core.fs.Download().DeleteDownload(taskID); err != nil {
+		logger.Errorf("删除下载失败: %v", err)
+		return err
+	}
+	fmt.Printf("成功删除下载任务: %s\n", taskID)
 	return nil
 }
 
@@ -812,7 +820,7 @@ func handleListUploads(core *DefsCore) error {
 func handleTriggerUpload(core *DefsCore, taskID string) error {
 	logger.Infof("开始触发上传任务: %s", taskID)
 	// 调用文件系统的触发上传方法
-	if err := core.fs.Upload().TriggerUpload(taskID); err != nil {
+	if err := core.fs.Upload().TriggerUpload(taskID, true); err != nil {
 		logger.Errorf("触发上传失败: %v", err)
 		return err
 	}
@@ -888,157 +896,6 @@ func handleListDownloads(core *DefsCore) error {
 	}
 
 	logger.Infof("成功获取到 %d 个下载文件", len(records))
-	return nil
-}
-
-// handleSize 处理获取节点数量的请求
-// 参数:
-//   - core: DeFS核心实例
-//   - args: 可选的运行模式过滤器
-//
-// 返回值:
-//   - error: 操作过程中的错误，如果成功则为nil
-func handleSize(core *DefsCore, args ...string) error {
-	if len(args) > 0 {
-		// 解析运行模式
-		mode, err := strconv.Atoi(args[0])
-		if err != nil || (mode != 1 && mode != 2) {
-			return fmt.Errorf("运行模式必须为 1(客户端) 或 2(服务端)")
-		}
-		size := core.fs.RoutingTable().Size(mode)
-		fmt.Printf("节点数量 (mode=%d): %d\n", mode, size)
-	} else {
-		size := core.fs.RoutingTable().Size()
-		fmt.Printf("总节点数量: %d\n", size)
-	}
-	return nil
-}
-
-// handleListPeers 处理列出所有节点的请求
-// 参数:
-//   - core: DeFS核心实例
-//   - args: 可选的运行模式过滤器
-//
-// 返回值:
-//   - error: 操作过程中的错误，如果成功则为nil
-func handleListPeers(core *DefsCore, args ...string) error {
-	var peers []peer.ID
-	if len(args) > 0 {
-		// 解析运行模式
-		mode, err := strconv.Atoi(args[0])
-		if err != nil || (mode != 1 && mode != 2) {
-			return fmt.Errorf("运行模式必须为 1(客户端) 或 2(服务端)")
-		}
-		peers = core.fs.RoutingTable().ListPeers(mode)
-		logger.Infof("获取到 %d 个节点 (mode=%d)", len(peers), mode)
-	} else {
-		peers = core.fs.RoutingTable().ListPeers()
-		logger.Infof("获取到 %d 个节点", len(peers))
-	}
-
-	// 遍历并显示每个节点的信息
-	for i, p := range peers {
-		addrs := core.fs.Host().Peerstore().Addrs(p)
-		connected := core.fs.Host().Network().Connectedness(p) == network.Connected
-		protocols, _ := core.fs.Host().Peerstore().GetProtocols(p)
-
-		fmt.Printf("\n节点 #%d:\n"+
-			"ID: %s\n"+
-			"地址: %v\n"+
-			"连接状态: %v\n"+
-			"支持协议: %v\n"+
-			"------------------------\n",
-			i+1, p, addrs, connected, protocols)
-	}
-	return nil
-}
-
-// handlePrintPeers 处理打印节点详细信息的请求
-// 参数:
-//   - core: DeFS核心实例
-//   - args: 可选的运行模式过滤器
-//
-// 返回值:
-//   - error: 操作过程中的错误，如果成功则为nil
-func handlePrintPeers(core *DefsCore, args ...string) error {
-	if len(args) > 0 {
-		// 解析运行模式
-		mode, err := strconv.Atoi(args[0])
-		if err != nil || (mode != 1 && mode != 2) {
-			return fmt.Errorf("运行模式必须为 1(客户端) 或 2(服务端)")
-		}
-		core.fs.RoutingTable().Print(mode)
-	} else {
-		core.fs.RoutingTable().Print()
-	}
-	return nil
-}
-
-// handleNearestPeers 处理查找最近节点的请求
-// 参数:
-//   - core: DeFS核心实例
-//   - args: 要查找的目标节点ID和运行模式
-//
-// 返回值:
-//   - error: 操作过程中的错误，如果成功则为nil
-func handleNearestPeers(core *DefsCore, args ...string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("用法: nearestPeers <目标节点ID> [mode] [count]")
-	}
-
-	// 解析目标节点ID
-	targetID, err := peer.Decode(args[0])
-	if err != nil {
-		return fmt.Errorf("解析目标节点ID失败: %v", err)
-	}
-
-	// 默认返回10个节点
-	count := 10
-	var mode int
-
-	// 解析可选参数
-	if len(args) > 1 {
-		// 解析运行模式
-		mode, err = strconv.Atoi(args[1])
-		if err != nil || (mode != 1 && mode != 2) {
-			return fmt.Errorf("运行模式必须为 1(客户端) 或 2(服务端)")
-		}
-	}
-
-	// 解析返回数量
-	if len(args) > 2 {
-		count, err = strconv.Atoi(args[2])
-		if err != nil || count <= 0 {
-			return fmt.Errorf("返回数量必须为正整数")
-		}
-	}
-
-	// 查找最近的节点
-	var peers []peer.ID
-	if mode == 1 || mode == 2 {
-		peers = core.fs.RoutingTable().NearestPeers(kbucket.ConvertKey(targetID.String()), count, mode)
-		logger.Infof("找到 %d 个最近的节点 (mode=%d)", len(peers), mode)
-	} else {
-		peers = core.fs.RoutingTable().NearestPeers(kbucket.ConvertKey(targetID.String()), count)
-		logger.Infof("找到 %d 个最近的节点", len(peers))
-	}
-
-	// 显示节点信息
-	fmt.Printf("\n最近的节点列表 (目标节点: %s):\n", targetID)
-	for i, p := range peers {
-		addrs := core.fs.Host().Peerstore().Addrs(p)
-		connected := core.fs.Host().Network().Connectedness(p) == network.Connected
-		protocols, _ := core.fs.Host().Peerstore().GetProtocols(p)
-
-		fmt.Printf("\n节点 #%d:\n"+
-			"ID: %s\n"+
-			"地址: %v\n"+
-			"连接状态: %v\n"+
-			"支持协议: %v\n"+
-			"------------------------\n",
-			i+1, p, addrs, connected, protocols)
-	}
-
 	return nil
 }
 

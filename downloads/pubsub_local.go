@@ -204,13 +204,16 @@ func HandleDownloadManifestResponsePubSub(
 		logger.Errorf("解析索引清单响应数据失败: %v", err)
 		return
 	}
-	fromPeerID, err := peer.IDFromBytes(res.From)
-	if err != nil {
-		logger.Errorf("无法解析From字段为PeerID: %v", err)
+
+	// 从 res.From 解析 AddrInfo
+	var fromPeerInfo peer.AddrInfo
+	if err := fromPeerInfo.UnmarshalJSON(res.From); err != nil {
+		logger.Errorf("无法解析From字段为AddrInfo: %v", err)
 		return
 	}
+
 	logger.Infof("解析的索引清单响应数据: From=%s, TaskId=%s, AvailableSlices=%d -%+v",
-		fromPeerID.String(), payload.TaskId, len(payload.AvailableSlices), payload.AvailableSlices)
+		fromPeerInfo.ID.String(), payload.TaskId, len(payload.AvailableSlices), payload.AvailableSlices)
 
 	// 获取对应的下载任务
 	task, ok := download.getTask(payload.TaskId)
@@ -219,10 +222,10 @@ func HandleDownloadManifestResponsePubSub(
 		return
 	}
 
-	logger.Infof("fromPeerID.String()=%s, res.ReceivedFrom=%s", fromPeerID.String(), res.ReceivedFrom)
+	logger.Infof("fromPeerInfo=%s, res.ReceivedFrom=%s", fromPeerInfo.String(), res.ReceivedFrom)
 
 	// 更新片段的节点信息并返回未完成的片段索引
-	pendingSlices, err := UpdateSegmentNodes(db.BadgerDB, task.TaskID(), fromPeerID.String(), payload.AvailableSlices)
+	pendingSlices, err := UpdateSegmentNodes(db.BadgerDB, task.TaskID(), fromPeerInfo.ID.String(), payload.AvailableSlices)
 	if err != nil {
 		logger.Errorf("更新片段节点信息失败: %v", err)
 		return
@@ -230,18 +233,19 @@ func HandleDownloadManifestResponsePubSub(
 
 	// 将未完成的片段添加到分片分配管理器
 	if len(pendingSlices) > 0 {
-		distribution := make(map[peer.ID][]string)
+		// 将未完成的片段ID添加到列表中
 		sliceIDs := make([]string, 0, len(pendingSlices))
 		for _, segmentID := range pendingSlices {
 			sliceIDs = append(sliceIDs, segmentID)
 		}
-		distribution[fromPeerID] = sliceIDs
-		task.distribution.AddDistribution(distribution)
+
+		// 添加到分片分配管理器，直接使用解析出的 AddrInfo
+		task.distribution.AddDistribution(fromPeerInfo, sliceIDs)
 	}
 
 	logger.Infof("\n已更新下载任务的索引清单信息: taskID=%s, 节点=%s, 未完成片段数=%d",
 		task.TaskID(),
-		fromPeerID.String(),
+		fromPeerInfo.String(),
 		len(pendingSlices),
 	)
 

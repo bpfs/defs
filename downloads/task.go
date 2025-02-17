@@ -9,24 +9,31 @@ import (
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/files"
 	"github.com/bpfs/defs/v2/fscfg"
-	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/pb"
 
 	"github.com/dep2p/go-dep2p/core/host"
 	"github.com/dep2p/go-dep2p/core/peer"
+	"github.com/dep2p/pointsub"
 	"github.com/dep2p/pubsub"
 )
 
+// NetworkTransferItem 表示一个网络传输项
+type NetworkTransferItem struct {
+	PeerInfo peer.AddrInfo // 节点信息
+	Segments []string      // 该节点负责的分片ID列表
+}
+
 // DownloadTask 描述一个文件下载任务
 type DownloadTask struct {
-	ctx          context.Context       // 上下文用于管理协程的生命周期
-	cancel       context.CancelFunc    // 取消函数，用于取消上下文
-	opt          *fscfg.Options        // 文件存储选项配置
-	db           *badgerhold.Store     // 持久化存储
-	fs           afero.Afero           // 文件系统接口，提供跨平台的文件操作能力
-	host         host.Host             // libp2p网络主机实例
-	routingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
-	nps          *pubsub.NodePubSub    // 发布订阅系统，用于之间的消息传递
+	ctx    context.Context    // 上下文用于管理协程的生命周期
+	cancel context.CancelFunc // 取消函数，用于取消上下文
+	opt    *fscfg.Options     // 文件存储选项配置
+	db     *badgerhold.Store  // 持久化存储
+	fs     afero.Afero        // 文件系统接口，提供跨平台的文件操作能力
+	host   host.Host          // libp2p网络主机实例
+	ps     *pointsub.PointSub // 点对点传输实例
+	// routingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
+	nps *pubsub.NodePubSub // 发布订阅系统，用于之间的消息传递
 
 	mu           sync.RWMutex               // 用于保护队列操作的互斥锁
 	taskId       string                     // 任务唯一标识
@@ -36,7 +43,7 @@ type DownloadTask struct {
 	chSegmentIndex    chan struct{}             // 片段索引：请求文件片段的索引信息
 	chSegmentProcess  chan struct{}             // 处理文件片段：将文件片段整合并写入队列
 	chNodeDispatch    chan struct{}             // 节点分发：以节点为单位从队列中读取文件片段
-	chNetworkTransfer chan map[peer.ID][]string // 网络传输：key为节点ID，value为该节点负责的分片ID列表
+	chNetworkTransfer chan *NetworkTransferItem // 网络传输：包含节点信息和对应的分片ID列表
 	chSegmentVerify   chan struct{}             // 片段验证：验证已传输片段的完整性
 	chSegmentMerge    chan struct{}             // 片段合并：合并已下载的文件片段
 	chFileFinalize    chan struct{}             // 文件完成：处理文件下载完成后的操作
@@ -57,7 +64,7 @@ type DownloadTask struct {
 //   - opt: *fscfg.Options 文件存储配置选项
 //   - db: *database.DB 数据库实例
 //   - host: host.Host libp2p网络主机实例
-//   - routingTable: *kbucket.RoutingTable 路由表
+//   - ps: *pointsub.PointSub 点对点传输实例
 //   - nps: *pubsub.NodePubSub 发布订阅系统
 //   - statusChan: chan *pb.DownloadChan 状态更新通道
 //   - errChan: chan error 错误通知通道
@@ -67,7 +74,7 @@ type DownloadTask struct {
 //   - *DownloadTask: 创建的下载任务实例
 //   - error: 如果创建过程中发生错误，返回相应的错误信息
 func NewDownloadTask(ctx context.Context, opt *fscfg.Options, db *database.DB, fs afero.Afero,
-	host host.Host, routingTable *kbucket.RoutingTable, nps *pubsub.NodePubSub,
+	host host.Host, ps *pointsub.PointSub, nps *pubsub.NodePubSub,
 	statusChan chan *pb.DownloadChan, errChan chan error, taskID string,
 ) (*DownloadTask, error) {
 	// 创建带取消功能的上下文
@@ -75,13 +82,14 @@ func NewDownloadTask(ctx context.Context, opt *fscfg.Options, db *database.DB, f
 
 	// 创建新的下载任务实例
 	task := &DownloadTask{
-		ctx:          ct,                             // 上下文对象
-		cancel:       cancel,                         // 取消函数
-		opt:          opt,                            // 下载选项
-		db:           db.BadgerDB,                    // BadgerDB 数据库实例
-		fs:           fs,                             // 文件系统接口
-		host:         host,                           // 主机信息
-		routingTable: routingTable,                   // 路由表
+		ctx:    ct,          // 上下文对象
+		cancel: cancel,      // 取消函数
+		opt:    opt,         // 下载选项
+		db:     db.BadgerDB, // BadgerDB 数据库实例
+		fs:     fs,          // 文件系统接口
+		host:   host,        // 主机信息
+		ps:     ps,          // 点对点传输实例
+		// routingTable: routingTable,                   // 路由表
 		nps:          nps,                            // 网络协议服务
 		mu:           sync.RWMutex{},                 // 读写互斥锁
 		taskId:       taskID,                         // 任务唯一标识
@@ -91,7 +99,7 @@ func NewDownloadTask(ctx context.Context, opt *fscfg.Options, db *database.DB, f
 		chSegmentIndex:    make(chan struct{}, 1),                                           // 片段索引：请求文件片段的索引信息
 		chSegmentProcess:  make(chan struct{}, 1),                                           // 处理文件片段：将文件片段整合并写入队列
 		chNodeDispatch:    make(chan struct{}, 1),                                           // 节点分发：以节点为单位从队列中读取文件片段
-		chNetworkTransfer: make(chan map[peer.ID][]string, opt.GetMaxConcurrentDownloads()), // 网络传输：向目标节点传输文件片段
+		chNetworkTransfer: make(chan *NetworkTransferItem, opt.GetMaxConcurrentDownloads()), // 网络传输：包含节点信息和对应的分片ID列表
 		chSegmentVerify:   make(chan struct{}, 1),                                           // 片段验证：验证已传输片段的完整性
 		chSegmentMerge:    make(chan struct{}, 1),                                           // 片段合并：合并已下载的文件片段
 		chFileFinalize:    make(chan struct{}, 1),                                           // 文件完成：处理文件下载完成后的操作
@@ -144,12 +152,19 @@ func (t *DownloadTask) Host() host.Host {
 	return t.host
 }
 
+// PS 获取点对点传输实例
+// 返回值:
+//   - *pointsub.PointSub: 点对点传输实例
+func (t *DownloadTask) PS() *pointsub.PointSub {
+	return t.ps
+}
+
 // RoutingTable 获取端实例
 // 返回值:
 //   - *kbucket.RoutingTable : 路由表实例
-func (t *DownloadTask) RoutingTable() *kbucket.RoutingTable {
-	return t.routingTable
-}
+// func (t *DownloadTask) RoutingTable() *kbucket.RoutingTable {
+// 	return t.routingTable
+// }
 
 // NodePubSub 获取存储网络
 // 返回值:
@@ -208,6 +223,7 @@ func (t *DownloadTask) Cleanup() {
 	if t.chSegmentStatus != nil {
 		safeClose(t.chSegmentStatus)
 		t.chSegmentStatus = nil
+
 	}
 	if t.chError != nil {
 		safeClose(t.chError)

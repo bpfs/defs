@@ -128,7 +128,11 @@ func (s *FileAssetStore) QueryFileAssets(pubkeyHash []byte, start, limit int, pa
 
 	// 执行查询并获取结果
 	var assets []*pb.FileAssetRecord
-	err := s.db.Find(&assets, query.Skip(start).Limit(limit))
+
+	// 应用分页和排序
+	query = query.Skip(start).Limit(limit).SortBy("UploadTime").Reverse()
+
+	err := s.db.Find(&assets, query)
 	if err != nil {
 		// 如果查询失败，记录错误日志并返回错误
 		logger.Errorf("查询文件资产记录失败: %v", err)

@@ -11,6 +11,7 @@ import (
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/pb"
 
+	"github.com/dep2p/go-dep2p/core/protocol"
 	logging "github.com/dep2p/log"
 )
 
@@ -31,10 +32,16 @@ func (m *UploadManager) NewUpload(
 	immediate ...bool,
 ) (*pb.UploadOperationInfo, error) {
 	// 检查服务端节点数量是否足够
-	minNodes := m.opt.GetMinUploadServerNodes()
-	if m.routingTable.Size(2) < minNodes {
-		logger.Warnf("上传时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
-		return nil, fmt.Errorf("上传时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
+	// minNodes := m.opt.GetMinUploadServerNodes()
+	// if m.routingTable.Size(2) < minNodes {
+	// 	logger.Warnf("上传时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
+	// 	return nil, fmt.Errorf("上传时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
+	// }
+
+	// 检查是否存在可用的发送节点
+	if !m.ps.Client().HasAvailableNodes(protocol.ID(SendingToNetworkProtocol)) {
+		logger.Warn("没有可用的发送节点")
+		return nil, fmt.Errorf("没有可用的发送节点")
 	}
 
 	// 删除路径两端的空格
@@ -92,7 +99,7 @@ func (m *UploadManager) NewUpload(
 		isImmediate := len(immediate) > 0 && immediate[0]
 		if isImmediate {
 			go func() {
-				if err := m.TriggerUpload(taskID); err != nil {
+				if err := m.TriggerUpload(taskID, true); err != nil {
 					logger.Errorf("触发上传失败: %v, taskID: %s", err, taskID)
 					m.errChan <- err
 				}
@@ -116,24 +123,26 @@ func (m *UploadManager) NewUpload(
 //
 // 返回值:
 //   - error: 如果触发过程中发生错误,返回错误信息;否则返回 nil
-func (m *UploadManager) TriggerUpload(taskID string) error {
+func (m *UploadManager) TriggerUpload(taskID string, checkNodesAndSend bool) error {
 	logger.Infof("开始触发上传任务: %s", taskID)
 
 	// 检查任务状态是否存在
 	if status, exists := m.segmentStatuses[taskID]; exists {
 		// 等待任务状态变为就绪(true)
 		status.WaitForSpecificState(true)
+
 	} else {
 		// 如果找不到任务状态,记录警告日志并返回错误
 		logger.Warnf("未找到任务状态, taskID: %s", taskID)
 		return fmt.Errorf("未找到任务状态, taskID: %s", taskID)
 	}
 
-	// 检查服务端节点数量是否足够
-	minNodes := m.opt.GetMinUploadServerNodes()
-	if m.routingTable.Size(2) < minNodes {
-		logger.Warnf("上传时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
-		return fmt.Errorf("上传时所需服务端节点不足: 当前%d, 需要%d", m.routingTable.Size(2), minNodes)
+	if checkNodesAndSend {
+		// 检查是否存在可用的发送节点
+		if !m.ps.Client().HasAvailableNodes(protocol.ID(SendingToNetworkProtocol)) {
+			logger.Warn("没有可用的发送节点")
+			return fmt.Errorf("没有可用的发送节点")
+		}
 	}
 
 	// 检查是否达到上传允许的最大并发数
@@ -144,20 +153,22 @@ func (m *UploadManager) TriggerUpload(taskID string) error {
 
 	// 移除指定任务ID的上传任务,如果存在
 	m.removeTask(taskID)
+	// 判断statusChan是否已经关闭
+	m.EnsureChannelOpen()
 
 	// 创建新的任务实例
 	uploadTask := NewUploadTask(
-		m.ctx,          // 上下文对象,用于控制任务的生命周期
-		m.opt,          // 配置选项,包含上传相关的各种参数设置
-		m.db,           // 数据库实例,用于持久化存储任务信息
-		m.fs,           // 文件系统实例,用于文件读写操作
-		m.host,         // 主机信息,包含节点的网络地址等
-		m.routingTable, // 路由表,用于确定文件分片的存储位置
-		m.nps,          // 发布订阅系统,用于任务状态变更通知
-		m.scheme,       // 加密方案,用于文件加密和解密
-		m.statusChan,   // 状态通知通道,用于向上层反馈任务进度
-		m.errChan,      // 错误通道,用于向上层反馈错误信息
-		taskID,         // 任务唯一标识符,用于区分不同的上传任务
+		m.ctx,        // 上下文对象,用于控制任务的生命周期
+		m.opt,        // 配置选项,包含上传相关的各种参数设置
+		m.db,         // 数据库实例,用于持久化存储任务信息
+		m.fs,         // 文件系统实例,用于文件读写操作
+		m.host,       // 主机信息,包含节点的网络地址等
+		m.ps,         // 点对点传输实例,用于文件分片的发送和转发
+		m.nps,        // 发布订阅系统,用于任务状态变更通知
+		m.scheme,     // 加密方案,用于文件加密和解密
+		m.statusChan, // 状态通知通道,用于向上层反馈任务进度
+		m.errChan,    // 错误通道,用于向上层反馈错误信息
+		taskID,       // 任务唯一标识符,用于区分不同的上传任务
 	)
 
 	// 添加一个新的上传任务
@@ -178,17 +189,40 @@ func (m *UploadManager) TriggerUpload(taskID string) error {
 		logger.Errorf("更新文件状态失败: taskID=%s, err=%v", taskID, err)
 		return err
 	}
-	// 使用 select 语句来避免阻塞,尝试将任务ID发送到上传通道
-	select {
-	case m.uploadChan <- taskID:
-		// 成功将任务ID发送到上传通道
-		logger.Infof("已触发任务 %s 的上传", taskID)
+
+	if checkNodesAndSend {
+		// 使用 select 语句来避免阻塞,尝试将任务ID发送到上传通道
+		select {
+		case m.uploadChan <- taskID:
+			// 成功将任务ID发送到上传通道
+			logger.Infof("已触发任务 %s 的上传", taskID)
+			return nil
+		case <-time.After(5 * time.Second):
+			// 发送超时,需要清理已创建的任务
+			m.removeTask(taskID)
+			logger.Errorf("触发任务 %s 上传超时", taskID)
+			return fmt.Errorf("触发任务 %s 上传超时", taskID)
+		}
+	} else {
 		return nil
-	case <-time.After(5 * time.Second):
-		// 发送超时,需要清理已创建的任务
-		m.removeTask(taskID)
-		logger.Errorf("触发任务 %s 上传超时", taskID)
-		return fmt.Errorf("触发任务 %s 上传超时", taskID)
+
+	}
+
+}
+
+// 检查通道是否关闭，并在关闭时重新初始化
+func (m *UploadManager) EnsureChannelOpen() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// 确保通道未关闭
+	select {
+	case _, ok := <-m.statusChan:
+		if !ok {
+			// 通道已关闭
+			m.statusChan = make(chan *pb.UploadChan, 1)
+		}
+	default:
+
 	}
 }
 
@@ -282,7 +316,7 @@ func (m *UploadManager) ResumeUpload(taskID string) error {
 		pb.UploadStatus_UPLOAD_STATUS_PAUSED,    // 已暂停
 		pb.UploadStatus_UPLOAD_STATUS_FAILED:    // 失败
 		// 这些状态允许继续上传
-		if err := m.TriggerUpload(taskID); err != nil {
+		if err := m.TriggerUpload(taskID, true); err != nil {
 			logger.Errorf("继续上传失败: %v", err)
 			return err
 		}
@@ -337,11 +371,6 @@ func (m *UploadManager) CancelUpload(taskID string) error {
 		return fmt.Errorf("任务已经处于取消状态: %s", taskID)
 
 	default:
-		// 其他状态都可以取消
-		if err := task.ForceCancel(); err != nil {
-			logger.Errorf("触发取消失败: taskID=%s, err=%v", taskID, err)
-			return err
-		}
 
 		// 更新任务状态为取消
 		fileRecord.Status = pb.UploadStatus_UPLOAD_STATUS_CANCELED
@@ -351,7 +380,7 @@ func (m *UploadManager) CancelUpload(taskID string) error {
 		}
 
 		// 从任务管理器中移除任务
-		m.tasks.Delete(taskID)
+		//m.tasks.Delete(taskID)
 		return nil
 	}
 }
@@ -371,15 +400,43 @@ func (m *UploadManager) DeleteUpload(taskID string) error {
 	}
 	task := taskValue.(*UploadTask)
 
-	// 触发删除操作
-	if err := task.ForceDelete(); err != nil {
-		logger.Errorf("触发删除失败: taskID=%s, err=%v", taskID, err)
+	// 创建存储实例
+	uploadFileStore := database.NewUploadFileStore(task.db)
+
+	// 获取上传文件记录
+	fileRecord, exists, err := uploadFileStore.GetUploadFile(taskID)
+	if err != nil {
+		logger.Errorf("获取上传文件记录失败: taskID=%s, err=%v", taskID, err)
 		return err
 	}
+	if !exists {
+		return fmt.Errorf("未找到上传文件记录: %s", taskID)
+	}
 
-	// 从任务管理器中移除任务
-	m.tasks.Delete(taskID)
-	return nil
+	// 检查任务状态
+	switch fileRecord.Status {
+
+	case pb.UploadStatus_UPLOAD_STATUS_UPLOADING:
+		return fmt.Errorf("任务正在上传中，无法删除: %s", taskID)
+	default:
+		// 创建存储实例
+		uploadFileStore := database.NewUploadFileStore(task.db)
+		uploadSegmentStore := database.NewUploadSegmentStore(task.db)
+
+		// 删除文件记录
+		if err := uploadFileStore.DeleteUploadFile(task.taskId); err != nil {
+			logger.Errorf("删除文件记录失败: taskID=%s, err=%v", task.taskId, err)
+			return err
+		}
+		// 删除所有文件片段
+		if err := uploadSegmentStore.DeleteUploadSegmentByTaskID(task.taskId); err != nil {
+			logger.Errorf("删除文件片段失败: taskID=%s, err=%v", task.taskId, err)
+			return err
+		}
+		// 从任务管理器中移除任务
+		m.tasks.Delete(taskID)
+		return nil
+	}
 }
 
 // GetAllUploadFilesSummaries 获取所有上传记录的概要信息

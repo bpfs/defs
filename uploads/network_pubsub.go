@@ -24,7 +24,7 @@ const (
 
 // topicStrings 将 Topic 枚举映射到对应的字符串值
 var topicStrings = map[Topic]string{
-	PubSubDeleteFileSegmentRequestTopic: fmt.Sprintf("defs@pubsub/upload/deleteFileSegment/request/%s", version),
+	PubSubDeleteFileSegmentRequestTopic: fmt.Sprintf("defs@pubsub/upload/deleteFileSegment/request"),
 }
 
 // String 将Topic转换为对应的字符串表示
@@ -37,6 +37,47 @@ func (t Topic) String() string {
 // AllowedTopics 定义了系统支持的所有主题列表
 var AllowedTopics = []Topic{
 	PubSubDeleteFileSegmentRequestTopic, // 删除文件切片请求主题
+}
+
+// NewNodePubSubParams 定义创建 NodePubSub 所需的参数
+type NewNodePubSubParams struct {
+	fx.In
+
+	Ctx  context.Context // 全局上下文
+	Host host.Host       // libp2p网络主机实例
+	Opt  *fscfg.Options  // 配置选项
+}
+
+// NewNodePubSubResult 定义 NewNodePubSub 的返回结果
+type NewNodePubSubResult struct {
+	fx.Out
+
+	NPS *pubsub.NodePubSub // NodePubSub 实例
+}
+
+// NewNodePubSub 创建并初始化 NodePubSub 实例
+// 参数:
+//   - params: NewNodePubSubParams 类型，包含创建所需的依赖项
+//
+// 返回值:
+//   - NewNodePubSubResult: 包含创建的 NodePubSub 实例的结果结构
+//   - error: 如果创建过程中出现错误，返回相应的错误信息
+func NewNodePubSub(params NewNodePubSubParams) (out NewNodePubSubResult, err error) {
+	// 如果已配置则直接使用
+	if params.Opt.GetNodePubSub() != nil {
+		out.NPS = params.Opt.GetNodePubSub()
+		return out, nil
+	}
+
+	// 否则创建新的实例
+	nps, err := pubsub.NewNodePubSub(params.Ctx, params.Host, params.Opt.GetPubSubOptions()...)
+	if err != nil {
+		logger.Errorf("创建节点发布订阅系统失败: %v", err)
+		return out, err
+	}
+
+	out.NPS = nps
+	return out, nil
 }
 
 // RegisterPubsubProtocolInput 定义了注册PubsubProtocol所需的输入参数

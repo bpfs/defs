@@ -11,6 +11,11 @@ import (
 )
 
 // panicTrace 跟踪恐慌堆栈信息。
+// 参数:
+//   - kb: 堆栈信息的长度
+//
+// 返回值:
+//   - []byte: 堆栈信息
 func panicTrace(kb int) []byte {
 	s := []byte("/src/runtime/panic.go")
 	e := []byte("\ngoroutine ")
@@ -41,6 +46,11 @@ var ErrExpectedEOF = fmt.Errorf("期望 EOF 时读取数据")
 
 // AwaitEOF 等待给定流上的 EOF，如果失败则返回错误。
 // 它最多等待 EOFTimeout（默认为 1 分钟），然后重置流。
+// 参数:
+//   - s: 网络流，用于读取和写入消息
+//
+// 返回值:
+//   - error: 如果读取过程中出现错误,返回相应的错误信息
 func AwaitEOF(s network.Stream) error {
 	// 所以我们不会永远等待
 	// 设置流的超时，防止无限等待
@@ -69,6 +79,12 @@ func AwaitEOF(s network.Stream) error {
 	return s.Close()
 }
 
+// headerSafe 创建一个安全的头部，用于标识消息的类型
+// 参数:
+//   - path: 消息类型
+//
+// 返回值:
+//   - []byte: 安全的头部
 func headerSafe(path []byte) []byte {
 	l := len(path) + 1 // + \n
 	buf := make([]byte, l+1)

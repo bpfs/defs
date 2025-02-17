@@ -16,19 +16,20 @@ import (
 
 	"github.com/bpfs/defs/v2"
 	"github.com/bpfs/defs/v2/fscfg"
+	v2net "github.com/bpfs/defs/v2/net"
 	"github.com/dep2p/go-dep2p"
 	"github.com/dep2p/go-dep2p/config"
 	"github.com/dep2p/go-dep2p/core/crypto"
 	"github.com/dep2p/go-dep2p/core/discovery"
 	"github.com/dep2p/go-dep2p/core/host"
 	"github.com/dep2p/go-dep2p/core/network"
-	"github.com/dep2p/go-dep2p/core/peer"
 	routingdisc "github.com/dep2p/go-dep2p/p2p/discovery/routing"
 	"github.com/dep2p/go-dep2p/p2p/discovery/util"
 	"github.com/dep2p/go-dep2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/dep2p/go-dep2p/p2p/host/resource-manager"
 	"github.com/dep2p/go-dep2p/p2p/muxer/yamux"
 	"github.com/dep2p/go-dep2p/p2p/net/connmgr"
+	"github.com/dep2p/go-dep2p/p2p/protocol/circuitv2/relay"
 	"github.com/dep2p/go-dep2p/p2p/transport/tcp"
 	dht "github.com/dep2p/kaddht"
 	"github.com/dep2p/pubsub"
@@ -38,6 +39,18 @@ import (
 
 const (
 	RendezvousString = "[rendezvous] wesign.xyz CS-DeFS-1"
+
+	// DefaultConnMgrHighWater 定义了连接管理器的高水位线
+	// 当连接数超过此值时,将触发连接修剪
+	//DefaultConnMgrHighWater = 200
+	DefaultConnMgrHighWater = 96
+	// DefaultConnMgrLowWater 定义了连接管理器的低水位线
+	// 连接修剪时会保留此数量的连接
+	//DefaultConnMgrLowWater = 100
+	DefaultConnMgrLowWater = 32
+	// DefaultConnMgrGracePeriod 定义了新建连接的宽限期
+	// 在此期间内新连接不会被修剪
+	DefaultConnMgrGracePeriod = time.Second * 20
 )
 
 // DefsCore 定义核心功能结构
@@ -90,13 +103,20 @@ func NewDefsCore() (*DefsCore, error) {
 
 	// 创建 libp2p host
 	logger.Info("正在创建 libp2p host...")
-	h, err := dep2p.New(buildHostOptions(privKey, port)...)
+	// 构建主机配置选项
+	option, err := buildHostOptions(privKey, port)
+	if err != nil {
+		logger.Errorf("设置P2P选项时失败: %v", err)
+		return nil, err
+	}
+
+	h, err := dep2p.New(option...)
 	if err != nil {
 		logger.Errorf("创建 libp2p host 失败: %v", err)
 		return nil, fmt.Errorf("创建 libp2p host 失败")
 	}
 	logger.Infof("libp2p host 创建成功，节点ID: %s", h.ID().String())
-
+	logger.Infof("libp2p host 创建成功，节点地址: %s", h.Addrs())
 	// 创建并启动 DHT
 	logger.Info("正在创建并启动 DHT...")
 	kadDHT, err := createDHT(ctx, h, dht.ModeClient)
@@ -120,6 +140,7 @@ func NewDefsCore() (*DefsCore, error) {
 		fscfg.WithPubSubOption(pubsub.WithSetGossipFactor(0.3)),
 		fscfg.WithPubSubOption(pubsub.WithSetMaxMessageSize(2 << 20)),
 		fscfg.WithPubSubOption(pubsub.WithNodeDiscovery(disc)),
+		fscfg.WithPointSubEnableServer(true), // 如果是接收端端话需要设置为true，只是作为发送端端话注释掉这行代码即可
 	}
 
 	// 初始化DeFS实例
@@ -174,9 +195,10 @@ func startDiscovery(ctx context.Context, disc discovery.Discovery, h host.Host) 
 	logger.Info("开始启动节点发现...")
 
 	// 连接至引导节点
-	if err := connectToBootstrapPeers(ctx, h, nil); err != nil {
-		return err
-	}
+	// if err := connectToBootstrapPeers(ctx, h, nil); err != nil {
+	// 	logger.Errorf("连接至引导节点失败%v", err)
+	// 	return err
+	// }
 
 	// 广播节点信息
 	logger.Info("正在广播节点信息...")
@@ -218,86 +240,121 @@ func startDiscovery(ctx context.Context, disc discovery.Discovery, h host.Host) 
 	return nil
 }
 
-// buildHostOptions 构建 libp2p host 选项
-func buildHostOptions(priv crypto.PrivKey, port string) []config.Option {
-	logger.Info("开始构建 libp2p host 选项...")
-	var opts []config.Option
-
-	// 基本选项
-	logger.Debug("添加基本选项...")
-	opts = append(opts,
-		// 设置节点身份,使用提供的私钥
-		dep2p.Identity(priv),
-		// 配置监听地址,监听所有网卡的指定端口
-		dep2p.ListenAddrStrings(fmt.Sprintf("/ip4/0.0.0.0/tcp/%s", port)),
-		// 使用默认的多路复用器配置
-		dep2p.DefaultMuxers,
-		// 使用默认的安全传输配置
-		dep2p.DefaultSecurity,
-	)
-
-	// 资源管理器 - 用于限制和管理节点资源使用
-	logger.Debug("配置资源管理器...")
-	// 自动根据系统资源调整限制
-	limiter := rcmgr.DefaultLimits.AutoScale()
-	rm, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(limiter))
-	if err != nil {
-		logger.Errorf("创建资源管理器失败: %s", err)
-		panic("创建资源管理器失败")
-	}
-	opts = append(opts, dep2p.ResourceManager(rm))
-
-	// 连接管理器 - 控制与其他节点的连接数量
-	logger.Debug("配置连接管理器...")
+// buildHostOptions 构建libp2p主机的配置选项
+//
+// 参数:
+//   - psk: 私有网络的预共享密钥
+//   - sk: 节点的私钥
+//   - portNumber: 监听端口号
+//
+// 返回:
+//   - []config.Option: libp2p配置选项列表
+//   - error: 如果发生错误则返回
+func buildHostOptions(sk crypto.PrivKey, port string) ([]config.Option, error) {
+	// 设置连接管理器参数
 	cm, err := connmgr.NewConnManager(
-		300,                                  // 最小连接数(LowWater),当连接数低于此值时会主动寻找新连接
-		1000,                                 // 最大连接数(HighWater),当连接数超过此值时会断开不活跃连接
-		connmgr.WithGracePeriod(time.Minute), // 设置宽限期,新建立的连接在此期间内不会被连接管理器断开,即使超过最大连接数
-		connmgr.WithEmergencyTrim(true),      // 启用紧急裁剪,当系统内存不足时立即触发连接裁剪,不考虑宽限期
+		DefaultConnMgrLowWater,                             // 最小连接数
+		DefaultConnMgrHighWater,                            // 最大连接数
+		connmgr.WithGracePeriod(DefaultConnMgrGracePeriod), // 宽限期
+		connmgr.WithEmergencyTrim(true),
 	)
 	if err != nil {
-		logger.Errorf("创建连接管理器失败: %s", err)
-		panic("创建连接管理器失败")
+		logger.Errorf("创建连接管理器失败: %v", err)
+		return nil, err
 	}
-	opts = append(opts, dep2p.ConnectionManager(cm))
 
-	// Peerstore - 用于存储和管理对等节点信息
-	logger.Debug("配置 Peerstore...")
+	// 创建对等点存储
+	// 用于存储和管理已知的对等节点信息
 	libp2pPeerstore, err := pstoremem.NewPeerstore()
 	if err != nil {
-		logger.Errorf("初始化存储节点失败: %v", err)
-		panic("初始化存储节点失败")
+		logger.Errorf("创建对等点存储失败: %v", err)
+		return nil, err
 	}
 
-	// 其他网络传输和功能选项
-	logger.Debug("添加其他选项...")
-	opts = append(opts,
-		// 配置TCP传输层
-		dep2p.Transport(tcp.NewTCPTransport),
-		// 配置YAMUX多路复用协议
-		dep2p.Muxer("/yamux/1.0.0", yamux.DefaultTransport),
-		// 设置节点存储实例
-		dep2p.Peerstore(libp2pPeerstore),
-		// 启用中继功能,允许通过中继节点建立连接
-		dep2p.EnableRelay(),
-		// 启用NAT穿透功能
-		dep2p.EnableHolePunching(),
-		// 启用NAT端口映射,改善网络连通性
-		dep2p.NATPortMap(),
-	)
+	// 使用默认的中继资源配置
+	def := relay.DefaultResources()
 
-	// 中继配置 - 设置自动中继发现
-	logger.Debug("配置中继选项...")
-	relaysCh := make(chan peer.AddrInfo)
-	opts = append(opts,
-		// 启用自动中继发现,当需要时可以获取中继节点信息
-		dep2p.EnableAutoRelayWithPeerSource(func(ctx context.Context, numPeers int) <-chan peer.AddrInfo {
-			return relaysCh
-		}),
-	)
+	// 创建默认限制配置
+	limitConfig, err := v2net.CreateDefaultLimitConfig()
+	if err != nil {
+		logger.Errorf("创建资源管理器限��配置失败: %v", err)
+		return nil, err
+	}
 
-	logger.Info("libp2p host 选项构建完成")
-	return opts
+	// 创建资源管理器
+	rm, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(limitConfig))
+	if err != nil {
+		logger.Errorf("创建资源管理器失败: %v", err)
+		return nil, err
+	}
+
+	// 构建基本配置选项
+	options := []dep2p.Option{
+		dep2p.ResourceManager(rm),
+		dep2p.Peerstore(libp2pPeerstore), // 设置对等点存储
+		dep2p.Ping(false),                // 禁用ping服务
+		dep2p.Identity(sk),               // 设置节点身份(私钥)
+		dep2p.DefaultSecurity,            // 使用默认安全选项
+		dep2p.ConnectionManager(cm),      // 设置连接管理器
+
+		dep2p.Muxer(yamux.ID, yamux.DefaultTransport), // 设置yamux多路复用器
+		dep2p.NATPortMap(),                            // 启用NAT端口映射
+		dep2p.EnableRelay(),                           // 启用中继功能
+		dep2p.EnableHolePunching(),                    // 启用NAT穿透
+		dep2p.EnableNATService(),                      // 启用NAT服务
+		// 配置中继服务
+		dep2p.EnableRelayService(
+			relay.WithResources(
+				relay.Resources{
+					Limit: &relay.RelayLimit{
+						Data:     def.Limit.Data,     // 设置中继数据限制
+						Duration: def.Limit.Duration, // 设置中继持续时间
+					},
+					MaxCircuits:            def.MaxCircuits,            // 最大中继电路数
+					BufferSize:             def.BufferSize,             // 缓冲区大小
+					ReservationTTL:         def.ReservationTTL,         // 预留时间
+					MaxReservations:        def.MaxReservations,        // 最大预留数
+					MaxReservationsPerIP:   def.MaxReservationsPerIP,   // 每IP最大预留数
+					MaxReservationsPerPeer: def.MaxReservationsPerPeer, // 每节点最大预留数
+					MaxReservationsPerASN:  def.MaxReservationsPerASN,  // 每ASN最大预留数
+				},
+			),
+		),
+	}
+
+	// 如果指定了端口，配置多个监听地址
+	if port != "" {
+		// 配置全面的监听地址列表,包括IPv4/IPv6和不同传输协议
+		addresses := []string{
+			// TCP 监听地址 - 支持IPv4和IPv6
+			fmt.Sprintf("/ip4/0.0.0.0/tcp/%s", port), // IPv4 所有网络接口
+
+		}
+
+		// 将监听地址和传输配置添加到选项中
+		options = append(options,
+			// 设置所有监听地址
+			dep2p.ListenAddrStrings(addresses...),
+
+			// TCP传输配置 - 包含多个优化选项
+			dep2p.Transport(tcp.NewTCPTransport,
+				tcp.WithMetrics(),                         // 启用TCP指标收集
+				tcp.DisableReuseport(),                    // 禁用SO_REUSEPORT
+				tcp.WithConnectionTimeout(42*time.Second), // 设置连接超时时间
+				tcp.WithMetrics(),                         // 再次确保指标收集
+			),
+
+			// 将节点可达性设置为公网可访问
+			dep2p.ForceReachabilityPublic(),
+		)
+	} else {
+		// 如果未指定端口,将节点设置为私网节点
+		options = append(options,
+			dep2p.ForceReachabilityPrivate(),
+		)
+	}
+
+	return options, nil
 }
 
 // GenerateECDSAKeyPair 生成ECDSA密钥对
@@ -420,6 +477,7 @@ func getFreePort() (string, error) {
 	if goos == "linux" {
 		port = "4001"
 	}
+
 	logger.Infof("获取到空闲端口: %s", port)
 	return port, nil
 }

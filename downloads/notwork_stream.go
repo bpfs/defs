@@ -7,9 +7,9 @@ import (
 	"github.com/bpfs/defs/v2/afero"
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/fscfg"
-	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/pb"
 	"github.com/bpfs/defs/v2/streams"
+	"github.com/dep2p/pointsub"
 	"github.com/dep2p/pubsub"
 
 	"github.com/dep2p/go-dep2p/core/host"
@@ -30,28 +30,30 @@ var (
 
 // StreamProtocol 定义了流协议的结构体
 type StreamProtocol struct {
-	ctx          context.Context       // 全局上下文，用于管理整个应用的生命周期和取消操作
-	opt          *fscfg.Options        // 文件存储选项配置，包含各种系统设置和参数
-	db           *database.DB          // 持久化存储，用于本地数据的存储和检索
-	fs           afero.Afero           // 文件系统接口，提供跨平台的文件操作能力
-	host         host.Host             // libp2p网络主机实例
-	routingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
-	nps          *pubsub.NodePubSub    // 发布订阅系统，用于节点之间的消息传递
-	dm           *DownloadManager      // 下载管理器，用于处理和管理文件下载任务
+	ctx  context.Context    // 全局上下文，用于管理整个应用的生命周期和取消操作
+	opt  *fscfg.Options     // 文件存储选项配置，包含各种系统设置和参数
+	db   *database.DB       // 持久化存储，用于本地数据的存储和检索
+	fs   afero.Afero        // 文件系统接口，提供跨平台的文件操作能力
+	host host.Host          // libp2p网络主机实例
+	ps   *pointsub.PointSub // 点对点传输实例
+	// routingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
+	nps *pubsub.NodePubSub // 发布订阅系统，用于节点之间的消息传递
+	dm  *DownloadManager   // 下载管理器，用于处理和管理文件下载任务
 }
 
 // RegisterStreamProtocolInput 定义了注册流协议所需的输入参数
 type RegisterStreamProtocolInput struct {
 	fx.In
 
-	Ctx          context.Context       // 全局上下文，用于管理整个应用的生命周期和取消操作
-	Opt          *fscfg.Options        // 文件存储选项配置，包含各种系统设置和参数
-	DB           *database.DB          // 持久化存储，用于本地数据的存储和检索
-	FS           afero.Afero           // 文件系统接口，提供跨平台的文件操作能力
-	Host         host.Host             // libp2p网络主机实例
-	RoutingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
-	NPS          *pubsub.NodePubSub    // 发布订阅系统，用于节点之间的消息传递
-	DM           *DownloadManager      // 下载管理器，用于处理和管理文件下载任务
+	Ctx  context.Context    // 全局上下文，用于管理整个应用的生命周期和取消操作
+	Opt  *fscfg.Options     // 文件存储选项配置，包含各种系统设置和参数
+	DB   *database.DB       // 持久化存储，用于本地数据的存储和检索
+	FS   afero.Afero        // 文件系统接口，提供跨平台的文件操作能力
+	Host host.Host          // libp2p网络主机实例
+	PS   *pointsub.PointSub // 点对点传输实例
+	// RoutingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
+	NPS *pubsub.NodePubSub // 发布订阅系统，用于节点之间的消息传递
+	DM  *DownloadManager   // 下载管理器，用于处理和管理文件下载任务
 }
 
 // RegisterDownloadStreamProtocol 注册下载流协议
@@ -68,14 +70,15 @@ type RegisterStreamProtocolInput struct {
 func RegisterDownloadStreamProtocol(lc fx.Lifecycle, input RegisterStreamProtocolInput) {
 	// 创建流协议实例
 	dsp := &StreamProtocol{
-		ctx:          input.Ctx,
-		opt:          input.Opt,
-		db:           input.DB,
-		fs:           input.FS,
-		host:         input.Host,
-		routingTable: input.RoutingTable,
-		nps:          input.NPS,
-		dm:           input.DM,
+		ctx:  input.Ctx,
+		opt:  input.Opt,
+		db:   input.DB,
+		fs:   input.FS,
+		host: input.Host,
+		ps:   input.PS,
+		// routingTable: input.RoutingTable,
+		nps: input.NPS,
+		dm:  input.DM,
 	}
 
 	// 添加生命周期钩子

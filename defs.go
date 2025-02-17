@@ -3,6 +3,7 @@ package defs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -11,15 +12,17 @@ import (
 	"github.com/bpfs/defs/v2/downloads"
 	"github.com/bpfs/defs/v2/files"
 	"github.com/bpfs/defs/v2/fscfg"
-	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/net"
 	"github.com/bpfs/defs/v2/operate/shared"
+	"github.com/dep2p/go-dep2p/core/peerstore"
 
 	"github.com/bpfs/defs/v2/uploads"
 	"github.com/bpfs/defs/v2/utils/paths"
 	"github.com/dep2p/go-dep2p/core/host"
 	"github.com/dep2p/go-dep2p/core/peer"
+	"github.com/dep2p/go-dep2p/core/protocol"
 	logging "github.com/dep2p/log"
+	"github.com/dep2p/pointsub"
 	"github.com/dep2p/pubsub"
 	"go.uber.org/fx"
 )
@@ -31,18 +34,15 @@ var NoOpThreshold = 100 * time.Hour
 
 // DeFS 是一个封装了DeFS去中心化(动态)存储的结构体
 type DeFS struct {
-	ctx  context.Context // 全局上下文，用于管理整个应用的生命周期和取消操作
-	opt  *fscfg.Options  // 文件存储选项配置，包含各种系统设置和参数
-	db   *database.DB    // 持久化存储，用于本地数据的存储和检索
-	fs   afero.Afero     // 文件系统接口，提供跨平台的文件操作能力
-	host host.Host       // libp2p网络主机实例
-	// server       *pointsub.Server           // 处理请求的服务端
-	// client       *pointsub.Client           // 用于发送请求的客户端
-	routingTable *kbucket.RoutingTable      // 路由表，用于管理对等节点和路由
-	nps          *pubsub.NodePubSub         // 发布订阅系统，用于节点之间的消息传递
-	upload       *uploads.UploadManager     // 上传管理器，用于处理和管理文件上传任务
-	download     *downloads.DownloadManager // 下载管理器，用于处理和管理文件下载任务
-
+	ctx      context.Context            // 全局上下文
+	opt      *fscfg.Options             // 配置选项
+	db       *database.DB               // 数据库实例
+	fs       afero.Afero                // 文件系统实例
+	host     host.Host                  // libp2p网络主机实例
+	ps       *pointsub.PointSub         // 点对点传输实例
+	nps      *pubsub.NodePubSub         // 发布订阅系统
+	upload   *uploads.UploadManager     // 上传管理器
+	download *downloads.DownloadManager // 下载管理器
 }
 
 // Open 创建并返回一个新的DeFS实例
@@ -97,41 +97,12 @@ func Open(h host.Host, options ...fscfg.Option) (*DeFS, error) {
 		return nil, err
 	}
 
-	// 初始化服务端
-	// server, err := pointsub.NewServer(h, pointsub.DefaultServerConfig())
-	// if err != nil {
-	// 	logger.Errorf("创建服务端失败: %v", err)
-	// 	return nil, err
-	// }
-
-	// 初始化客户端
-	// client, err := pointsub.NewClient(h, pointsub.DefaultClientConfig())
-	// if err != nil {
-	// 	logger.Errorf("创建客户端失败: %v", err)
-	// 	return nil, err
-	// }
-
 	// 创建路由表
-	rt, err := kbucket.CreateRoutingTable(h, opt, NoOpThreshold)
-	if err != nil {
-		logger.Errorf("创建路由表失败: %v", err)
-		return nil, err
-	}
-
-	// 获取或创建发布订阅系统
-	var nps *pubsub.NodePubSub
-	if opt.GetNodePubSub() != nil {
-		// 如果已配置则直接使用
-		nps = opt.GetNodePubSub()
-	} else {
-		// 否则创建新的实例
-		var err error
-		nps, err = pubsub.NewNodePubSub(ctx, h, opt.GetPubSubOptions()...)
-		if err != nil {
-			logger.Errorf("创建节点发布订阅系统失败: %v", err)
-			return nil, err
-		}
-	}
+	// rt, err := kbucket.CreateRoutingTable(h, opt, NoOpThreshold)
+	// if err != nil {
+	// 	logger.Errorf("创建路由表失败: %v", err)
+	// 	return nil, err
+	// }
 
 	// 创建DeFS实例
 	defs := &DeFS{
@@ -140,12 +111,11 @@ func Open(h host.Host, options ...fscfg.Option) (*DeFS, error) {
 		db:   nil,
 		fs:   nil,
 		host: h,
-		// server:       server,
-		// client:       client,
-		routingTable: rt,
-		nps:          nps,
-		upload:       nil,
-		download:     nil,
+		ps:   nil,
+		// routingTable: rt,
+		nps:      nil,
+		upload:   nil,
+		download: nil,
 	}
 
 	// 配置fx依赖注入选项
@@ -156,18 +126,20 @@ func Open(h host.Host, options ...fscfg.Option) (*DeFS, error) {
 			files.NewAferoFs,             // 创建文件系统实例
 			uploads.NewUploadManager,     // 创建上传管理器实例
 			downloads.NewDownloadManager, // 创建下载管理器实例
-
+			uploads.NewPointSub,          // 创建点对点传输实例
+			uploads.NewNodePubSub,        // 创建发布订阅系统实例
 		),
 		fx.Invoke(
-			uploads.InitializeUploadManager,          // 初始化上传管理器
-			uploads.RegisterUploadStreamProtocol,     // 注册上传流协议
-			uploads.RegisterUploadPubsubProtocol,     // 注册上传PubSub协议
-			downloads.InitializeDownloadManager,      // 初始化下载管理器
-			downloads.RegisterDownloadPubsubProtocol, // 注册下载PubSub协议
-			downloads.RegisterDownloadStreamProtocol, // 注册下载流协议
-			database.InitializeDatabase,              // 初始化数据库维护任务，包括定期GC和备份
-			net.RegisterHandshakeProtocol,            // 注册握手协议的处理函数
-			shared.RegisterSharedPubsubProtocol,      // 注册文件共享相关的PubSub协议处理器
+			uploads.InitializeUploadManager,            // 初始化上传管理器
+			uploads.RegisterUploadPubsubProtocol,       // 注册上传PubSub协议
+			uploads.RegisterUploadPointSubProtocol,     // 注册上传PointSub协议
+			downloads.InitializeDownloadManager,        // 初始化下载管理器
+			downloads.RegisterDownloadPubsubProtocol,   // 注册下载PubSub协议
+			downloads.RegisterDownloadPointSubProtocol, // 注册下载PointSub协议
+			//downloads.RegisterDownloadStreamProtocol,   // 注册下载流协议
+			database.InitializeDatabase,         // 初始化数据库维护任务，包括定期GC和备份
+			net.RegisterHandshakeProtocol,       // 注册握手协议的处理函数
+			shared.RegisterSharedPubsubProtocol, // 注册文件共享相关的PubSub协议处理器
 		),
 	}
 
@@ -178,9 +150,8 @@ func Open(h host.Host, options ...fscfg.Option) (*DeFS, error) {
 		&defs.db,
 		&defs.fs,
 		&defs.host,
-		// &defs.server,
-		// &defs.client,
-		&defs.routingTable,
+		&defs.ps,
+		// &defs.routingTable,
 		&defs.nps,
 		&defs.upload,
 		&defs.download,
@@ -216,22 +187,12 @@ func globalInit(defs *DeFS) fx.Option {
 		func() host.Host {
 			return defs.host
 		},
-		// 提供服务端
-		// func() *pointsub.Server {
-		// 	return defs.server
-		// },
-		// 提供客户端
-		// func() *pointsub.Client {
-		// 	return defs.client
-		// },
 		// 提供路由表
-		func() *kbucket.RoutingTable {
-			return defs.routingTable
-		},
+		// func() *kbucket.RoutingTable {
+		// 	return defs.routingTable
+		// },
 		// 提供发布订阅
-		func() *pubsub.NodePubSub {
-			return defs.nps
-		},
+		// 发布订阅系统现在由 uploads.NewNodePubSub 提供
 	)
 }
 
@@ -270,31 +231,27 @@ func (fs *DeFS) Host() host.Host {
 	return fs.host
 }
 
-// Server 获取服务端实例
+// PointSub 获取 PointSub 实例
 // 返回值:
-//   - *pointsub.Server: 服务端实例
-// func (fs *DeFS) Server() *pointsub.Server {
-// 	return fs.server
-// }
-
-// Client 获取客户端实例
-// 返回值:
-//   - *pointsub.Client: 客户端实例
-// func (fs *DeFS) Client() *pointsub.Client {
-// 	return fs.client
-// }
+//   - *pointsub.PointSub: PointSub 实例
+func (fs *DeFS) PointSub() *pointsub.PointSub {
+	return fs.ps
+}
 
 // RoutingTable 获取客户端实例
 // 返回值:
 //   - *kbucket.RoutingTable : 路由表实例
-func (fs *DeFS) RoutingTable() *kbucket.RoutingTable {
-	return fs.routingTable
-}
+// func (fs *DeFS) RoutingTable() *kbucket.RoutingTable {
+// 	return fs.routingTable
+// }
 
 // NodePubSub 返回发布订阅系统
 // 返回值:
 //   - *pubsub.NodePubSub: 发布订阅系统
 func (fs *DeFS) NodePubSub() *pubsub.NodePubSub {
+	if fs.nps == nil {
+		logger.Warn("NodePubSub 实例尚未初始化")
+	}
 	return fs.nps
 }
 
@@ -322,29 +279,66 @@ func (fs *DeFS) Download() *downloads.DownloadManager {
 //   - error: 如果添加失败则返回错误
 //
 // 说明:
+//   - 将节点添加到 PointSub 的服务节点列表中
+//   - 同时通知发布订阅系统有新节点加入
+/*
 //   - 所有添加的节点都被视为非查询节点(queryPeer=false)
 //   - 所有添加的节点都被设置为可替换(isReplaceable=true)
 //   - 这样设计可以保证路由表的动态性和新鲜度
+*/
 func (fs *DeFS) AddRoutingPeer(pi peer.AddrInfo, mode int) (bool, error) {
+	/**
 	// 尝试将节点添加到路由表
 	// 固定设置 queryPeer=false (非查询节点)
 	// 固定设置 isReplaceable=true (可替换节点)
 	success, err := fs.RoutingTable().AddPeer(fs.ctx, fs.host, pi, mode, false, true)
 	if err != nil {
 		logger.Errorf("添加节点到路由表失败: %v", err)
+	}
+	*/
+
+	// 检查 PointSub 实例是否已初始化
+	if fs.ps == nil {
+		logger.Error("PointSub 实例尚未初始化")
+		return false, fmt.Errorf("PointSub 实例尚未初始化")
+	}
+
+	// 获取 PointSub 客户端
+	client := fs.ps.Client()
+	if client == nil {
+		logger.Error("PointSub 客户端未启动")
+		return false, fmt.Errorf("PointSub 客户端未启动")
+	}
+	// 将节点信息永久保存到peerstore
+	fs.host.Peerstore().AddAddrs(
+		pi.ID,
+		pi.Addrs,
+		peerstore.PermanentAddrTTL,
+	)
+	// 尝试连接对方节点
+	if err := fs.host.Connect(context.Background(), pi); err != nil {
+		logger.Errorf("连接是比啊%v", err)
+		return false, err
+	}
+
+	// 为两个协议添加服务节点
+	if err := client.AddServerNode(protocol.ID(uploads.SendingToNetworkProtocol), pi.ID); err != nil {
+		logger.Errorf("添加发送协议节点失败: %v", err)
+		return false, err
+	}
+	if err := client.AddServerNode(protocol.ID(uploads.ForwardToNetworkProtocol), pi.ID); err != nil {
+		logger.Errorf("添加转发协议节点失败: %v", err)
 		return false, err
 	}
 
 	// 通知发布订阅系统有新节点加入
-	if err = fs.NodePubSub().Pubsub().NotifyNewPeer(pi.ID); err != nil {
+	if err := fs.NodePubSub().Pubsub().NotifyNewPeer(pi.ID); err != nil {
 		logger.Errorf("通知发布订阅系统新节点失败: %v", err)
 		return false, err
 	}
 
-	if success {
-		logger.Debugf("成功添加节点 %s", pi.ID)
-	}
-	return success, nil
+	logger.Debugf("成功添加节点 %s", pi.ID)
+	return true, nil
 }
 
 // AddPubSubPeer 添加节点到发布订阅系统
