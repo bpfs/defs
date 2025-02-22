@@ -278,7 +278,6 @@ func (s *DownloadSegmentStore) FindByTaskIDAndStatus(taskID string, status pb.Se
 	// 检查是否需要包含内容
 	needContent := len(includeContent) > 0 && includeContent[0]
 
-	// 遍历所有符合条件的记录
 	err = s.store.ForEach(
 		badgerhold.Where("TaskId").Eq(taskID).And("Status").Eq(status),
 		func(record *pb.DownloadSegmentRecord) error {
@@ -373,7 +372,7 @@ func (s *DownloadSegmentStore) FindSegmentContent(segmentID string) ([]byte, err
 //   - segmentID: string 片段的唯一标识符
 //
 // 返回值:
-//   - *pb.UploadSegmentRecord: 获取到的上传片段记录
+//   - *pb.UploadSegmentRecord: 获取到的下载片段记录
 //   - bool: 记录是否存在
 //   - error: 如果发生系统错误返回错误信息，记录不存在则返回nil
 func (s *DownloadSegmentStore) GetDownloadSegmentBySegmentID(segmentID string) (*pb.DownloadSegmentRecord, bool, error) {
@@ -385,27 +384,76 @@ func (s *DownloadSegmentStore) GetDownloadSegmentBySegmentID(segmentID string) (
 		if err == badgerhold.ErrNotFound {
 			return nil, false, nil
 		}
-		logger.Errorf("根据片段ID获取上传片段记录失败: %v", err)
+		logger.Errorf("根据片段ID获取下载片段记录失败: %v", err)
 		return nil, false, err
 	}
 
 	return &segment, true, nil
 }
 
-// DeleteDownloadSegmentByTaskID 删除下载切片文件记录
+// GetDownloadSegment 根据片段ID获取下载片段记录
 // 参数:
-//   - taskID: string 要删除的任务ID
+//   - segmentID: string 片段的唯一标识符
 //
 // 返回值:
-//   - error: 如果删除成功返回nil，否则返回错误信息
-func (s *DownloadSegmentStore) DeleteDownloadSegmentByTaskID(taskID string) error {
-	// 从数据库中删除指定taskID的文件记录
-	if err := s.store.DeleteMatching(&pb.DownloadSegmentRecord{}, badgerhold.
-		Where("TaskId").Eq(taskID).
-		Index("TaskId")); err != nil {
-		logger.Errorf("删除下载文件记录失败: %v", err) // 记录错误日志
+//   - *pb.DownloadSegmentRecord: 获取到的下载片段记录
+//   - error: 如果获取成功返回nil，否则返回错误信息
+func (s *DownloadSegmentStore) GetDownloadSegment(segmentID string) (*pb.DownloadSegmentRecord, error) {
+	var segment pb.DownloadSegmentRecord // 定义一个DownloadSegmentRecord变量用于存储查询结果
+
+	// 从数据库中获取指定segmentID的片段记录
+	err := s.store.Get(segmentID, &segment)
+	if err != nil {
+		logger.Errorf("获取上传片段记录失败: %v", err) // 记录获取失败的错误日志
+		return nil, err
+	}
+
+	return &segment, nil
+}
+
+// UpdateSegmentStatus 更新片段状态
+// 参数:
+//   - segmentID: string 片段ID
+//   - status: pb.SegmentUploadStatus 新的状态
+//
+// 返回值:
+//   - error: 如果更新成功返回nil，否则返回错误信息
+func (s *DownloadSegmentStore) UpdateSegmentStatus(segmentID string, status pb.SegmentDownloadStatus) error {
+	// 获取片段记录
+	segment, err := s.GetDownloadSegment(segmentID)
+	if err != nil {
+		logger.Errorf("获取片段记录失败: segmentID=%s, err=%v", segmentID, err)
 		return err
 	}
-	logger.Infof("成功删除下载文件记录: %s", taskID) // 记录成功日志
+
+	// 更新状态
+	segment.Status = status
+
+	// 保存更新
+	if err := s.UpdateDownloadSegment(segment); err != nil {
+		logger.Errorf("更新片段状态失败: segmentID=%s, status=%s, err=%v",
+			segmentID, status.String(), err)
+		return err
+	}
+
+	// logger.Infof("成功更新片段状态: segmentID=%s, status=%s",segmentID, status.String())
+	return nil
+}
+
+// UpdateDownloadSegment 更新下载片段记录
+// 参数:
+//   - segment: *pb.DownloadSegmentRecord 要更新的下载片段记录
+//
+// 返回值:
+//   - error: 如果更新成功返回nil，否则返回错误信息
+func (s *DownloadSegmentStore) UpdateDownloadSegment(segment *pb.DownloadSegmentRecord) error {
+	// 更新数据库中的片段记录
+	err := s.store.Update(segment.SegmentId, segment)
+	if err != nil {
+		logger.Errorf("更新下载片段记录失败: %v", err) // 记录更新失败的错误日志
+		return err
+	}
+
+	// logger.Infof("成功更新下载片段记录: %s", segment.SegmentId) // 记录更新成功的日志
 	return nil
 }

@@ -204,7 +204,11 @@ func HandleDownloadManifestResponsePubSub(
 		logger.Errorf("解析索引清单响应数据失败: %v", err)
 		return
 	}
-
+	// fromPeerID, err := peer.IDFromBytes(res.From)
+	// if err != nil {
+	// 	logger.Errorf("无法解析From字段为PeerID: %v", err)
+	// 	return
+	// }
 	// 从 res.From 解析 AddrInfo
 	var fromPeerInfo peer.AddrInfo
 	if err := fromPeerInfo.UnmarshalJSON(res.From); err != nil {
@@ -222,7 +226,7 @@ func HandleDownloadManifestResponsePubSub(
 		return
 	}
 
-	logger.Infof("fromPeerInfo=%s, res.ReceivedFrom=%s", fromPeerInfo.String(), res.ReceivedFrom)
+	logger.Infof("fromPeerID.String()=%s, res.ReceivedFrom=%s", fromPeerInfo.ID.String(), res.ReceivedFrom)
 
 	// 更新片段的节点信息并返回未完成的片段索引
 	pendingSlices, err := UpdateSegmentNodes(db.BadgerDB, task.TaskID(), fromPeerInfo.ID.String(), payload.AvailableSlices)
@@ -233,19 +237,18 @@ func HandleDownloadManifestResponsePubSub(
 
 	// 将未完成的片段添加到分片分配管理器
 	if len(pendingSlices) > 0 {
-		// 将未完成的片段ID添加到列表中
+		distribution := make(map[peer.ID][]string)
 		sliceIDs := make([]string, 0, len(pendingSlices))
 		for _, segmentID := range pendingSlices {
 			sliceIDs = append(sliceIDs, segmentID)
 		}
-
-		// 添加到分片分配管理器，直接使用解析出的 AddrInfo
-		task.distribution.AddDistribution(fromPeerInfo, sliceIDs)
+		distribution[fromPeerInfo.ID] = sliceIDs
+		task.distribution.AddDistribution(distribution)
 	}
 
 	logger.Infof("\n已更新下载任务的索引清单信息: taskID=%s, 节点=%s, 未完成片段数=%d",
 		task.TaskID(),
-		fromPeerInfo.String(),
+		fromPeerInfo.ID.String(),
 		len(pendingSlices),
 	)
 

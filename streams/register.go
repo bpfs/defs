@@ -12,10 +12,6 @@ const (
 )
 
 // RegisterStreamHandler 注册流处理程序
-// 参数:
-//   - h: 主机，用于管理网络连接
-//   - p: 协议ID，用于标识流协议
-//   - handler: 流处理程序，用于处理网络流
 func RegisterStreamHandler(h host.Host, p protocol.ID, handler network.StreamHandler) {
 	if handler == nil {
 		return

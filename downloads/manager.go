@@ -9,11 +9,11 @@ import (
 	"github.com/bpfs/defs/v2/badgerhold"
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/fscfg"
+	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/pb"
 	"github.com/dgraph-io/badger/v4"
 
 	"github.com/dep2p/go-dep2p/core/host"
-	"github.com/dep2p/pointsub"
 	"github.com/dep2p/pubsub"
 	"go.uber.org/fx"
 )
@@ -24,16 +24,15 @@ const (
 
 // DownloadManager 管理所有下载任务，提供文件下载的统一入口和管理功能
 type DownloadManager struct {
-	ctx    context.Context    // 上下文，用于管理 DownloadManager 的生命周期和取消操作
-	cancel context.CancelFunc // 取消函数，用于取消上下文，停止所有相关的goroutine
-	mu     sync.Mutex         // 互斥锁，用于保护并发访问共享资源，确保线程安全
-	opt    *fscfg.Options     // 文件存储选项配置，包含各种存储相关的设置参数
-	db     *database.DB       // 数据库存储，用于持久化下载任务和相关元数据
-	fs     afero.Afero        // 文件系统接口，提供跨平台的文件操作能力
-	host   host.Host          // libp2p网络主机实例
-	ps     *pointsub.PointSub // 点对点传输实例
-	// routingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
-	nps *pubsub.NodePubSub // 发布订阅系统，用于节点之间的消息传递
+	ctx          context.Context       // 上下文，用于管理 DownloadManager 的生命周期和取消操作
+	cancel       context.CancelFunc    // 取消函数，用于取消上下文，停止所有相关的goroutine
+	mu           sync.Mutex            // 互斥锁，用于保护并发访问共享资源，确保线程安全
+	opt          *fscfg.Options        // 文件存储选项配置，包含各种存储相关的设置参数
+	db           *database.DB          // 数据库存储，用于持久化下载任务和相关元数据
+	fs           afero.Afero           // 文件系统接口，提供跨平台的文件操作能力
+	host         host.Host             // libp2p网络主机实例
+	routingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
+	nps          *pubsub.NodePubSub    // 发布订阅系统，用于节点之间的消息传递
 
 	tasks sync.Map // 下载任务映射，键为任务ID (string)，值为下载任务指针 (*DownloadTask)
 
@@ -84,19 +83,12 @@ func (m *DownloadManager) Host() host.Host {
 	return m.host
 }
 
-// PointSub 获取点对点传输实例
-// 返回值:
-//   - *pointsub.PointSub: 点对点传输实例
-func (m *DownloadManager) PointSub() *pointsub.PointSub {
-	return m.ps
-}
-
 // RoutingTable 获取客户端实例
 // 返回值:
 //   - *kbucket.RoutingTable : 路由表实例
-// func (m *DownloadManager) RoutingTable() *kbucket.RoutingTable {
-// 	return m.routingTable
-// }
+func (m *DownloadManager) RoutingTable() *kbucket.RoutingTable {
+	return m.routingTable
+}
 
 // NodePubSub 返回发布订阅系统
 // 返回值:
@@ -158,7 +150,6 @@ func (m *DownloadManager) getTask(taskID string) (*DownloadTask, bool) {
 //   - taskID: 任务的唯一标识符
 func (m *DownloadManager) removeTask(taskID string) {
 	if task, exists := m.tasks.Load(taskID); exists {
-
 		task.(*DownloadTask).Close() // 关闭任务并清理资源
 		m.tasks.Delete(taskID)
 		logger.Infof("成功移除任务: %s", taskID)
@@ -169,14 +160,13 @@ func (m *DownloadManager) removeTask(taskID string) {
 type NewDownloadManagerInput struct {
 	fx.In
 
-	Ctx  context.Context    // 上下文
-	Opt  *fscfg.Options     // 文件存储选项配置
-	DB   *database.DB       // 数据库存储
-	FS   afero.Afero        // 文件系统接口
-	Host host.Host          // libp2p网络主机实例
-	PS   *pointsub.PointSub // 点对点传输实例
-	// RoutingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
-	NPS *pubsub.NodePubSub // 发布订阅系统，用于节点之间的消息传递
+	Ctx          context.Context       // 上下文
+	Opt          *fscfg.Options        // 文件存储选项配置
+	DB           *database.DB          // 数据库存储
+	FS           afero.Afero           // 文件系统接口
+	Host         host.Host             // libp2p网络主机实例
+	RoutingTable *kbucket.RoutingTable // 路由表，用于管理对等节点和路由
+	NPS          *pubsub.NodePubSub    // 发布订阅系统，用于节点之间的消息传递
 }
 
 // NewDownloadManagerOutput 定义了 NewDownloadManager 函数的输出
@@ -201,16 +191,15 @@ func NewDownloadManager(lc fx.Lifecycle, input NewDownloadManagerInput) (out New
 
 	// 创建并初始化 DownloadManager 实例
 	download := &DownloadManager{
-		ctx:    ctx,
-		cancel: cancel,
-		mu:     sync.Mutex{},
-		opt:    input.Opt,
-		nps:    input.NPS,
-		db:     input.DB,
-		fs:     input.FS,
-		host:   input.Host,
-		ps:     input.PS,
-		// routingTable: input.RoutingTable,
+		ctx:          ctx,
+		cancel:       cancel,
+		mu:           sync.Mutex{},
+		opt:          input.Opt,
+		nps:          input.NPS,
+		db:           input.DB,
+		fs:           input.FS,
+		host:         input.Host,
+		routingTable: input.RoutingTable,
 		tasks:        sync.Map{},
 		downloadChan: make(chan string, 5),
 		statusChan:   make(chan *pb.DownloadChan, 1),
@@ -417,8 +406,7 @@ func (m *DownloadManager) LoadExistingTasks() error {
 			m.db,
 			m.fs,
 			m.host,
-			m.ps,
-			// m.routingTable,
+			m.routingTable,
 			m.nps,
 			m.statusChan,
 			m.errChan,
@@ -432,7 +420,6 @@ func (m *DownloadManager) LoadExistingTasks() error {
 
 		// 添加一个新的下载任务
 		if err := m.addTask(downloadTask); err != nil {
-			logger.Errorf("添加下载任务失败%v,任务ID：%s", err, downloadTask.taskId)
 			continue
 		}
 

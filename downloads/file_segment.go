@@ -26,6 +26,7 @@ import (
 //   - 使用ECDSA算法进行签名验证
 //   - 验证签名数据的完整性和真实性
 func VerifySegmentSignature(p *pb.SegmentContentResponse) error {
+
 	// 构造签名数据对象,包含需要验证的数据字段
 	signatureData := &pb.SignatureData{
 		FileId:        p.FileId,                                           // 文件ID

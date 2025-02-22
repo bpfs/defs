@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/bpfs/defs/v2/database"
-	"github.com/bpfs/defs/v2/pb"
 )
 
 // Start 开始或恢复上传任务
@@ -20,7 +19,6 @@ func (t *UploadTask) Start() error {
 			select {
 			case <-t.ctx.Done():
 				// 上下文被取消,退出处理循环
-				fmt.Println("==取消")
 				logger.Info("任务上下文已取消，退出处理循环")
 				return
 
@@ -31,13 +29,19 @@ func (t *UploadTask) Start() error {
 					t.NotifyTaskError(err)
 				}
 
-			case segmentID := <-t.chSendClosest:
-				// 发送最近的节点: 分片ID
-				fmt.Println("收到了开始发送-----")
+			case <-t.chNodeDispatch:
+				// 节点分发：以节点为单位从队列中读取文件片段
+				if err := t.handleNodeDispatch(); err != nil {
+					logger.Errorf("处理节点分发请求失败: %v", err)
+					t.NotifyTaskError(err)
+				}
 
-				logger.Infof("收到发送最近的节点请求: segmentID=%s", segmentID)
-				if err := t.handleSendClosest(segmentID); err != nil {
-					logger.Errorf("发送最近的节点失败: segmentID=%s, err=%v", segmentID, err)
+			case peerSegments := <-t.chNetworkTransfer:
+				// 网络传输：向目标节点传输文件片段
+
+				logger.Infof("收到网络传输请求: segments=%d", len(peerSegments))
+				if err := t.handleNetworkTransfer(peerSegments); err != nil {
+					logger.Errorf("处理网络传输请求失败: %v", err)
 					t.NotifyTaskError(err)
 				}
 
@@ -64,114 +68,6 @@ func (t *UploadTask) Start() error {
 
 	// 触发初始的文件片段处理
 	return t.ForceSegmentProcess()
-}
-
-// Pause 暂停上传任务
-// 该方法用于暂停正在进行的上传任务
-//
-// 返回值:
-//   - error: 如果暂停过程中发生错误，返回相应的错误信息
-func (t *UploadTask) Pause() error {
-	// 创建上传任务存储对象
-	uploadTaskStore := database.NewUploadFileStore(t.db)
-
-	// 获取当前任务状态
-	fileRecord, exists, err := uploadTaskStore.GetUploadFile(t.taskId)
-	if err != nil {
-		logger.Errorf("获取任务状态失败: taskID=%s, err=%v", t.taskId, err)
-		return err
-	}
-	if !exists {
-		return fmt.Errorf("任务不存在: taskID=%s", t.taskId)
-	}
-
-	// 检查任务状态是否可以暂停
-	switch fileRecord.Status {
-	case pb.UploadStatus_UPLOAD_STATUS_PENDING,
-		pb.UploadStatus_UPLOAD_STATUS_UPLOADING:
-		// 可以暂停的状态
-		if err := t.ForcePause(); err != nil {
-			logger.Errorf("触发暂停失败: taskID=%s, err=%v", t.taskId, err)
-			return err
-		}
-
-		return nil
-
-	case pb.UploadStatus_UPLOAD_STATUS_PAUSED:
-		// 已经是暂停状态，直接返回
-		return nil
-
-	case pb.UploadStatus_UPLOAD_STATUS_ENCODING:
-		return fmt.Errorf("文件正在编码处理中，无法暂停")
-
-	case pb.UploadStatus_UPLOAD_STATUS_COMPLETED:
-		return fmt.Errorf("任务已完成，无法暂停")
-
-	case pb.UploadStatus_UPLOAD_STATUS_FAILED:
-		return fmt.Errorf("任务已失败，无法暂停")
-
-	case pb.UploadStatus_UPLOAD_STATUS_CANCELED:
-		return fmt.Errorf("任务已取消，无法暂停")
-
-	case pb.UploadStatus_UPLOAD_STATUS_FILE_EXCEPTION:
-		return fmt.Errorf("文件存在异常，无法暂停")
-
-	default:
-		return fmt.Errorf("未知的任务状态，无法暂停")
-	}
-}
-
-// Cancel 取消上传任务
-// 返回值:
-//   - error: 如果取消过程中发生错误，返回相应的错误信息
-func (t *UploadTask) Cancel() error {
-	// 创建存储实例
-	uploadFileStore := database.NewUploadFileStore(t.db)
-
-	// 获取上传文件记录
-	fileRecord, exists, err := uploadFileStore.GetUploadFile(t.taskId)
-	if err != nil {
-		logger.Errorf("获取上传文件记录失败: taskID=%s, err=%v", t.taskId, err)
-		return err
-	}
-	if !exists {
-		return fmt.Errorf("任务不存在: taskID=%s", t.taskId)
-	}
-
-	// 检查任务状态是否可以取消
-	switch fileRecord.Status {
-	case pb.UploadStatus_UPLOAD_STATUS_COMPLETED:
-		// 已完成的任务不能取消
-		return fmt.Errorf("任务已完成，无法取消")
-
-	case pb.UploadStatus_UPLOAD_STATUS_CANCELED:
-		// 已经是取消状态，直接返回
-		return nil
-
-	default:
-		// 其他所有状态都可以取消
-		if err := t.ForceCancel(); err != nil {
-			logger.Errorf("触发取消失败: taskID=%s, err=%v", t.taskId, err)
-			return err
-		}
-
-		return nil
-	}
-}
-
-// Delete 删除上传任务相关的数据
-// 该方法用于删除上传任务的所有相关数据
-//
-// 返回值:
-//   - error: 如果删除过程中发生错误，返回相应的错误信息
-func (t *UploadTask) Delete() error {
-	// 触发强制删除
-	if err := t.ForceDelete(); err != nil {
-		logger.Errorf("删除任务数据失败: taskID=%s, err=%v", t.taskId, err)
-		return err
-	}
-
-	return nil
 }
 
 // GetTotalSize 返回文件大小加上奇偶校验片段的总大小

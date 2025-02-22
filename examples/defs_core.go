@@ -134,13 +134,13 @@ func NewDefsCore() (*DefsCore, error) {
 	// 配置DeFS选项
 	logger.Info("正在配置DeFS选项...")
 	opts := []fscfg.Option{
-		fscfg.WithBucketSize(200),
-		fscfg.WithMaxPeersPerCpl(5),
-		fscfg.WithPubSubOption(pubsub.WithSetFollowupTime(1 * time.Second)),
-		fscfg.WithPubSubOption(pubsub.WithSetGossipFactor(0.3)),
-		fscfg.WithPubSubOption(pubsub.WithSetMaxMessageSize(2 << 20)),
-		fscfg.WithPubSubOption(pubsub.WithNodeDiscovery(disc)),
-		fscfg.WithPointSubEnableServer(true), // 如果是接收端端话需要设置为true，只是作为发送端端话注释掉这行代码即可
+		fscfg.WithBucketSize(200),   // 设置K桶大小
+		fscfg.WithMaxPeersPerCpl(5), // 设置每个K桶的最大对等节点数
+		fscfg.WithPubSubOption(pubsub.WithSetFollowupTime(1 * time.Second)), // 设置发布订阅的跟随时间
+		fscfg.WithPubSubOption(pubsub.WithSetGossipFactor(0.3)),             // 设置发布订阅的八卦因子
+		fscfg.WithPubSubOption(pubsub.WithSetMaxMessageSize(2 << 20)),       // 设置发布订阅的最大消息大小
+		fscfg.WithPubSubOption(pubsub.WithSetMaxMessageSize(2 << 20)),       // 设置发布订阅的最大消息大小
+		fscfg.WithPubSubOption(pubsub.WithNodeDiscovery(disc)),              // 设置发布订阅的节点发现
 	}
 
 	// 初始化DeFS实例

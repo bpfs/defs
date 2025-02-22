@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"runtime"
 
 	"github.com/bpfs/defs/v2/badgerhold"
 	"github.com/bpfs/defs/v2/crypto/gcm"
@@ -136,9 +135,6 @@ func NewFileSegment(db *badgerhold.Store, taskID string, fileID string, file *os
 			Crc32Checksum: checksum,     // CRC32校验和
 			IsRsCodes:     isRsCodes,    // 是否为纠删码分片
 		}
-		// 清理分片内容
-		shard = nil
-		encryptedData = nil
 	}
 
 	// 更新文件记录的分片表和状态
@@ -146,9 +142,7 @@ func NewFileSegment(db *badgerhold.Store, taskID string, fileID string, file *os
 		logger.Errorf("更新文件状态和分片表失败,taskID:%s,err:%v", taskID, err)
 		return err
 	}
-	// 清理HashTable映射
-	hashTableMap = nil
-	runtime.GC() // 强制触发垃圾回收
+
 	return nil
 }
 
@@ -236,7 +230,7 @@ func compressAndEncrypt(pk, data []byte) ([]byte, error) {
 	// 	logrus.Errorf("原文和解密后的文本不匹配：原文 %d, 解密后 %d", len(data), len(decrypted))
 	// 	return nil, fmt.Errorf("原文和解密后的文本不匹配：原文 %d, 解密后 %d", len(data), len(decrypted))
 	// }
-	encryptedData = nil
+
 	return compressedData, nil
 }
 

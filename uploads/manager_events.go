@@ -3,12 +3,6 @@ package uploads
 import (
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/pb"
-	"github.com/dep2p/go-dep2p/core/protocol"
-)
-
-var (
-	// 从 network_pointsub.go 导入协议标识符
-	_ = ForwardToNetworkProtocol
 )
 
 // ManagerChannelEvents 处理上传管理器的通道事件
@@ -79,17 +73,8 @@ func (m *UploadManager) handleForwardRequest(payload *pb.FileSegmentStorage) {
 	payload.SegmentContent = segmentStorage.SegmentContent
 
 	// 使用新的方法发送转发请求
+	// Todo: 需要实现
 	// if err := sendForwardRequest(m.ctx, m.host, m.routingTable, payload); err != nil {
 	// 	logger.Errorf("转发文件失败,segmentID:%s,err:%v", payload.SegmentId, err)
 	// }
-
-	// 使用点对点传输发送转发请求
-	data, err := payload.Marshal()
-	if err != nil {
-		logger.Errorf("序列化payload失败: %v", err)
-		return
-	}
-	if _, err := m.ps.SendClosest(m.ctx, protocol.ID(ForwardToNetworkProtocol), data); err != nil {
-		logger.Errorf("转发文件失败,segmentID:%s,err:%v", payload.SegmentId, err)
-	}
 }

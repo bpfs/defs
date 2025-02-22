@@ -7,17 +7,11 @@ import (
 	"github.com/dep2p/go-dep2p/core/peer"
 )
 
-// SegmentDistributionItem 表示一个分片分配项
-type SegmentDistributionItem struct {
-	PeerInfo peer.AddrInfo // 节点信息
-	Segments []string      // 分片ID列表
-}
-
 // SegmentDistribution 分片分配管理器
 // 用于管理文件分片在不同节点间的分配关系
 type SegmentDistribution struct {
 	mu   sync.RWMutex // 用于保护并发访问的互斥锁
-	list *list.List   // 存储 SegmentDistributionItem 的列表
+	list *list.List   // 存储分片分配信息的双向链表
 }
 
 // NewSegmentDistribution 创建新的分片分配管理器
@@ -31,33 +25,30 @@ func NewSegmentDistribution() *SegmentDistribution {
 
 // AddDistribution 添加分片分配映射
 // 参数:
-//   - peerInfo: peer.AddrInfo 节点信息
-//   - segments: []string 分片ID列表
-func (sd *SegmentDistribution) AddDistribution(peerInfo peer.AddrInfo, segments []string) {
+//   - distribution: map[peer.ID][]string 节点ID到分片ID列表的映射
+func (sd *SegmentDistribution) AddDistribution(distribution map[peer.ID][]string) {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
 
-	item := &SegmentDistributionItem{
-		PeerInfo: peerInfo,
-		Segments: segments,
-	}
-	sd.list.PushBack(item)
+	// 直接将映射添加到列表
+	sd.list.PushBack(distribution)
 }
 
 // GetNextDistribution 获取并移除下一个待处理的分配
 // 返回值:
-//   - *SegmentDistributionItem: 下一个待处理的节点分片映射
+//   - map[peer.ID][]string: 下一个待处理的节点分片映射
 //   - bool: 是否成功获取到分配信息
-func (sd *SegmentDistribution) GetNextDistribution() (*SegmentDistributionItem, bool) {
+func (sd *SegmentDistribution) GetNextDistribution() (map[peer.ID][]string, bool) {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
 
-	// 获取第一个元素
+	// 获取链表第一个元素
 	if element := sd.list.Front(); element != nil {
-		// 移除第一个元素
-		item := sd.list.Remove(element).(*SegmentDistributionItem)
-		return item, true
+		// 移除并返回该元素
+		distribution := sd.list.Remove(element).(map[peer.ID][]string)
+		return distribution, true
 	}
+
 	return nil, false
 }
 

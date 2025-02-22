@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/bpfs/defs/v2/pb"
+
+	"github.com/dep2p/go-dep2p/core/peer"
 )
 
 // ForceSegmentIndex 强制触发片段索引请求
@@ -79,16 +81,16 @@ func (t *DownloadTask) ForceNodeDispatch() error {
 
 // ForceNetworkTransfer 强制触发网络传输
 // 向目标节点传输文件片段，支持重试机制
-func (t *DownloadTask) ForceNetworkTransfer(item *NetworkTransferItem) error {
+func (t *DownloadTask) ForceNetworkTransfer(peerSegments map[peer.ID][]string) error {
 	for {
 		select {
 		case <-t.ctx.Done():
 			return fmt.Errorf("任务已取消")
-		case t.chNetworkTransfer <- item:
-			logger.Debugf("成功将片段分配加入传输队列: segments=%d", len(item.Segments))
+		case t.chNetworkTransfer <- peerSegments:
+			logger.Debugf("成功将片段分配加入传输队列: segments=%d", len(peerSegments))
 			return nil
 		default:
-			logger.Debugf("网络传输通道已满，等待重试: segments=%d", len(item.Segments))
+			logger.Debugf("网络传输通道已满，等待重试: segments=%d", len(peerSegments))
 			select {
 			case <-time.After(100 * time.Millisecond):
 				continue
@@ -168,75 +170,6 @@ func (t *DownloadTask) ForceFileFinalize() error {
 	}
 }
 
-// ForcePause 强制触发任务暂停
-// 暂停当前下载任务，如果通道已满则先清空再写入
-func (t *DownloadTask) ForcePause() error {
-	select {
-	case <-t.ctx.Done():
-		return fmt.Errorf("任务已取消")
-	case t.chPause <- struct{}{}:
-		return nil
-	default:
-		select {
-		case <-t.ctx.Done():
-			return fmt.Errorf("任务已取消")
-		case <-t.chPause:
-			select {
-			case <-t.ctx.Done():
-				return fmt.Errorf("任务已取消")
-			case t.chPause <- struct{}{}:
-				return nil
-			}
-		}
-	}
-}
-
-// ForceCancel 强制触发任务取消
-// 取消当前下载任务，如果通道已满则先清空再写入
-func (t *DownloadTask) ForceCancel() error {
-	select {
-	case <-t.ctx.Done():
-		return fmt.Errorf("任务已取消")
-	case t.chCancel <- struct{}{}:
-		return nil
-	default:
-		select {
-		case <-t.ctx.Done():
-			return fmt.Errorf("任务已取消")
-		case <-t.chCancel:
-			select {
-			case <-t.ctx.Done():
-				return fmt.Errorf("任务已取消")
-			case t.chCancel <- struct{}{}:
-				return nil
-			}
-		}
-	}
-}
-
-// ForceDelete 强制触发任务删除
-// 删除当前下载任务及相关资源，如果通道已满则先清空再写入
-func (t *DownloadTask) ForceDelete() error {
-	select {
-	case <-t.ctx.Done():
-		return fmt.Errorf("任务已取消")
-	case t.chDelete <- struct{}{}:
-		return nil
-	default:
-		select {
-		case <-t.ctx.Done():
-			return fmt.Errorf("任务已取消")
-		case <-t.chDelete:
-			select {
-			case <-t.ctx.Done():
-				return fmt.Errorf("任务已取消")
-			case t.chDelete <- struct{}{}:
-				return nil
-			}
-		}
-	}
-}
-
 // NotifySegmentStatus 通知片段状态更新
 // 向外部通知文件片段的处理状态，超时后记录警告日志
 func (t *DownloadTask) NotifySegmentStatus(status *pb.DownloadChan) {
@@ -257,16 +190,4 @@ func (t *DownloadTask) NotifyTaskError(err error) {
 	case <-time.After(100 * time.Millisecond):
 		logger.Warnf("任务错误通知超时: taskID=%s, err=%v", t.taskId, err)
 	}
-}
-
-// 通用异步错误处理封装
-func (t *DownloadTask) safeHandle(fn func() error) {
-	go func() {
-		if err := fn(); err != nil {
-			select {
-			case t.chError <- err:
-			case <-t.ctx.Done():
-			}
-		}
-	}()
 }

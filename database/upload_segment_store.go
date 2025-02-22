@@ -43,7 +43,7 @@ func (s *UploadSegmentStore) CreateUploadSegment(segment *pb.UploadSegmentRecord
 		return err
 	}
 
-	logger.Infof("成功创建上传片段记录: %s", segment.SegmentId) // 记录创建成功的日志
+	// logger.Infof("成功创建上传片段记录: %s", segment.SegmentId) // 记录创建成功的日志
 	return nil
 }
 
@@ -81,7 +81,7 @@ func (s *UploadSegmentStore) UpdateUploadSegment(segment *pb.UploadSegmentRecord
 		return err
 	}
 
-	logger.Infof("成功更新上传片段记录: %s", segment.SegmentId) // 记录更新成功的日志
+	// logger.Infof("成功更新上传片段记录: %s", segment.SegmentId) // 记录更新成功的日志
 	return nil
 }
 
@@ -110,8 +110,7 @@ func (s *UploadSegmentStore) UpdateSegmentStatus(segmentID string, status pb.Seg
 		return err
 	}
 
-	logger.Infof("成功更新片段状态: segmentID=%s, status=%s",
-		segmentID, status.String())
+	// logger.Infof("成功更新片段状态: segmentID=%s, status=%s",segmentID, status.String())
 	return nil
 }
 
@@ -129,7 +128,7 @@ func (s *UploadSegmentStore) DeleteUploadSegment(segmentID string) error {
 		return err
 	}
 
-	logger.Infof("成功删除上传片段记录: %s", segmentID) // 记录删除成功的日志
+	// logger.Infof("成功删除上传片段记录: %s", segmentID) // 记录删除成功的日志
 	return nil
 }
 
@@ -208,7 +207,7 @@ func (s *UploadSegmentStore) GetUploadSegmentBySegmentID(segmentID string) (*pb.
 //   - bool: 记录是否存在
 //   - error: 如果发生系统错误返回错误信息，记录不存在则返回nil
 func (s *UploadSegmentStore) GetUploadSegmentByTaskIDAndIndex(taskID string, index int64) (*pb.UploadSegmentRecord, bool, error) {
-	var segments []*pb.UploadSegmentRecord // 定义切片用于存���查询结果
+	var segments []*pb.UploadSegmentRecord // 定义切片用于存储查询结果
 
 	// 查询指定任务ID和片段索引的记录
 	if err := s.db.Find(&segments, badgerhold.
@@ -339,7 +338,7 @@ func (s *UploadSegmentStore) BatchDeleteUploadSegments(segmentIDs []string) erro
 		}
 	}
 
-	logger.Infof("成功批量删除 %d 条上传片段记录", len(segmentIDs)) // 记录删除成功的日志
+	// logger.Infof("成功批量删除 %d 条上传片段记录", len(segmentIDs)) // 记录删除成功的日志
 	return nil
 }
 
@@ -354,7 +353,7 @@ func (s *UploadSegmentStore) ClearAllUploadSegments() error {
 		return err
 	}
 
-	logger.Info("所有上传片段记录已成功清空") // 记录清空成功的日志
+	// logger.Info("所有上传片段记录已成功清空") // 记录清空成功的日志
 	return nil
 }
 
@@ -363,7 +362,7 @@ func (s *UploadSegmentStore) ClearAllUploadSegments() error {
 //   - segment: *pb.UploadSegmentRecord 要验证的片段记录
 //
 // 返回值:
-//   - error: 如果验证通过返回nil，否则返回错误��息
+//   - error: 如果验证通过返回nil，否则返回错误信息
 func (s *UploadSegmentStore) ValidateSegment(segment *pb.UploadSegmentRecord) error {
 	// 检查片段记录是否为空
 	if segment == nil {
@@ -394,20 +393,47 @@ func (s *UploadSegmentStore) ValidateSegment(segment *pb.UploadSegmentRecord) er
 }
 
 // DeleteUploadSegmentByTaskID 删除上传切片文件记录
-// 参数:
-//   - taskID: string 要删除的任务ID
-//
-// 返回值:
-//   - error: 如果删除成功返回nil，否则返回错误信息
 func (s *UploadSegmentStore) DeleteUploadSegmentByTaskID(taskID string) error {
-	// 从数据库中删除指定taskID的文件记录
-	if err := s.db.DeleteMatching(&pb.UploadSegmentRecord{}, badgerhold.
-		Where("TaskId").Eq(taskID).
-		Index("TaskId")); err != nil {
-		logger.Errorf("删除上传文件记录失败: %v", err) // 记录错误日志
-		return err
+	// 先检查 s.db 是否为 nil
+	if s.db == nil {
+		return fmt.Errorf("数据库连接为空")
 	}
-	logger.Infof("成功删除上传文件记录: %s", taskID) // 记录成功日志
+
+	const batchSize = 100 // 每批处理的记录数
+	var totalDeleted int
+
+	for {
+		// 1. 先查询一批记录的ID
+		var segments []*pb.UploadSegmentRecord
+		// 使用更安全的查询方式
+		query := badgerhold.Where("TaskId").Eq(taskID).Limit(batchSize)
+		err := s.db.Find(&segments, query)
+		if err != nil {
+			logger.Errorf("查询上传文件记录失败: taskID=%s, err=%v", taskID, err)
+			return fmt.Errorf("查询上传文件记录失败: %v", err)
+		}
+
+		// 如果没有更多记录，退出循环
+		if len(segments) == 0 {
+			break
+		}
+
+		// 2. 逐个删除记录，避免批量删除可能导致的问题
+		for _, segment := range segments {
+			if err := s.DeleteUploadSegment(segment.SegmentId); err != nil {
+				logger.Errorf("删除片段记录失败 taskID=%s, segmentId=%s: %v",
+					taskID, segment.SegmentId, err)
+				// 继续处理其他记录
+				continue
+			}
+			totalDeleted++
+		}
+
+		logger.Infof("任务 %s: 已删除 %d 个片段记录，总计: %d",
+			taskID, len(segments), totalDeleted)
+	}
+
+	logger.Infof("任务 %s 的所有片段记录删除完成，共删除 %d 条记录", taskID, totalDeleted)
 	return nil
 }
 

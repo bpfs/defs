@@ -193,3 +193,21 @@ func (s *DownloadFileStore) FindByFileID(fileID string) ([]*pb.DownloadFileRecor
 	}
 	return records, nil
 }
+
+// DeleteDownloadSegmentByTaskID 删除下载切片文件记录
+// 参数:
+//   - taskID: string 要删除的任务ID
+//
+// 返回值:
+//   - error: 如果删除成功返回nil，否则返回错误信息
+func (s *DownloadSegmentStore) DeleteDownloadSegmentByTaskID(taskID string) error {
+	// 从数据库中删除指定taskID的文件记录
+	if err := s.store.DeleteMatching(&pb.DownloadSegmentRecord{}, badgerhold.
+		Where("TaskId").Eq(taskID).
+		Index("TaskId")); err != nil {
+		logger.Errorf("删除下载文件记录失败: %v", err) // 记录错误日志
+		return err
+	}
+	logger.Infof("成功删除下载文件记录: %s", taskID) // 记录成功日志
+	return nil
+}

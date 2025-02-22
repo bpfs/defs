@@ -8,7 +8,7 @@ require (
 	github.com/dep2p/kaddht v0.0.3
 	github.com/dep2p/log v0.0.1
 	github.com/dep2p/pointsub v1.1.4
-	github.com/dep2p/pubsub v1.0.6
+	github.com/dep2p/pubsub v1.0.7
 	github.com/dgraph-io/badger/v4 v4.5.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gin-gonic/gin v1.10.0
@@ -17,6 +17,7 @@ require (
 	github.com/jbenet/go-temp-err-catcher v0.1.0
 	github.com/klauspost/cpuid/v2 v2.2.9
 	github.com/mattn/go-sqlite3 v1.14.24
+	github.com/minio/sha256-simd v1.0.1
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/sftp v1.13.6
@@ -104,7 +105,6 @@ require (
 	github.com/miekg/dns v1.1.62 // indirect
 	github.com/mikioh/tcpinfo v0.0.0-20190314235526-30a79bb1804b // indirect
 	github.com/mikioh/tcpopt v0.0.0-20190314235656-172688c1accc // indirect
-	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect

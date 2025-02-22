@@ -176,8 +176,7 @@ func (s *DownloadFileStore) QueryDownloadTaskRecordsTx(txn *badger.Txn, start, l
 
 	// 执行分页查询
 	var tasks []*pb.DownloadFileRecord
-	query = query.Skip(start).Limit(limit).SortBy("StartedAt").Reverse()
-	err := s.store.TxFind(txn, &tasks, query)
+	err := s.store.TxFind(txn, &tasks, query.Skip(start).Limit(limit))
 	if err != nil {
 		logger.Errorf("查询下载任务记录失败: %v", err)
 		return nil, 0, err

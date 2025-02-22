@@ -2,6 +2,7 @@ package downloads
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/pb"
@@ -19,6 +20,9 @@ import (
 func (t *DownloadTask) Start() error {
 	// 启动goroutine处理各种事件
 	go func() {
+		// 创建定时器，每30秒触发一次
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
 
 		// 无限循环处理事件,直到任务完成或取消
 		for {
@@ -28,33 +32,57 @@ func (t *DownloadTask) Start() error {
 				logger.Info("任务上下文已取消，退出处理循环")
 				return
 
+			case <-ticker.C:
+				// 每30秒触发一次片段索引请求
+				logger.Info("定时触发片段索引请求")
+
+				if err := t.ForceSegmentIndex(); err != nil {
+					logger.Errorf("定时触发片段索引请求失败: %v", err)
+					t.NotifyTaskError(err)
+				}
+
 			case <-t.chSegmentIndex:
 				// 处理片段索引请求
 				logger.Info("收到片段索引请求")
-				go t.safeHandle(t.handleSegmentIndex) // 异步处理
+
+				if err := t.handleSegmentIndex(); err != nil {
+					logger.Errorf("处理片段索引请求失败: %v", err)
+					t.NotifyTaskError(err)
+				}
 
 			case <-t.chSegmentProcess:
 				// 处理文件片段：将文件片段整合并写入队列
-				go t.safeHandle(t.handleSegmentProcess)
+
+				if err := t.handleSegmentProcess(); err != nil {
+					logger.Errorf("处理文件片段失败: %v", err)
+					t.NotifyTaskError(err)
+				}
 
 			case <-t.chNodeDispatch:
 				// 节点分发：以节点为单位从队列中读取文件片段
-				go t.safeHandle(t.handleNodeDispatch)
 
-			case item := <-t.chNetworkTransfer:
+				if err := t.handleNodeDispatch(); err != nil {
+					logger.Errorf("处理节点分发请求失败: %v", err)
+					t.NotifyTaskError(err)
+				}
+
+			case peerSegments := <-t.chNetworkTransfer:
 				// 网络传输：向目标节点传输文件片段
-				logger.Infof("收到网络传输请求: segments=%d", len(item.Segments))
-				go func(transferItem *NetworkTransferItem) {
-					if err := t.handleNetworkTransfer(transferItem); err != nil {
-						logger.Errorf("处理网络传输请求失败: %v", err)
-						t.NotifyTaskError(err)
-					}
-				}(item)
+				logger.Infof("收到网络传输请求: segments=%d", len(peerSegments))
+
+				if err := t.handleNetworkTransfer(peerSegments); err != nil {
+					logger.Errorf("处理网络传输请求失败: %v", err)
+					t.NotifyTaskError(err)
+				}
 
 			case <-t.chSegmentVerify:
 				// 片段验证：验证已传输片段的完整性
 				logger.Info("收到片段验证请求")
-				go t.safeHandle(t.handleSegmentVerify)
+				if err := t.handleSegmentVerify(); err != nil {
+					logger.Errorf("处理片段验证失败: %v", err)
+					t.NotifyTaskError(err)
+				}
+
 			case <-t.chSegmentMerge:
 				// 处理片段合并
 				logger.Info("收到片段合并请求")
@@ -78,113 +106,6 @@ func (t *DownloadTask) Start() error {
 
 	// 触发初始的文件片段索引
 	return t.ForceSegmentIndex()
-}
-
-// Cancel 取消下载任务
-// 返回值:
-//   - error: 错误信息
-//
-// 功能:
-//   - 使用事务取消下载任务
-//   - 清理任务相关资源
-//   - 记录取消操作日志
-func (t *DownloadTask) Cancel() error {
-	// 创建存储实例
-	downloadFileStore := database.NewDownloadFileStore(t.db)
-
-	// 获取下载文件记录
-	fileRecord, exists, err := downloadFileStore.Get(t.taskId)
-	if err != nil {
-		logger.Errorf("获取下载文件记录失败: taskID=%s, err=%v", t.taskId, err)
-		return err
-	}
-	if !exists {
-		return fmt.Errorf("任务不存在: taskID=%s", t.taskId)
-	}
-
-	// 检查任务状态是否可以取消
-	switch fileRecord.Status {
-	case pb.DownloadStatus_DOWNLOAD_STATUS_COMPLETED:
-		// 已完成的任务不能取消
-		return fmt.Errorf("任务已完成，无法取消")
-
-	case pb.DownloadStatus_DOWNLOAD_STATUS_CANCELLED:
-		// 已经是取消状态，直接返回
-		return nil
-
-	default:
-		// 其他所有状态都可以取消
-		if err := t.ForceCancel(); err != nil {
-			logger.Errorf("触发取消失败: taskID=%s, err=%v", t.taskId, err)
-			return err
-		}
-		return nil
-	}
-}
-
-// Pause 暂停下载任务
-// 返回值:
-//   - error: 错误信息
-//
-// 功能:
-//   - 使用事务暂停下载任务
-//   - 清理任务相关资源
-//   - 记录暂停操作日志
-func (t *DownloadTask) Pause() error {
-	// 创建下载任务存储对象
-	downloadFileStore := database.NewDownloadFileStore(t.db)
-
-	// 获取当前任务状态
-	fileRecord, exists, err := downloadFileStore.Get(t.taskId)
-	if err != nil {
-		logger.Errorf("获取任务状态失败: taskID=%s, err=%v", t.taskId, err)
-		return err
-	}
-	if !exists {
-		return fmt.Errorf("任务不存在: taskID=%s", t.taskId)
-	}
-
-	// 检查任务状态是否可以暂停
-	switch fileRecord.Status {
-	case pb.DownloadStatus_DOWNLOAD_STATUS_PENDING,
-		pb.DownloadStatus_DOWNLOAD_STATUS_DOWNLOADING:
-		// 可以暂停的状态
-		if err := t.ForcePause(); err != nil {
-			logger.Errorf("触发暂停失败: taskID=%s, err=%v", t.taskId, err)
-			return err
-		}
-		return nil
-
-	case pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED:
-		// 已经是暂停状态，直接返回
-		return nil
-
-	case pb.DownloadStatus_DOWNLOAD_STATUS_COMPLETED:
-		return fmt.Errorf("任务已完成，无法暂停")
-
-	case pb.DownloadStatus_DOWNLOAD_STATUS_FAILED:
-		return fmt.Errorf("任务已失败，无法暂停")
-
-	case pb.DownloadStatus_DOWNLOAD_STATUS_CANCELLED:
-		return fmt.Errorf("任务已取消，无法暂停")
-
-	default:
-		return fmt.Errorf("未知的任务状态，无法暂停")
-	}
-}
-
-// Delete 删除下载任务相关的数据
-// 该方法用于删除下载任务的所有相关数据
-//
-// 返回值:
-//   - error: 如果删除过程中发生错误，返回相应的错误信息
-func (t *DownloadTask) Delete() error {
-	// 触发强制删除
-	if err := t.ForceDelete(); err != nil {
-		logger.Errorf("删除任务数据失败: taskID=%s, err=%v", t.taskId, err)
-		return err
-	}
-	return nil
 }
 
 // GetProgress 获取下载进度的百分比

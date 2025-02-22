@@ -62,19 +62,6 @@ type Options struct {
 	minDownloadServerNodes int                 // 下载所需最小服务端节点数
 	nps                    *pubsub.NodePubSub  // 发布订阅系统实例
 	maxConcurrentDownloads int64               // 最大并发下载数量
-	// PointSub 相关配置
-	pointsubClientReadTimeout    time.Duration // 客户端读取超时
-	pointsubClientWriteTimeout   time.Duration // 客户端写入超时
-	pointsubClientConnectTimeout time.Duration // 客户端连接超时
-	pointsubClientMaxRetries     int           // 客户端最大重试次数
-	pointsubClientCompression    bool          // 客户端是否启用压缩
-
-	pointsubServerMaxConns        int           // 服务端最大连接数
-	pointsubServerReadTimeout     time.Duration // 服务端读取超时
-	pointsubServerWriteTimeout    time.Duration // 服务端写入超时
-	pointsubServerBufferSize      int           // 服务端缓冲区大小
-	pointsubServerCleanupInterval time.Duration // 服务端清理间隔
-	pointsubEnableServer          bool          // 是否启动服务端
 }
 
 // DefaultOptions 设置一个推荐选项列表以获得良好的性能。
@@ -108,19 +95,6 @@ func DefaultOptions() *Options {
 		nps:                    nil,                   // 默认为空,需要时再创建
 		pubsubOptions:          []pubsub.NodeOption{}, // 默认空选项列表
 		maxConcurrentDownloads: 5,                     // 设置默认的最大并发下载数量
-		// PointSub 默认配置
-		pointsubClientReadTimeout:    30 * time.Second, // 客户端读取超时,默认30秒
-		pointsubClientWriteTimeout:   30 * time.Second, // 客户端写入超时,默认30秒
-		pointsubClientConnectTimeout: 5 * time.Second,  // 客户端连接超时,默认5秒
-		pointsubClientMaxRetries:     3,                // 客户端最大重试次数,默认3次
-		pointsubClientCompression:    true,             // 客户端是否启用压缩,默认启用
-
-		pointsubServerMaxConns:        1000,             // 服务端最大连接数,默认1000
-		pointsubServerReadTimeout:     30 * time.Second, // 服务端读取超时,默认30秒
-		pointsubServerWriteTimeout:    30 * time.Second, // 服务端写入超时,默认30秒
-		pointsubServerBufferSize:      4096,             // 服务端缓冲区大小,默认4096
-		pointsubServerCleanupInterval: 5 * time.Minute,  // 服务端清理间隔,默认5分钟
-		pointsubEnableServer:          false,            // 是否启动服务端,默认不启动
 	}
 }
 
@@ -176,7 +150,7 @@ func (opt *Options) GetMinSliceSize() int64 {
 	return opt.minSliceSize
 }
 
-// GetDataShards 获取文件数据片段的数量
+// GetDataShards ��取文件数据片段的数量
 // 返回值:
 //   - int64: 数据片段数量
 func (opt *Options) GetDataShards() int64 {
@@ -359,83 +333,6 @@ func (opt *Options) GetMaxConcurrentDownloads() int64 {
 	return opt.maxConcurrentDownloads
 }
 
-// GetPointSubClientReadTimeout 获取客户端读取超时
-// 返回值:
-//   - time.Duration: 客户端读取超时
-func (opt *Options) GetPointSubClientReadTimeout() time.Duration {
-	return opt.pointsubClientReadTimeout
-}
-
-// GetPointSubClientWriteTimeout 获取客户端写入超时
-// 返回值:
-//   - time.Duration: 客户端写入超时
-func (opt *Options) GetPointSubClientWriteTimeout() time.Duration {
-	return opt.pointsubClientWriteTimeout
-}
-
-// GetPointSubClientConnectTimeout 获取客户端连接超时
-// 返回值:
-//   - time.Duration: 客户端连接超时
-func (opt *Options) GetPointSubClientConnectTimeout() time.Duration {
-	return opt.pointsubClientConnectTimeout
-}
-
-// GetPointSubClientMaxRetries 获取客户端最大重试次数
-// 返回值:
-//   - int: 客户端最大重试次数
-func (opt *Options) GetPointSubClientMaxRetries() int {
-	return opt.pointsubClientMaxRetries
-}
-
-// GetPointSubClientCompression 获取客户端是否启用压缩
-// 返回值:
-//   - bool: 客户端是否启用压缩
-func (opt *Options) GetPointSubClientCompression() bool {
-	return opt.pointsubClientCompression
-}
-
-// GetPointSubServerMaxConns 获取服务端最大连接数
-// 返回值:
-//   - int: 服务端最大连接数
-func (opt *Options) GetPointSubServerMaxConns() int {
-	return opt.pointsubServerMaxConns
-}
-
-// GetPointSubServerReadTimeout 获取服务端读取超时
-// 返回值:
-//   - time.Duration: 服务端读取超时
-func (opt *Options) GetPointSubServerReadTimeout() time.Duration {
-	return opt.pointsubServerReadTimeout
-}
-
-// GetPointSubServerWriteTimeout 获取服务端写入超时
-// 返回值:
-//   - time.Duration: 服务端写入超时
-func (opt *Options) GetPointSubServerWriteTimeout() time.Duration {
-	return opt.pointsubServerWriteTimeout
-}
-
-// GetPointSubServerBufferSize 获取服务端缓冲区大小
-// 返回值:
-//   - int: 服务端缓冲区大小
-func (opt *Options) GetPointSubServerBufferSize() int {
-	return opt.pointsubServerBufferSize
-}
-
-// GetPointSubServerCleanupInterval 获取服务端清理间隔
-// 返回值:
-//   - time.Duration: 服务端清理间隔
-func (opt *Options) GetPointSubServerCleanupInterval() time.Duration {
-	return opt.pointsubServerCleanupInterval
-}
-
-// GetPointSubEnableServer 获取是否启动服务端
-// 返回值:
-//   - bool: 是否启动服务端
-func (opt *Options) GetPointSubEnableServer() bool {
-	return opt.pointsubEnableServer
-}
-
 // WithPubSubOption 添加 PubSub 配置选项
 // 参数:
 //   - opt pubsub.NodeOption: 要添加的 PubSub 配置选项
@@ -528,7 +425,7 @@ func WithMinSliceSize(size int64) Option {
 	}
 }
 
-// WithDataShards 设置文件数据片段的数量
+// WithDataShards 设置文件数据片段的���量
 // 参数:
 //   - count int64: 要设置的数据片段数量
 //
@@ -578,7 +475,7 @@ func WithShardSize(size int64) Option {
 //   - Option: 返回一个配置函数,用于设置校验片段占比
 func WithParityRatio(ratio float64) Option {
 	return func(opt *Options) error {
-		// 设置校验片段占比
+		// 设置校验片段占��
 		opt.parityRatio = ratio
 		return nil
 	}
@@ -912,176 +809,6 @@ func WithMaxConcurrentDownloads(count int64) Option {
 		}
 		// 设置最大并发下载数量
 		opt.maxConcurrentDownloads = count
-		return nil
-	}
-}
-
-// WithPointSubClientReadTimeout 设置客户端读取超时
-// 参数:
-//   - d time.Duration: 要设置的客户端读取超时
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置客户端读取超时
-func WithPointSubClientReadTimeout(d time.Duration) Option {
-	return func(o *Options) error {
-		if d <= 0 {
-			return fmt.Errorf("客户端读取超时必须大于0")
-		}
-		o.pointsubClientReadTimeout = d
-		return nil
-	}
-}
-
-// WithPointSubClientWriteTimeout 设置客户端写入超时
-// 参数:
-//   - d time.Duration: 要设置的客户端写入超时
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置客户端写入超时
-func WithPointSubClientWriteTimeout(d time.Duration) Option {
-	return func(o *Options) error {
-		if d <= 0 {
-			return fmt.Errorf("客户端写入超时必须大于0")
-		}
-		o.pointsubClientWriteTimeout = d
-		return nil
-	}
-}
-
-// WithPointSubClientConnectTimeout 设置客户端连接超时
-// 参数:
-//   - d time.Duration: 要设置的客户端连接超时
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置客户端连接超时
-func WithPointSubClientConnectTimeout(d time.Duration) Option {
-	return func(o *Options) error {
-		if d <= 0 {
-			return fmt.Errorf("客户端连接超时必须大于0")
-		}
-		o.pointsubClientConnectTimeout = d
-		return nil
-	}
-}
-
-// WithPointSubClientMaxRetries 设置客户端最大重试次数
-// 参数:
-//   - n int: 要设置的客户端最大重试次数
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置客户端最大重试次数
-func WithPointSubClientMaxRetries(n int) Option {
-	return func(o *Options) error {
-		if n < 0 {
-			return fmt.Errorf("客户端最大重试次数不能为负数")
-		}
-		o.pointsubClientMaxRetries = n
-		return nil
-	}
-}
-
-// WithPointSubClientCompression 设置客户端是否启用压缩
-// 参数:
-//   - enable bool: 是否启用客户端压缩
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置客户端压缩开关
-func WithPointSubClientCompression(enable bool) Option {
-	return func(o *Options) error {
-		o.pointsubClientCompression = enable
-		return nil
-	}
-}
-
-// WithPointSubServerMaxConns 设置服务端最大连接数
-// 参数:
-//   - n int: 要设置的服务端最大连接数
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置服务端最大连接数
-func WithPointSubServerMaxConns(n int) Option {
-	return func(o *Options) error {
-		if n <= 0 {
-			return fmt.Errorf("服务端最大连接数必须大于0")
-		}
-		o.pointsubServerMaxConns = n
-		return nil
-	}
-}
-
-// WithPointSubServerReadTimeout 设置服务端读取超时
-// 参数:
-//   - d time.Duration: 要设置的服务端读取超时
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置服务端读取超时
-func WithPointSubServerReadTimeout(d time.Duration) Option {
-	return func(o *Options) error {
-		if d <= 0 {
-			return fmt.Errorf("服务端读取超时必须大于0")
-		}
-		o.pointsubServerReadTimeout = d
-		return nil
-	}
-}
-
-// WithPointSubServerWriteTimeout 设置服务端写入超时
-// 参数:
-//   - d time.Duration: 要设置的服务端写入超时
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置服务端写入超时
-func WithPointSubServerWriteTimeout(d time.Duration) Option {
-	return func(o *Options) error {
-		if d <= 0 {
-			return fmt.Errorf("服务端写入超时必须大于0")
-		}
-		o.pointsubServerWriteTimeout = d
-		return nil
-	}
-}
-
-// WithPointSubServerBufferSize 设置服务端缓冲区大小
-// 参数:
-//   - n int: 要设置的服务端缓冲区大小
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置服务端缓冲区大小
-func WithPointSubServerBufferSize(n int) Option {
-	return func(o *Options) error {
-		if n <= 0 {
-			return fmt.Errorf("服务端缓冲区大小必须大于0")
-		}
-		o.pointsubServerBufferSize = n
-		return nil
-	}
-}
-
-// WithPointSubServerCleanupInterval 设置服务端清理间隔
-// 参数:
-//   - d time.Duration: 要设置的服务端清理间隔
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置服务端清理间隔
-func WithPointSubServerCleanupInterval(d time.Duration) Option {
-	return func(o *Options) error {
-		if d <= 0 {
-			return fmt.Errorf("服务端清理间隔必须大于0")
-		}
-		o.pointsubServerCleanupInterval = d
-		return nil
-	}
-}
-
-// WithPointSubEnableServer 设置是否启动服务端
-// 参数:
-//   - enable bool: 是否启用服务端
-//
-// 返回值:
-//   - Option: 返回一个配置函数,用于设置服务端开关
-func WithPointSubEnableServer(enable bool) Option {
-	return func(o *Options) error {
-		o.pointsubEnableServer = enable
 		return nil
 	}
 }
