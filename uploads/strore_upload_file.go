@@ -82,7 +82,7 @@ func UpdateUploadFileStatus(db *badgerhold.Store, taskID string, status pb.Uploa
 
 	// 更新状态
 	fileRecord.Status = status
-	logger.Infof("更新文件状态: taskID=%s, status=%s", taskID, status.String())
+	// logger.Infof("更新文件状态: taskID=%s, status=%s", taskID, status.String())
 
 	// 将更新后的记录保存到数据库
 	if err := store.UpdateUploadFile(fileRecord); err != nil {
@@ -132,7 +132,7 @@ func UpdateUploadFileHashTable(db *badgerhold.Store, taskID string, sliceTable m
 	// 更新哈希表和状态
 	fileRecord.SliceTable = sliceTable
 	fileRecord.Status = pb.UploadStatus_UPLOAD_STATUS_PENDING
-	logger.Infof("更新文件哈希表并将状态更新为待上传: taskID=%s", taskID)
+	// logger.Infof("更新文件哈希表并将状态更新为待上传: taskID=%s", taskID)
 
 	// 将更新后的记录保存到数据库
 	if err := store.UpdateUploadFile(fileRecord); err != nil {

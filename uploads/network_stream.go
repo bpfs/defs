@@ -50,6 +50,7 @@ type processTask struct {
 	usp     *StreamProtocol
 }
 
+// init 初始化
 func init() {
 	// 启动工作池
 	for i := 0; i < maxWorkers; i++ {
@@ -57,8 +58,14 @@ func init() {
 	}
 }
 
+// worker 工作协程
+// 主要步骤：
+// 1. 从工作通道接收任务
+// 2. 处理数据
+// 3. 如果处理失败，记录错误
 func worker() {
 	for task := range workChan {
+		// 处理数据
 		if err := processPayload(task.payload, task.usp); err != nil {
 			logger.Errorf("处理数据失败: %v", err)
 		}

@@ -574,7 +574,8 @@ func UpdateSegmentNodes(db *badgerhold.Store, taskID string, peerID string, avai
 		// 获取任务的所有片段记录
 		segments, err := store.FindByTaskIDTx(txn, taskID)
 		if err != nil {
-			return fmt.Errorf("获取片段记录失败: %v", err)
+			logger.Errorf("获取片段记录失败: %v", err)
+			return err
 		}
 
 		// 遍历可用片段映射
@@ -595,7 +596,8 @@ func UpdateSegmentNodes(db *badgerhold.Store, taskID string, peerID string, avai
 						segment.SegmentNode[peerID] = true
 						// 更新片段记录
 						if err := store.UpdateTx(txn, segment); err != nil {
-							return fmt.Errorf("更新片段记录失败: %v", err)
+							logger.Errorf("更新片段记录失败: %v", err)
+							return err
 						}
 					}
 					break
@@ -610,14 +612,16 @@ func UpdateSegmentNodes(db *badgerhold.Store, taskID string, peerID string, avai
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("更新节点信息失败: %v", err)
+		logger.Errorf("更新节点信息失败: %v", err)
+		return nil, err
 	}
 
 	// 获取未完成的片段
 	pendingSlices := make(map[int64]string)
 	segments, err := store.FindByTaskID(taskID)
 	if err != nil {
-		return nil, fmt.Errorf("获取片段记录失败: %v", err)
+		logger.Errorf("获取片段记录失败: %v", err)
+		return nil, err
 	}
 
 	// 筛选未完成的片段

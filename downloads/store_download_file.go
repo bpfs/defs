@@ -1,7 +1,6 @@
 package downloads
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/bpfs/defs/v2/badgerhold"
@@ -80,7 +79,7 @@ func CreateDownloadFileRecord(
 		// 1. 保存文件记录
 		if err := fileStore.InsertTx(txn, fileRecord); err != nil {
 			logger.Errorf("保存文件记录失败: %v", err)
-			return fmt.Errorf("保存文件记录失败: %v", err)
+			return err
 		}
 
 		// 2. 批量保存分片记录
@@ -96,14 +95,14 @@ func CreateDownloadFileRecord(
 				for _, segment := range segments[i:end] {
 					if err := segmentStore.InsertTx(txn, segment); err != nil {
 						logger.Errorf("保存片段记录失败 [%s]: %v", segment.SegmentId, err)
-						return fmt.Errorf("保存片段记录失败 [%s]: %v", segment.SegmentId, err)
+						return err
 					}
 				}
 				return nil
 			})
 			if err != nil {
 				logger.Errorf("批次处理分片记录失败: %v", err)
-				return fmt.Errorf("批次处理分片记录失败: %v", err)
+				return err
 			}
 		}
 
@@ -112,7 +111,7 @@ func CreateDownloadFileRecord(
 
 	if err != nil {
 		logger.Errorf("创建下载任务失败: %v", err)
-		return nil, fmt.Errorf("创建下载任务失败: %v", err)
+		return nil, err
 	}
 
 	return fileRecord, nil
@@ -142,7 +141,7 @@ func UpdateDownloadFileStatus(db *badgerhold.Store, taskID string, status pb.Dow
 	}
 	if !exists {
 		logger.Errorf("文件记录不存在: %s", taskID)
-		return fmt.Errorf("文件记录不存在: %s", taskID)
+		return err
 	}
 
 	// 更新状态

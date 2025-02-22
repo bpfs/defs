@@ -40,7 +40,7 @@ func NewFileSecurity(fileID string, privKey *ecdsa.PrivateKey, secret []byte) (*
 		Script()
 	if err != nil {
 		logger.Errorf("构建P2PK脚本失败: %v, fileID: %s", err, fileID)
-		return nil, fmt.Errorf("构建P2PK脚本失败: %v", err)
+		return nil, err
 	}
 	logger.Infof("P2PK 十六进制脚本: %s", hex.EncodeToString(p2pk))
 
@@ -62,7 +62,7 @@ func NewFileSecurity(fileID string, privKey *ecdsa.PrivateKey, secret []byte) (*
 		logger.Errorf("构建P2PKH脚本失败: %v, fileID: %s", err, fileID)
 		return nil, err
 	}
-	logger.Infof("P2PKH 十六进制脚本: %s", hex.EncodeToString(p2pkh))
+	// logger.Infof("P2PKH 十六进制脚本: %s", hex.EncodeToString(p2pkh))
 
 	// 序列化私钥
 	ownerPriv, err := files.MarshalPrivateKey(privKey)

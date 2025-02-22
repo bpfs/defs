@@ -2,7 +2,6 @@ package uploads
 
 import (
 	"bufio"
-	"encoding/hex"
 	"fmt"
 	"net"
 	"strings"
@@ -122,8 +121,8 @@ func (t *UploadTask) handleSegmentProcess() error {
 	// 将分配结果添加到分片分配管理器
 	t.distribution.AddDistribution(peerSegments)
 
-	logger.Infof("完成片段分配: taskID=%s, totalSegments=%d, totalPeers=%d",
-		t.taskId, len(segments), len(peerSegments))
+	// logger.Infof("完成片段分配: taskID=%s, totalSegments=%d, totalPeers=%d",
+	// 	t.taskId, len(segments), len(peerSegments))
 
 	// 强制触发节点分发
 	return t.ForceNodeDispatch()
@@ -180,12 +179,6 @@ func (t *UploadTask) handleNodeDispatch() error {
 	// 记录处理结果统计
 	logger.Infof("完成片段分发处理: 总数=%d, 成功=%d, 失败=%d, taskID=%s",
 		totalProcessed, totalSuccess, totalFailed, t.taskId)
-
-	// 如果有失败的片段，返回错误
-	if totalFailed > 0 {
-		logger.Errorf("部分片段分发失败: 总数=%d, 失败=%d",
-			totalProcessed, totalFailed)
-	}
 
 	// 强制触发片段验证
 	// return t.ForceSegmentVerify()
@@ -359,7 +352,7 @@ func (t *UploadTask) sendToPeer(peerID peer.ID, segments []string) error {
 			defer conn.Close()
 
 			// 处理分片
-			if err := t.processSegments(conn, segments[start:end]); err != nil {
+			if err := t.processSegments(peerID, conn, segments[start:end]); err != nil {
 				errChan <- err
 			}
 		}(i, startIdx, endIdx)
@@ -436,7 +429,7 @@ func (t *UploadTask) establishConnection(peerID peer.ID) (net.Conn, error) {
 //
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
-func (t *UploadTask) processSegments(conn net.Conn, segments []string) error {
+func (t *UploadTask) processSegments(peerID peer.ID, conn net.Conn, segments []string) error {
 	// 设置缓冲区
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
 		tcpConn.SetWriteBuffer(MaxBlockSize)
@@ -447,12 +440,14 @@ func (t *UploadTask) processSegments(conn net.Conn, segments []string) error {
 	reader := bufio.NewReaderSize(conn, MaxBlockSize)
 
 	for _, segmentID := range segments {
-		if err := t.sendSegment(segmentID, conn, reader, writer); err != nil {
+		if err := t.sendSegment(peerID, segmentID, conn, reader, writer); err != nil {
 			if isConnectionError(err) {
+				logger.Warnf("连接错误, 重试: %v", err)
 				return err
 			}
 			logger.Errorf("发送分片失败: %v", err)
 		}
+
 	}
 	return nil
 }
@@ -492,9 +487,9 @@ func isConnectionError(err error) bool {
 //   - conn: 连接
 //   - reader: 读取器
 //   - writer: 写入器
-func (t *UploadTask) sendSegment(segmentID string, conn net.Conn, reader *bufio.Reader, writer *bufio.Writer) error {
+func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn, reader *bufio.Reader, writer *bufio.Writer) error {
 	// 获取分片数据
-	storage, err := t.getSegmentData(segmentID)
+	storage, segment, fileRecord, err := t.getSegmentData(segmentID)
 	if err != nil {
 		logger.Errorf("获取分片数据失败: %v", err)
 		return err
@@ -547,8 +542,31 @@ func (t *UploadTask) sendSegment(segmentID string, conn net.Conn, reader *bufio.
 		return fmt.Errorf("响应验证失败: %s", response)
 	}
 
+	// 获取上传进度
+	progress, err := t.GetProgress()
+	if err != nil {
+		logger.Errorf("获取上传进度失败: taskID=%s, err=%v", t.TaskID(), err)
+		return err
+	}
+	if err := t.updateSegmentStatus(segmentID); err != nil {
+		logger.Errorf("更新分片状态失败: segmentID=%s, err=%v", segmentID, err)
+		return err
+	}
+	// 发送成功后通知片段完成
+	t.NotifySegmentStatus(&pb.UploadChan{
+		TaskId:         t.taskId,                          // 设置任务ID
+		IsComplete:     progress == 100,                   // 检查是否所有分片都已完成
+		UploadProgress: progress,                          // 获取当前上传进度(0-100)
+		TotalShards:    int64(len(fileRecord.SliceTable)), // 设置总分片数
+		SegmentId:      segment.SegmentId,                 // 设置分片ID
+		SegmentIndex:   segment.SegmentIndex,              // 设置分片索引
+		SegmentSize:    segment.Size_,                     // 设置分片大小
+		IsRsCodes:      segment.IsRsCodes,                 // 设置是否使用纠删码
+		NodeId:         peerID.String(),                   // 设置存储节点ID
+		UploadTime:     time.Now().Unix(),                 // 设置当前时间戳
+	})
 	// 更新状态
-	return t.updateSegmentStatus(segmentID)
+	return nil
 }
 
 // handleSegmentVerify 处理片段验证
@@ -667,7 +685,7 @@ func (t *UploadTask) handleFileFinalize() error {
 // 返回值:
 //   - *pb.FileSegmentStorage: 分片数据
 //   - error: 如果获取过程中发生错误，返回相应的错误信息
-func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, error) {
+func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, *pb.UploadSegmentRecord, *pb.UploadFileRecord, error) {
 	// 创建存储实例
 	uploadFileStore := database.NewUploadFileStore(t.db)
 	uploadSegmentStore := database.NewUploadSegmentStore(t.db)
@@ -676,14 +694,14 @@ func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, e
 	segment, exists, err := uploadSegmentStore.GetUploadSegmentBySegmentID(segmentID)
 	if err != nil || !exists {
 		logger.Errorf("获取分片数据失败: %v", err)
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	// 获取文件记录
 	fileRecord, exists, err := uploadFileStore.GetUploadFile(t.taskId)
 	if err != nil || !exists {
 		logger.Errorf("获取文件记录失败: %v", err)
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	// 构造签名数据
@@ -702,25 +720,25 @@ func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, e
 	privateKey, err := files.UnmarshalPrivateKey(fileRecord.FileSecurity.OwnerPriv)
 	if err != nil {
 		logger.Errorf("解析私钥失败: %v", err)
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	// 生成数字签名
 	signature, err := generateSignature(privateKey, signatureData)
 	if err != nil {
 		logger.Errorf("生成数字签名失败: %v", err)
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	// 验证加密密钥数组长度
 	if len(fileRecord.FileSecurity.EncryptionKey) != 3 {
 		logger.Errorf("加密密钥数组长度错误: %d", len(fileRecord.FileSecurity.EncryptionKey))
-		return nil, fmt.Errorf("加密密钥数组长度错误: %d", len(fileRecord.FileSecurity.EncryptionKey))
+		return nil, nil, nil, fmt.Errorf("加密密钥数组长度错误: %d", len(fileRecord.FileSecurity.EncryptionKey))
 	}
 
 	// 获取加密密钥
 	encryptionKey := fileRecord.FileSecurity.EncryptionKey[1]
-	logger.Infof("Share #%d 十六进制值: %s", 1, hex.EncodeToString(encryptionKey))
+	// logger.Infof("Share #%d 十六进制值: %s", 1, hex.EncodeToString(encryptionKey))
 
 	// 构造分片存储对象
 	return &pb.FileSegmentStorage{
@@ -742,7 +760,7 @@ func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, e
 		Signature:      signature,                           // 数字签名
 		Shared:         false,                               // 是否共享
 		Version:        version,                             // 版本
-	}, nil
+	}, segment, fileRecord, nil
 
 	// 构造存储对象
 	// return &pb.FileSegmentStorage{

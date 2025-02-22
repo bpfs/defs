@@ -66,7 +66,7 @@ func VerifySignature(publicKey *ecdsa.PublicKey, data []byte, signature []byte) 
 	// 验证签名
 	valid := ecdsa.Verify(publicKey, hashed[:], r, s)
 	if valid {
-		logger.Info("签名验证成功")
+		// logger.Info("签名验证成功")
 	} else {
 		logger.Warn("签名验证失败")
 	}

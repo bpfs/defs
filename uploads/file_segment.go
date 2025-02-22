@@ -4,7 +4,6 @@ package uploads
 import (
 	"crypto/ecdsa"
 	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"os"
 
@@ -255,7 +254,7 @@ func generateSignature(privateKey *ecdsa.PrivateKey, data *pb.SignatureData) ([]
 	merged := hash[:]
 
 	// 打印哈希值的十六进制表示，用于调试
-	logger.Infof("===> %v", hex.EncodeToString(merged))
+	// logger.Infof("===> %v", hex.EncodeToString(merged))
 
 	// 使用ECDSA私钥对哈希值进行签名
 	signature, err := sign.SignData(privateKey, merged)

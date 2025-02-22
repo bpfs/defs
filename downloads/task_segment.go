@@ -186,12 +186,12 @@ func (t *DownloadTask) handleNodeDispatch() error {
 			break
 		}
 
-		logger.Infof("获取到新的分配任务: taskID=%s, peerSegments=%v", t.taskId, peerSegments)
+		// logger.Infof("获取到新的分配任务: taskID=%s, peerSegments=%v", t.taskId, peerSegments)
 
 		// 计算映射中的总片段数
 		segmentCount := countSegments(peerSegments)
 		totalProcessed += segmentCount
-		logger.Infof("当前处理的片段数: %d, taskID=%s", segmentCount, t.taskId)
+		// logger.Infof("当前处理的片段数: %d, taskID=%s", segmentCount, t.taskId)
 
 		// 强制触发网络传输
 		if err := t.ForceNetworkTransfer(peerSegments); err != nil {
@@ -204,27 +204,23 @@ func (t *DownloadTask) handleNodeDispatch() error {
 		}
 
 		totalSuccess += segmentCount
-		logger.Infof("成功处理的片段数: %d, taskID=%s", segmentCount, t.taskId)
+		// logger.Infof("成功处理的片段数: %d, taskID=%s", segmentCount, t.taskId)
 	}
 
 	// 记录处理结果统计
 	logger.Infof("完成片段分发处理: 总数=%d, 成功=%d, 失败=%d, taskID=%s",
 		totalProcessed, totalSuccess, totalFailed, t.taskId)
 
-	// 如果有失败的片段，返回错误
-	if totalFailed > 0 {
-		logger.Errorf("部分片段分发失败: 总数=%d, 失败=%d, taskID=%s",
-			totalProcessed, totalFailed, t.taskId)
-		return fmt.Errorf("部分片段分发失败: 总数=%d, 失败=%d",
-			totalProcessed, totalFailed)
-	}
-
 	// 强制触发片段验证
-	logger.Infof("强制触发片段验证: taskID=%s", t.taskId)
 	return t.ForceSegmentVerify()
 }
 
 // countSegments 计算映射中的总片段数
+// 参数:
+//   - peerSegments: map[peer.ID][]string 节点与其负责的片段ID映射
+//
+// 返回值:
+//   - int: 映射中的总片段数
 func countSegments(peerSegments map[peer.ID][]string) int {
 	total := 0
 	for _, segments := range peerSegments {
@@ -261,7 +257,7 @@ func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) 
 		return fmt.Errorf("下载文件记录不存在: taskID=%s", t.taskId)
 	}
 
-	logger.Infof("处理网络传输: taskID=%s, peerCount=%d", t.taskId, len(peerSegments))
+	// logger.Infof("处理网络传输: taskID=%s, peerCount=%d", t.taskId, len(peerSegments))
 
 	// 创建一个信号量来限制总并发数
 	sem := make(chan struct{}, maxTotalWorkers)
@@ -429,7 +425,8 @@ func (t *DownloadTask) workerSendSegments(peerID peer.ID, fileRecord *pb.Downloa
 	// 创建连接
 	conn, err := pointsub.Dial(t.ctx, t.host, peerID, protocol.ID(StreamRequestSegmentProtocol))
 	if err != nil {
-		return fmt.Errorf("创建连接失败: %v", err)
+		logger.Errorf("创建连接失败: %v", err)
+		return err
 	}
 	defer conn.Close()
 
@@ -445,7 +442,7 @@ func (t *DownloadTask) workerSendSegments(peerID peer.ID, fileRecord *pb.Downloa
 
 	// 处理每个分片
 	for _, segmentID := range segments {
-		if err := t.sendSegment(fileRecord, segmentID, conn, reader, writer); err != nil {
+		if err := t.sendSegment(fileRecord, peerID, segmentID, conn, reader, writer); err != nil {
 			logger.Errorf("发送分片 %s 失败: %v", segmentID, err)
 			return err
 		}
@@ -466,9 +463,9 @@ func (t *DownloadTask) workerSendSegments(peerID peer.ID, fileRecord *pb.Downloa
 //   - conn: 连接
 //   - reader: 读取器
 //   - writer: 写入器
-func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, segmentID string, conn net.Conn, reader *bufio.Reader, writer *bufio.Writer) error {
+func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, peerID peer.ID, segmentID string, conn net.Conn, reader *bufio.Reader, writer *bufio.Writer) error {
 	// 获取分片数据
-	segmentContentRequest, err := t.getSegmentData(fileRecord, segmentID)
+	segmentContentRequest, segment, err := t.getSegmentData(fileRecord, segmentID)
 	if err != nil {
 		logger.Errorf("获取分片数据失败: %v", err)
 		return err
@@ -511,7 +508,8 @@ func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, segmentID 
 	// 读取响应长度
 	lenBuf = make([]byte, 4)
 	if _, err := io.ReadFull(reader, lenBuf); err != nil {
-		return fmt.Errorf("读取响应长度失败: %v", err)
+		logger.Errorf("读取响应长度失败: %v", err)
+		return err
 	}
 
 	// 解析响应长度
@@ -519,19 +517,22 @@ func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, segmentID 
 
 	// 验证响应长度
 	if msgLen <= 0 || msgLen > MaxBlockSize {
-		return fmt.Errorf("无效的响应长度: %d", msgLen)
+		logger.Errorf("无效的响应长度: %d", msgLen)
+		return err
 	}
 
 	// 读取响应数据
 	responseBuf := make([]byte, msgLen)
 	if _, err := io.ReadFull(reader, responseBuf); err != nil {
-		return fmt.Errorf("读取响应数据失败: %v", err)
+		logger.Errorf("读取响应数据失败: %v", err)
+		return err
 	}
 
 	// 解析响应
 	response := &pb.SegmentContentResponse{}
 	if err := response.Unmarshal(responseBuf); err != nil {
-		return fmt.Errorf("解析响应失败: %v", err)
+		logger.Errorf("解析响应失败: %v", err)
+		return err
 	}
 
 	// 验证并存储下载的文件片段
@@ -539,9 +540,32 @@ func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, segmentID 
 		logger.Errorf("验证响应数据失败: %v", err)
 		return err
 	}
+	if err := t.updateSegmentStatus(segmentID); err != nil {
+		logger.Errorf("更新分片状态失败: %v", err)
+		return err
+	}
+
+	progress, err := t.GetProgress()
+	if err != nil {
+		logger.Errorf("获取进度失败: %v", err)
+		return nil
+	}
+	// 发送成功后通知片段完成
+	t.NotifySegmentStatus(&pb.DownloadChan{
+		TaskId:           t.taskId,                          // 设置任务ID
+		IsComplete:       progress == 100,                   // 检查是否所有分片都已完成
+		DownloadProgress: progress,                          // 获取当前上传进度(0-100)
+		TotalShards:      int64(len(fileRecord.SliceTable)), // 设置总分片数
+		SegmentId:        response.SegmentId,                // 设置分片ID
+		SegmentIndex:     response.SegmentIndex,             // 设置分片索引
+		SegmentSize:      segment.Size_,                     // 设置分片大小
+		IsRsCodes:        segment.IsRsCodes,                 // 设置是否使用纠删码
+		NodeId:           peerID.String(),                   // 设置存储节点ID
+		DownloadTime:     time.Now().Unix(),                 // 设置当前时间戳
+	})
 
 	// 更新状态
-	return t.updateSegmentStatus(segmentID)
+	return err
 }
 
 // getSegmentData 获取分片数据
@@ -551,19 +575,19 @@ func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, segmentID 
 // 返回值:
 //   - *pb.FileSegmentStorage: 分片数据
 //   - error: 如果获取过程中发生错误，返回相应的错误信息
-func (t *DownloadTask) getSegmentData(fileRecord *pb.DownloadFileRecord, segmentID string) (*pb.SegmentContentRequest, error) {
+func (t *DownloadTask) getSegmentData(fileRecord *pb.DownloadFileRecord, segmentID string) (*pb.SegmentContentRequest, *pb.DownloadSegmentRecord, error) {
 	// 创建片段存储实例
 	store := database.NewDownloadSegmentStore(t.db)
 
 	// 获取片段记录
-	_, exists, err := store.GetDownloadSegmentBySegmentID(segmentID)
+	segment, exists, err := store.GetDownloadSegmentBySegmentID(segmentID)
 	if err != nil {
 		logger.Errorf("获取片段记录失败: segmentID=%s, err=%v", segmentID, err)
-		return nil, err
+		return nil, nil, err
 	}
 	if !exists {
 		logger.Warnf("片段记录不存在: segmentID=%s", segmentID)
-		return nil, fmt.Errorf("片段记录不存在: segmentID=%s", segmentID)
+		return nil, nil, fmt.Errorf("片段记录不存在: segmentID=%s", segmentID)
 	}
 
 	// 构造片段内容请求
@@ -577,16 +601,16 @@ func (t *DownloadTask) getSegmentData(fileRecord *pb.DownloadFileRecord, segment
 	addrInfoBytes, err := addrInfo.MarshalJSON()
 	if err != nil {
 		logger.Errorf("序列化 AddrInfo 失败: %v", err)
-		return nil, err
+		return nil, segment, err
 	}
 
 	return &pb.SegmentContentRequest{
-		TaskId:     t.taskId,              // 任务唯一标识
-		FileId:     fileRecord.FileId,     // 文件唯一标识
-		PubkeyHash: fileRecord.PubkeyHash, // 所有者的公钥哈希
-		AddrInfo:   addrInfoBytes,         // 请求者的 AddrInfo，包含 ID 和地址信息
-		SegmentId:  segmentID,             // 请求下载的文件片段唯一标识数
-	}, nil
+		TaskId:     t.taskId,
+		FileId:     fileRecord.FileId,
+		PubkeyHash: fileRecord.PubkeyHash,
+		AddrInfo:   addrInfoBytes,
+		SegmentId:  segmentID,
+	}, segment, err
 }
 
 // handleSegmentVerify 处理片段验证
