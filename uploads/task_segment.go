@@ -1,7 +1,6 @@
 package uploads
 
 import (
-	"bufio"
 	"fmt"
 	"net"
 	"strings"
@@ -403,6 +402,7 @@ func (t *UploadTask) establishConnection(peerID peer.ID) (net.Conn, error) {
 			time.Sleep(retryDelay)
 		}
 
+		// 使用点对点连接
 		conn, err := pointsub.Dial(t.ctx, t.host, peerID, protocol.ID(StreamSendingToNetworkProtocol))
 		if err == nil {
 			return conn, nil
@@ -436,11 +436,8 @@ func (t *UploadTask) processSegments(peerID peer.ID, conn net.Conn, segments []s
 		tcpConn.SetReadBuffer(MaxBlockSize)
 	}
 
-	writer := bufio.NewWriterSize(conn, MaxBlockSize)
-	reader := bufio.NewReaderSize(conn, MaxBlockSize)
-
 	for _, segmentID := range segments {
-		if err := t.sendSegment(peerID, segmentID, conn, reader, writer); err != nil {
+		if err := t.sendSegment(peerID, segmentID, conn); err != nil {
 			if isConnectionError(err) {
 				logger.Warnf("连接错误, 重试: %v", err)
 				return err
@@ -487,7 +484,7 @@ func isConnectionError(err error) bool {
 //   - conn: 连接
 //   - reader: 读取器
 //   - writer: 写入器
-func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn, reader *bufio.Reader, writer *bufio.Writer) error {
+func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn) error {
 	// 获取分片数据
 	storage, segment, fileRecord, err := t.getSegmentData(segmentID)
 	if err != nil {
@@ -495,54 +492,20 @@ func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn
 		return err
 	}
 
-	// 序列化数据
-	data, err := storage.Marshal()
-	if err != nil {
-		logger.Errorf("序列化数据失败: %v", err)
+	// 创建StreamUtils实例
+	streamUtils := NewStreamUtils(conn)
+
+	// 写入数据
+	if err := streamUtils.WriteSegmentData(storage); err != nil {
 		return err
 	}
-
-	// 每次写入前重置超时
-	conn.SetDeadline(time.Now().Add(ConnTimeout))
-
-	// 写入长度前缀
-	lenBuf := make([]byte, 4)
-	lenBuf[0] = byte(len(data) >> 24)
-	lenBuf[1] = byte(len(data) >> 16)
-	lenBuf[2] = byte(len(data) >> 8)
-	lenBuf[3] = byte(len(data))
-
-	// 使用缓冲写入
-	if _, err := writer.Write(lenBuf); err != nil {
-		logger.Errorf("写入长度失败: %v", err)
-		return err
-	}
-	if _, err := writer.Write(data); err != nil {
-		logger.Errorf("写入数据失败: %v", err)
-		return err
-	}
-	if err := writer.Flush(); err != nil {
-		logger.Errorf("刷新缓冲区失败: %v", err)
-		return err
-	}
-
-	// 重置读取超时
-	conn.SetDeadline(time.Now().Add(ConnTimeout))
 
 	// 读取响应
-	response, err := reader.ReadString('\n')
-	if err != nil {
-		logger.Errorf("读取响应失败: %v", err)
+	if err := streamUtils.ReadResponse(); err != nil {
 		return err
 	}
 
-	// 验证响应
-	if !strings.Contains(response, "success") {
-		logger.Errorf("响应验证失败: %s", response)
-		return fmt.Errorf("响应验证失败: %s", response)
-	}
-
-	// 获取上传进度
+	// 获取上传进度并更新状态
 	progress, err := t.GetProgress()
 	if err != nil {
 		logger.Errorf("获取上传进度失败: taskID=%s, err=%v", t.TaskID(), err)
@@ -552,20 +515,21 @@ func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn
 		logger.Errorf("更新分片状态失败: segmentID=%s, err=%v", segmentID, err)
 		return err
 	}
+
 	// 发送成功后通知片段完成
 	t.NotifySegmentStatus(&pb.UploadChan{
-		TaskId:         t.taskId,                          // 设置任务ID
-		IsComplete:     progress == 100,                   // 检查是否所有分片都已完成
-		UploadProgress: progress,                          // 获取当前上传进度(0-100)
-		TotalShards:    int64(len(fileRecord.SliceTable)), // 设置总分片数
-		SegmentId:      segment.SegmentId,                 // 设置分片ID
-		SegmentIndex:   segment.SegmentIndex,              // 设置分片索引
-		SegmentSize:    segment.Size_,                     // 设置分片大小
-		IsRsCodes:      segment.IsRsCodes,                 // 设置是否使用纠删码
-		NodeId:         peerID.String(),                   // 设置存储节点ID
-		UploadTime:     time.Now().Unix(),                 // 设置当前时间戳
+		TaskId:         t.taskId,
+		IsComplete:     progress == 100,
+		UploadProgress: progress,
+		TotalShards:    int64(len(fileRecord.SliceTable)),
+		SegmentId:      segment.SegmentId,
+		SegmentIndex:   segment.SegmentIndex,
+		SegmentSize:    segment.Size_,
+		IsRsCodes:      segment.IsRsCodes,
+		NodeId:         peerID.String(),
+		UploadTime:     time.Now().Unix(),
 	})
-	// 更新状态
+
 	return nil
 }
 

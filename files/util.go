@@ -367,3 +367,11 @@ func BoolToByte(b bool) byte {
 	}
 	return 0
 }
+
+// WriteVarInt 将变长整数写入io.Writer
+func WriteVarInt(w io.Writer, n int64) error {
+	buf := make([]byte, binary.MaxVarintLen64)
+	len := binary.PutVarint(buf, n)
+	_, err := w.Write(buf[:len])
+	return err
+}

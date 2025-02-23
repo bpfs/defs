@@ -15,13 +15,13 @@ import (
 	"github.com/bpfs/defs/v2/net"
 	"github.com/bpfs/defs/v2/operate/shared"
 	"github.com/dep2p/go-dep2p/core/peerstore"
+	"github.com/dep2p/pubsub"
 
 	"github.com/bpfs/defs/v2/uploads"
 	"github.com/bpfs/defs/v2/utils/paths"
 	"github.com/dep2p/go-dep2p/core/host"
 	"github.com/dep2p/go-dep2p/core/peer"
 	logging "github.com/dep2p/log"
-	"github.com/dep2p/pubsub"
 	"go.uber.org/fx"
 )
 

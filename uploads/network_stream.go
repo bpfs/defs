@@ -305,6 +305,12 @@ func validatePayload(payload *pb.FileSegmentStorage, usp *StreamProtocol) error 
 }
 
 // processPayload 处理载荷数据
+// 参数:
+//   - payload: *pb.FileSegmentStorage 文件片段存储对象
+//   - usp: *StreamProtocol 流协议实例
+//
+// 返回值:
+//   - error: 如果在处理过程中发生错误，返回相应的错误信息
 func processPayload(payload *pb.FileSegmentStorage, usp *StreamProtocol) error {
 	// 构建并存储文件片段
 	if err := buildAndStoreFileSegment(payload, usp.host.ID().String()); err != nil {
@@ -320,13 +326,20 @@ func processPayload(payload *pb.FileSegmentStorage, usp *StreamProtocol) error {
 		return err
 	}
 
+	// 保存到数据库
 	if err := store.CreateFileSegmentStorage(payloadSql); err != nil {
 		logger.Errorf("保存到数据库失败: %v", err)
 		return err
 	}
 
-	// 清理内存
+	// 清空分片内容防止通道内容过大，在转发时重新查询
 	payload.SegmentContent = nil
+
+	// 将payload发送到转发通道
+	usp.upload.TriggerForward(payload)
+
+	// 清空数据和请求载荷以释放内存
+	payload = nil
 	runtime.GC()
 
 	return nil
@@ -342,6 +355,10 @@ func handleForwardConnection(ctx context.Context, conn net.Conn, usp *StreamProt
 }
 
 // handleConnection 统一的连接处理函数
+// 参数:
+//   - ctx: context.Context 上下文，用于管理连接的生命周期
+//   - conn: net.Conn 连接实例
+//   - usp: *StreamProtocol 流协议实例
 func handleConnection(ctx context.Context, conn net.Conn, usp *StreamProtocol) {
 	defer conn.Close()
 
