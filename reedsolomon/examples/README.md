@@ -1,57 +1,63 @@
-# 示例
+# Examples
 
-此文件夹包含 Reed-Solomon 编码器的使用示例。
+This folder contains usage examples of the Reed-Solomon encoder.
 
-# 简单编码器/解码器
+# Simple Encoder/Decoder
 
-展示了编码器的基本用法，将单个文件编码为多个数据和奇偶校验分片。这仅作为示例，不适合生产使用，因为存在以下所述的一些缺点。
+Shows basic use of the encoder, and will encode a single file into a number of
+data and parity shards. This is meant as an example and is not meant for production use
+since there is a number of shortcomings noted below.
 
-要构建可执行文件，请使用:
+To build an executable use:
 
 ```bash 
 go build simple-decoder.go
 go build simple-encoder.go
 ```
 
-# 流式 API 示例
+# Streaming API examples
 
-这里有相同功能的流式示例,它们流式处理数据而不是将数据保存在内存中。
+There are streaming examples of the same functionality, which streams data instead of keeping it in memory.
 
-要构建可执行文件,请使用:
+To build the executables use:
 
 ```bash 
 go build stream-decoder.go
 go build stream-encoder.go
 ```
 
-# 使用示例
+# Example usage
 
-# 在 Windows 上，以下命令将生成六个文件 `README.md.0` 到 `README.md.5`
+On Windows, the following command will generate six files `README.md.0` to `README.md.5`
 
 ```bash
 .\simple-encoder.exe .\README.md
 ```
 
-# 将 `README.md` 重命名为 `README.md.org`，并删除六个生成的文件中的两个。以下命令将从剩余的四个生成的文件重建 `README.md`。
+Rename `README.md` to `README.md.org`, and delete two of the six generated files. The following
+command will reconstruct `README.md` from the four generated files.
 
 ```bash
 .\simple-decoder.exe .\README.md
 ```
 
-请注意,重建的文件可能会包含空填充,如下面的缺点中所解释的。
+Appreciate that the reconstructed file mau have nul padding as explained in the following shortcomings.
 
-## 缺点
-* 如果输入文件大小不能被数据分片数整除,输出将包含额外的零
-* 如果解码器的分片数与编码器不同,将生成无效输出
-* 如果分片中的值发生变化,无法重建
-* 如果两个分片被交换,重建将始终失败
-  您需要按照给定的顺序提供分片
 
-解决这些问题的方法是保存一个包含以下内容的元数据文件:
+## Shortcomings
+* If the file size of the input isn't dividable by the number of data shards
+  the output will contain extra zeroes
+* If the shard numbers isn't the same for the decoder as in the
+  encoder, invalid output will be generated.
+* If values have changed in a shard, it cannot be reconstructed.
+* If two shards have been swapped, reconstruction will always fail.
+  You need to supply the shards in the same order as they were given to you.
 
-* 文件大小
-* 数据/奇偶校验分片的数量
-* 每个分片的哈希值
-* 分片的顺序
+The solution for this is to save a metadata file containing:
 
-如果保存这些属性,您应该能够检测分片中的文件损坏,并在剩余所需数量的分片的情况下重建数据。
+* File size.
+* The number of data/parity shards.
+* HASH of each shard.
+* Order of the shards.
+
+If you save these properties, you should abe able to detect file corruption in a shard and be able to reconstruct your data if you have the needed number of shards left.

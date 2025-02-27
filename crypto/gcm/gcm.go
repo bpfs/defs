@@ -4,7 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"fmt"
+	"errors"
 	"io"
 )
 
@@ -37,20 +37,20 @@ func EncryptData(data, key []byte) ([]byte, error) {
 	// 创建新的 cipher.Block 实例，基于 AES 算法
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("创建 cipher.Block 失败: %v", err)
+		return nil, err
 	}
 
 	// 创建 GCM 模式的 cipher
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("创建 GCM 模式失败: %v", err)
+		return nil, err
 	}
 
 	// 创建一个 nonce（仅用一次的随机数）
 	nonce := make([]byte, gcm.NonceSize())
 	_, err = io.ReadFull(rand.Reader, nonce)
 	if err != nil {
-		return nil, fmt.Errorf("生成 nonce 失败: %v", err)
+		return nil, err
 	}
 
 	// 使用 GCM 模式进行加密
@@ -70,18 +70,18 @@ func DecryptData(ciphertext, key []byte) ([]byte, error) {
 	// 创建新的 cipher.Block 实例
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("创建 cipher.Block 失败: %v", err)
+		return nil, err
 	}
 
 	// 创建 GCM 模式的 cipher
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("创建 GCM 模式失败: %v", err)
+		return nil, err
 	}
 
 	// 检查密文长度是否符合要求
 	if len(ciphertext) < gcm.NonceSize() {
-		return nil, fmt.Errorf("非法的密文格式")
+		return nil, errors.New("非法的密文格式")
 	}
 
 	// 提取 nonce 和实际的密文
@@ -90,7 +90,7 @@ func DecryptData(ciphertext, key []byte) ([]byte, error) {
 	// 使用 GCM 模式进行解密
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return nil, fmt.Errorf("解密失败: %v", err)
+		return nil, err
 	}
 
 	return plaintext, nil

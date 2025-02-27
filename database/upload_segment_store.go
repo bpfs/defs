@@ -384,9 +384,9 @@ func (s *UploadSegmentStore) ValidateSegment(segment *pb.UploadSegmentRecord) er
 		return fmt.Errorf("片段索引无效")
 	}
 
-	// 检查片段内容是否为空
-	if len(segment.SegmentContent) == 0 {
-		return fmt.Errorf("片段内容为空")
+	// 检查读取标识是否为空
+	if segment.ReadKey == "" {
+		return fmt.Errorf("读取标识为空")
 	}
 
 	return nil

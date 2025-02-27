@@ -1,6 +1,6 @@
 //go:build !noasm && !appengine && !gccgo && !nopshufb
 
-// Copyright 2015, Klaus Post, see LICENSE for details.
+// 版权所有 2015, Klaus Post, 详见 LICENSE 文件
 
 package reedsolomon
 
@@ -24,7 +24,7 @@ func galMulAVX2Xor_64(low, high, in, out []byte)
 //go:noescape
 func galMulAVX2_64(low, high, in, out []byte)
 
-// This is what the assembler routines do in blocks of 16 bytes:
+// 以下是汇编程序在16字节块中执行的操作:
 /*
 func galMulSSSE3(low, high, in, out []byte) {
 	for n, input := range in {
@@ -43,7 +43,7 @@ func galMulSSSE3Xor(low, high, in, out []byte) {
 }
 */
 
-// bigSwitchover is the size where 64 bytes are processed per loop.
+// bigSwitchover 是每个循环处理64字节的大小阈值
 const bigSwitchover = 128
 
 func galMulSlice(c byte, in, out []byte, o *options) {

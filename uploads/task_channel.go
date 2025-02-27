@@ -81,12 +81,19 @@ func (t *UploadTask) ForceNetworkTransfer(peerSegments map[peer.ID][]string) err
 // ForceSegmentVerify 强制触发片段验证
 // 验证已传输片段的完整性，如果通道已满则先清空再写入
 func (t *UploadTask) ForceSegmentVerify() error {
+	// 检查验证状态
+	if t.verifyInProgress.Load() {
+		logger.Debug("验证已在进行中，跳过本次验证")
+		return nil
+	}
+
 	select {
 	case <-t.ctx.Done():
 		return fmt.Errorf("任务已取消")
 	case t.chSegmentVerify <- struct{}{}:
 		return nil
 	default:
+		// 通道已满，清空并重试
 		select {
 		case <-t.ctx.Done():
 			return fmt.Errorf("任务已取消")
@@ -140,8 +147,11 @@ func (t *UploadTask) NotifySegmentStatus(status *pb.UploadChan) {
 func (t *UploadTask) NotifyTaskError(err error) {
 	select {
 	case t.chError <- err:
-		return
+		logger.Debugf("错误已通知: %v", err)
 	case <-time.After(100 * time.Millisecond):
-		logger.Warnf("任务错误通知超时: taskID=%s, err=%v", t.taskId, err)
+		logger.Warnf("错误通知超时: %v", err)
+	case <-t.ctx.Done():
+		logger.Debugf("任务已取消，停止错误通知")
+		return
 	}
 }

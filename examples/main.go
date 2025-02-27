@@ -273,6 +273,10 @@ func handleCommand(core *DefsCore, args []string) {
 		if err := handleShowNodeAddr(core); err != nil {
 			pterm.Error.Printf("获取节点地址失败: %v\n", err)
 		}
+	case "queryDownloads":
+		if err := handleListDownloads(core); err != nil {
+			pterm.Error.Printf("查询下载任务失败: %v\n", err)
+		}
 	default:
 		pterm.Warning.Printf("未知命令: %s\n", args[0])
 		pterm.Info.Println("输入 'help' 获取可用命令列表")
@@ -327,7 +331,6 @@ func showHelp() {
 		{Level: 0, Text: "pauseDownload <taskID>: 暂停下载任务"},
 		{Level: 0, Text: "resumeDownload <taskID>: 恢复下载任务"},
 		{Level: 0, Text: "cancelDownload <taskID>: 取消下载任务"},
-		{Level: 0, Text: "queryDownloads: 查询所有下载任务"},
 		{Level: 0, Text: "listDownloads: 显示所有下载任务"},
 	}).Render()
 
@@ -584,7 +587,7 @@ func connectToBootstrapPeers(ctx context.Context, host host.Host, bootstrapPeers
 // 				inQuotes = true
 // 				quoteChar = char
 // 			} else {
-// 				// 如果在其他���型的引号内，当作普通字符处理
+// 				// 如果在其他型的引号内，当作普通字符处理
 // 				currentArg.WriteRune(char)
 // 			}
 // 		case ' ':
@@ -831,7 +834,7 @@ func handleListUploads(core *DefsCore) error {
 // handleTriggerUpload 处理触发上传任务的请求
 // 参数:
 //   - core: DeFS核心实例
-//   - taskID: 要触发的上传���务ID
+//   - taskID: 要触发的上传任务ID
 //
 // 返回值:
 //   - error: 操作过程中的错误，如果成功则为nil

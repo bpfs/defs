@@ -241,6 +241,10 @@ func handleSegmentData(reader *bufio.Reader, writer *bufio.Writer, usp *StreamPr
 		return err
 	}
 
+	// 打印接收到的数据信息
+	logger.Infof("接收分片[%d] - 数据接收: 大小=%d bytes, 校验和=%d, 发送节点=%s",
+		payload.SegmentIndex, len(payload.SegmentContent), payload.Crc32Checksum, usp.host.ID().String())
+
 	// 验证载荷
 	if err := validatePayload(payload, usp); err != nil {
 		logger.Errorf("验证载荷失败: %v", err)

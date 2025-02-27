@@ -102,8 +102,9 @@ message UploadSegmentRecord {
   // 当前片段的CRC32校验和,用于验证片段完整性
   // @gotags: badgerhold:"index"
   uint32 crc32_checksum = 5;
-  // 当前片段的加密后内容
-  bytes segment_content = 6;
+  // 临时文件的读取标识,用于从临时存储中获取加密后的片段内容
+  // @gotags: badgerhold:"index"
+  string read_key = 6;
   // 是否为纠删码冗余分片
   bool is_rs_codes = 7;
   // 分片的上传状态

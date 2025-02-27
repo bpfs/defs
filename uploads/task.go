@@ -3,6 +3,8 @@ package uploads
 import (
 	"context"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/bpfs/defs/v2/afero"
 	"github.com/bpfs/defs/v2/badgerhold"
@@ -46,7 +48,17 @@ type UploadTask struct {
 	// chFileStatus    chan *pb.UploadChan // 文件状态：通知整个文件的处理状态
 	chError chan error // 错误通知：向外部传递错误信息
 
+	// 添加验证重试相关字段
+	verifyRetryCount int         // 验证重试次数
+	lastVerifyTime   time.Time   // 上次验证时间
+	verifyMutex      sync.Mutex  // 验证互斥锁
+	verifyInProgress atomic.Bool // 使用原子操作追踪验证状态
 }
+
+const (
+	maxVerifyRetries = 3               // 最大验证重试次数
+	verifyRetryDelay = time.Second * 5 // 重试等待时间
+)
 
 // NewUploadTask 创建并初始化一个新的文件上传任务实例
 // 参数:
@@ -97,6 +109,11 @@ func NewUploadTask(ctx context.Context, opt *fscfg.Options, db *database.DB, fs 
 		// chFileStatus:    statusChan, // 文件状态：通知整个文件的处理状态
 		chError: errChan, // 错误通知：向外部传递错误信息
 
+		// 添加验证重试相关字段
+		verifyRetryCount: 0,
+		lastVerifyTime:   time.Time{},   // 零值
+		verifyMutex:      sync.Mutex{},  // 验证互斥锁
+		verifyInProgress: atomic.Bool{}, // 使用原子操作追踪验证状态
 	}
 }
 
@@ -242,4 +259,15 @@ func safeClose[T any](ch chan T) {
 		// 通道未关闭，可以安全关闭
 		close(ch)
 	}
+}
+
+// SetStatus 设置任务状态
+// 参数:
+//   - status: pb.UploadStatus 新的任务状态
+//
+// 返回值:
+//   - error: 如果设置状态失败，返回相应的错误信息
+func (t *UploadTask) SetStatus(status pb.UploadStatus) error {
+	uploadFileStore := database.NewUploadFileStore(t.db)
+	return uploadFileStore.UpdateUploadFileStatus(t.taskId, status, time.Now().Unix())
 }

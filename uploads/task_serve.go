@@ -38,7 +38,6 @@ func (t *UploadTask) Start() error {
 
 			case peerSegments := <-t.chNetworkTransfer:
 				// 网络传输：向目标节点传输文件片段
-
 				logger.Infof("收到网络传输请求: segments=%d", len(peerSegments))
 				if err := t.handleNetworkTransfer(peerSegments); err != nil {
 					logger.Errorf("处理网络传输请求失败: %v", err)

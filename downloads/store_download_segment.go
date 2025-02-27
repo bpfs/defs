@@ -235,6 +235,16 @@ func GetSegmentStorageData(db *database.DB, hostID string, taskID string, fileID
 		return nil, err
 	}
 
+	// 获取解码后的内容
+	segmentContent := contentDecodeDecode.([]byte)
+
+	// 打印片段信息
+	logger.Infof("读取分片[%d] - 从存储读取: 大小=%d bytes, 校验和=%d, 片段ID=%s",
+		segmentStorage.SegmentIndex,
+		len(segmentContent),
+		segmentStorage.Crc32Checksum,
+		segmentStorage.SegmentId)
+
 	// 获取并验证签名
 	signature, exists := segmentResults["SIGNATURE"]
 	if !exists {
@@ -264,17 +274,17 @@ func GetSegmentStorageData(db *database.DB, hostID string, taskID string, fileID
 
 	// 构建响应对象
 	response := &pb.SegmentContentResponse{
-		TaskId:         taskID,
-		FileId:         fileID,
-		FileMeta:       fileMeta,
-		P2PkScript:     segmentStorage.P2PkScript,
-		SegmentId:      segmentStorage.SegmentId,
-		SegmentIndex:   segmentStorage.SegmentIndex,
-		Crc32Checksum:  segmentStorage.Crc32Checksum,
-		SegmentContent: contentDecodeDecode.([]byte),
-		EncryptionKey:  segmentStorage.EncryptionKey,
-		Signature:      signatureDecode.([]byte),
-		SliceTable:     sliceTable,
+		TaskId:         taskID,                       // 任务ID
+		FileId:         fileID,                       // 文件ID
+		FileMeta:       fileMeta,                     // 文件元数据
+		P2PkScript:     segmentStorage.P2PkScript,    // P2PK脚本
+		SegmentId:      segmentStorage.SegmentId,     // 片段ID
+		SegmentIndex:   segmentStorage.SegmentIndex,  // 片段索引
+		Crc32Checksum:  segmentStorage.Crc32Checksum, // 校验和
+		SegmentContent: segmentContent,               // 片段内容
+		EncryptionKey:  segmentStorage.EncryptionKey, // 加密密钥
+		Signature:      signatureDecode.([]byte),     // 签名
+		SliceTable:     sliceTable,                   // 切片表
 	}
 
 	return response, nil
@@ -344,20 +354,21 @@ func ValidateAndStoreSegment(
 		shareOne,
 		response.EncryptionKey,
 		response.SegmentContent,
+		response.Crc32Checksum,
 	)
 	if err != nil {
 		logger.Errorf("解密片段内容失败: %v", err)
 		return err
 	}
 
-	// 验证数据完整性
-	if err := VerifySegmentChecksum(
-		decryptedData,
-		response.Crc32Checksum,
-	); err != nil {
-		logger.Errorf("验证片段校验和失败: %v", err)
-		return err
-	}
+	// // 验证数据完整性
+	// if err := VerifySegmentChecksum(
+	// 	decryptedData,
+	// 	response.Crc32Checksum,
+	// ); err != nil {
+	// 	logger.Errorf("验证片段校验和失败: %v", err)
+	// 	return err
+	// }
 
 	// 创建片段存储实例
 	store := database.NewDownloadSegmentStore(db)

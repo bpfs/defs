@@ -27,19 +27,19 @@ func TestEncryptDecryptDataWithAESGCM(t *testing.T) {
 	// 错误情况1：密钥长度不正确
 	wrongKey := []byte("wrongkey")
 	_, err = EncryptData(plaintext, wrongKey)
-	if err != nil {
-		t.Fatalf("应当失败，因为密钥长度不正确")
+	if err == nil {
+		t.Fatalf("使用错误长度的密钥时应当返回错误")
 	}
 
 	// 错误情况2：解密使用了错误的密钥
 	_, err = DecryptData(ciphertext, []byte("anotherwrongkey"))
-	if err != nil {
-		t.Fatalf("应当失败，因为解密使用了错误的密钥")
+	if err == nil {
+		t.Fatalf("使用错误的密钥解密时应当返回错误")
 	}
 
 	// 错误情况3：非法的密文格式
 	_, err = DecryptData([]byte("short"), key)
-	if err != nil {
-		t.Fatalf("应当失败，因为密文格式不正确")
+	if err == nil {
+		t.Fatalf("使用非法格式的密文时应当返回错误")
 	}
 }

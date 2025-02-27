@@ -2,6 +2,7 @@ package tempfile
 
 import (
 	"bytes"
+	"math/rand"
 	"testing"
 )
 
@@ -128,5 +129,86 @@ func TestSize(t *testing.T) {
 	err = Delete(key)
 	if err != nil {
 		t.Fatalf("删除失败: %v", err)
+	}
+}
+
+func TestWriteOptimized(t *testing.T) {
+	tests := []struct {
+		name     string
+		dataSize int
+		wantErr  bool
+	}{
+		{"SmallWrite", _4KB, false},
+		{"MediumWrite", _32KB, false},
+		{"LargeWrite", _1MB, false},
+		{"HugeWrite", _4MB, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := make([]byte, tt.dataSize)
+			// 填充随机数据
+			fillRandom(data)
+
+			key := "test_" + tt.name
+			err := Write(key, data)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Write() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// 验证写入
+			got, err := Read(key)
+			if err != nil {
+				t.Errorf("Read() error = %v", err)
+				return
+			}
+			if !bytes.Equal(got, data) {
+				t.Errorf("Read() got = %v, want %v", got, data)
+			}
+		})
+	}
+}
+
+func TestWriteBatchOptimized(t *testing.T) {
+	segments := map[string][]byte{
+		"small1": make([]byte, _4KB),
+		"small2": make([]byte, _4KB),
+		"large1": make([]byte, _1MB),
+		"large2": make([]byte, _1MB),
+	}
+
+	// 填充随机数据
+	for _, data := range segments {
+		fillRandom(data)
+	}
+
+	err := WriteBatchOptimized(segments)
+	if err != nil {
+		t.Errorf("WriteBatchOptimized() error = %v", err)
+		return
+	}
+
+	// 验证写入
+	for id, want := range segments {
+		got, err := Read(id)
+		if err != nil {
+			t.Errorf("Read() error = %v", err)
+			continue
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("Read() got = %v, want %v", got, want)
+		}
+	}
+}
+
+// fillRandom 用随机数据填充字节切片
+func fillRandom(p []byte) {
+	for i := 0; i < len(p); i += 7 {
+		val := rand.Int63()
+		for j := 0; i+j < len(p) && j < 7; j++ {
+			p[i+j] = byte(val)
+			val >>= 8
+		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 // GetProgress 计算并返回当前上传进度
 // 返回值:
 //   - int64: 返回0-100之间的进度值
+//   - error: 如果获取进度失败，返回相应的错误信息
 func (t *UploadTask) GetProgress() (int64, error) {
 	// 创建存储实例
 	uploadSegmentStore := database.NewUploadSegmentStore(t.db)

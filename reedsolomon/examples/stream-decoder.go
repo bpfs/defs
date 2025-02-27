@@ -1,37 +1,39 @@
 //go:build ignore
 // +build ignore
 
-// 版权所有 2015, Klaus Post, 详见 LICENSE 文件。
+// Copyright 2015, Klaus Post, see LICENSE for details.
 //
-// 流解码器示例。
+// Stream decoder example.
 //
-// 该解码器反转了 "stream-encoder.go" 的过程。
+// The decoder reverses the process of "stream-encoder.go"
 //
-// 要构建可执行文件，请使用:
+// To build an executable use:
 //
 // go build stream-decoder.go
 //
-// 简单编码器/解码器的缺点:
-// * 如果输入文件大小不能被数据分片数整除，输出将包含额外的零
+// Simple Encoder/Decoder Shortcomings:
+// * If the file size of the input isn't dividable by the number of data shards
+//   the output will contain extra zeroes
 //
-// * 如果解码器的分片数与编码器不同，将生成无效输出
+// * If the shard numbers isn't the same for the decoder as in the
+//   encoder, invalid output will be generated.
 //
-// * 如果分片中的值发生变化，无法重建
+// * If values have changed in a shard, it cannot be reconstructed.
 //
-// * 如果两个分片被交换，重建将始终失败
-//   您需要按照给定的顺序提供分片
+// * If two shards have been swapped, reconstruction will always fail.
+//   You need to supply the shards in the same order as they were given to you.
 //
-// 解决方案是保存包含以下内容的元数据文件:
+// The solution for this is to save a metadata file containing:
 //
-// * 文件大小
-// * 数据/奇偶校验分片的数量
-// * 每个分片的哈希值
-// * 分片的顺序
+// * File size.
+// * The number of data/parity shards.
+// * HASH of each shard.
+// * Order of the shards.
 //
-// 如果保存这些属性，您应该能够检测分片中的文件损坏
-// 并在剩余所需数量的分片的情况下重建数据
+// If you save these properties, you should abe able to detect file corruption
+// in a shard and be able to reconstruct your data if you have the needed number of shards left.
 
-package main // 定义主包
+package main
 
 import (
 	"flag"
@@ -39,140 +41,126 @@ import (
 	"io"
 	"os"
 
-	"github.com/bpfs/defs/v2/reedsolomon" // 导入所需的包
+	"github.com/klauspost/reedsolomon"
 )
 
-// 定义数据分片数量的命令行标志
-var dataShards = flag.Int("data", 4, "将数据分割成的分片数量")
+var dataShards = flag.Int("data", 4, "Number of shards to split the data into")
+var parShards = flag.Int("par", 2, "Number of parity shards")
+var outFile = flag.String("out", "", "Alternative output path/file")
 
-// 定义奇偶校验分片数量的命令行标志
-var parShards = flag.Int("par", 2, "奇偶校验分片的数量")
-
-// 定义可选输出文件路径的命令行标志
-var outFile = flag.String("out", "", "可选的输出路径/文件")
-
-func init() { // 初始化函数
-	// 设置命令行用法说明
+func init() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])                           // 打印用法说明
-		fmt.Fprintf(os.Stderr, "  %s [-flags] 基础文件名.扩展名\n请不要在文件名中添加数字。\n", os.Args[0]) // 打印示例
-		fmt.Fprintf(os.Stderr, "Valid flags:\n")                                       // 打印有效标志提示
-		flag.PrintDefaults()                                                           // 打印默认标志
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  %s [-flags] basefile.ext\nDo not add the number to the filename.\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Valid flags:\n")
+		flag.PrintDefaults()
 	}
 }
 
-func main() { // 主函数
-	// 解析命令行参数
+func main() {
+	// Parse flags
 	flag.Parse()
 	args := flag.Args()
-	// 检查是否提供了输入文件名
 	if len(args) != 1 {
-		fmt.Fprintf(os.Stderr, "错误：未提供文件名\n") // 打印错误信息
-		flag.Usage()                          // 打印用法
-		os.Exit(1)                            // 退出程序
+		fmt.Fprintf(os.Stderr, "Error: No filenames given\n")
+		flag.Usage()
+		os.Exit(1)
 	}
-	fname := args[0] // 获取文件名
+	fname := args[0]
 
-	// 创建编码矩阵
+	// Create matrix
 	enc, err := reedsolomon.NewStream(*dataShards, *parShards)
-	checkErr(err) // 检查错误
+	checkErr(err)
 
-	// 打开输入文件
+	// Open the inputs
 	shards, size, err := openInput(*dataShards, *parShards, fname)
-	checkErr(err) // 检查错误
+	checkErr(err)
 
-	// 验证分片
+	// Verify the shards
 	ok, err := enc.Verify(shards)
 	if ok {
-		fmt.Println("无需重建") // 打印无需重建的信息
+		fmt.Println("No reconstruction needed")
 	} else {
-		fmt.Println("验证失败。正在重建数据") // 打印验证失败，开始重建的信息
-		// 重新打开输入文件
+		fmt.Println("Verification failed. Reconstructing data")
 		shards, size, err = openInput(*dataShards, *parShards, fname)
-		checkErr(err) // 检查错误
-		// 创建输出目标写入器
+		checkErr(err)
+		// Create out destination writers
 		out := make([]io.Writer, len(shards))
 		for i := range out {
 			if shards[i] == nil {
-				outfn := fmt.Sprintf("%s.%d", fname, i) // 生成输出文件名
-				fmt.Println("Creating", outfn)          // 打印创建文件的信息
-				out[i], err = os.Create(outfn)          // 创建输出文件
-				checkErr(err)                           // 检查错误
+				outfn := fmt.Sprintf("%s.%d", fname, i)
+				fmt.Println("Creating", outfn)
+				out[i], err = os.Create(outfn)
+				checkErr(err)
 			}
 		}
-		// 重建数据
 		err = enc.Reconstruct(shards, out)
 		if err != nil {
-			fmt.Println("重建失败 -", err) // 打印重建失败的信息
-			os.Exit(1)                 // 退出程序
+			fmt.Println("Reconstruct failed -", err)
+			os.Exit(1)
 		}
-		// 关闭输出文件
+		// Close output.
 		for i := range out {
 			if out[i] != nil {
-				err := out[i].(*os.File).Close() // 关闭文件
-				checkErr(err)                    // 检查错误
+				err := out[i].(*os.File).Close()
+				checkErr(err)
 			}
 		}
-		// 重新打开输入文件并验证
 		shards, size, err = openInput(*dataShards, *parShards, fname)
 		ok, err = enc.Verify(shards)
 		if !ok {
-			fmt.Println("重建后验证失败，数据可能已损坏:", err) // 打印验证失败的信息
-			os.Exit(1)                           // 退出程序
+			fmt.Println("Verification failed after reconstruction, data likely corrupted:", err)
+			os.Exit(1)
 		}
-		checkErr(err) // 检查错误
+		checkErr(err)
 	}
 
-	// 设置输出文件名
+	// Join the shards and write them
 	outfn := *outFile
 	if outfn == "" {
-		outfn = fname // 如果未指定输出文件名，使用输入文件名
+		outfn = fname
 	}
 
-	// 创建输出文件
-	fmt.Println("正在将数据写入", outfn) // 打印写入数据的信息
-	f, err := os.Create(outfn)    // 创建输出文件
-	checkErr(err)                 // 检查错误
+	fmt.Println("Writing data to", outfn)
+	f, err := os.Create(outfn)
+	checkErr(err)
 
-	// 重新打开输入文件
 	shards, size, err = openInput(*dataShards, *parShards, fname)
-	checkErr(err) // 检查错误
+	checkErr(err)
 
-	// 合并分片并写入输出文件
+	// We don't know the exact filesize.
 	err = enc.Join(f, shards, int64(*dataShards)*size)
-	checkErr(err) // 检查错误
+	checkErr(err)
 }
 
-// 打开输入文件并返回分片读取器、文件大小和错误
 func openInput(dataShards, parShards int, fname string) (r []io.Reader, size int64, err error) {
-	// 创建分片并加载数据
+	// Create shards and load the data.
 	shards := make([]io.Reader, dataShards+parShards)
 	for i := range shards {
-		infn := fmt.Sprintf("%s.%d", fname, i) // 生成输入文件名
-		fmt.Println("Opening", infn)           // 打印打开文件的信息
-		f, err := os.Open(infn)                // 打开文件
+		infn := fmt.Sprintf("%s.%d", fname, i)
+		fmt.Println("Opening", infn)
+		f, err := os.Open(infn)
 		if err != nil {
-			fmt.Println("Error reading file", err) // 打印读取文件错误的信息
-			shards[i] = nil                        // 设置分片为nil
-			continue                               // 继续下一个循环
+			fmt.Println("Error reading file", err)
+			shards[i] = nil
+			continue
 		} else {
-			shards[i] = f // 设置分片为文件
+			shards[i] = f
 		}
-		stat, err := f.Stat() // 获取文件信息
-		checkErr(err)         // 检查错误
+		stat, err := f.Stat()
+		checkErr(err)
 		if stat.Size() > 0 {
-			size = stat.Size() // 设置文件大小
+			size = stat.Size()
 		} else {
-			shards[i] = nil // 如果文件为空，设置分片为nil
+			shards[i] = nil
 		}
 	}
-	return shards, size, nil // 返回分片、大小和错误
+	return shards, size, nil
 }
 
-// 检查错误并在出现错误时退出程序
 func checkErr(err error) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s", err.Error()) // 打印错误信息
-		os.Exit(2)                                       // 退出程序
+		fmt.Fprintf(os.Stderr, "Error: %s", err.Error())
+		os.Exit(2)
 	}
 }

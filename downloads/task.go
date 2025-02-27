@@ -3,6 +3,8 @@ package downloads
 import (
 	"context"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/bpfs/defs/v2/afero"
 	"github.com/bpfs/defs/v2/badgerhold"
@@ -45,7 +47,17 @@ type DownloadTask struct {
 	chSegmentStatus chan *pb.DownloadChan // 片段状态：通知文件片段的处理状态
 	chError         chan error            // 错误通知：向外部传递错误信息
 
+	// 添加验证重试相关字段
+	verifyRetryCount int         // 验证重试次数
+	lastVerifyTime   time.Time   // 上次验证时间
+	verifyMutex      sync.Mutex  // 验证互斥锁
+	verifyInProgress atomic.Bool // 使用原子操作追踪验证状态
 }
+
+const (
+	maxVerifyRetries = 3               // 最大验证重试次数
+	verifyRetryDelay = time.Second * 5 // 重试等待时间
+)
 
 // NewDownloadTask 创建并初始化一个新的文件下载任务实例
 // 参数:
@@ -96,6 +108,11 @@ func NewDownloadTask(ctx context.Context, opt *fscfg.Options, db *database.DB, f
 		chSegmentStatus: statusChan, // 片段状态：通知文件片段的处理状态
 		chError:         errChan,    // 错误通知：向外部传递错误信息
 
+		// 初始化验证重试相关字段
+		verifyRetryCount: 0,
+		lastVerifyTime:   time.Time{},
+		verifyMutex:      sync.Mutex{},
+		verifyInProgress: atomic.Bool{},
 	}
 
 	return task, nil

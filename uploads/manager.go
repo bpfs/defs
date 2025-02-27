@@ -372,10 +372,3 @@ func (m *UploadManager) LoadExistingTasks() error {
 
 	return nil
 }
-
-// GetErrChan 返回错误通道
-// 返回值:
-//   - <-chan error: 只读的通道，用于接收错误信息
-func (m *UploadManager) GetErrChan() <-chan error {
-	return m.errChan
-}

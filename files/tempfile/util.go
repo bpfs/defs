@@ -3,27 +3,22 @@ package tempfile
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"time"
 )
 
-// generateTempFilename 生成唯一的临时文件名
+// generateTempFilename 生成唯一的临时文件名并创建文件
 // 返回值：
-//   - string: 生成的唯一临时文件名
-func generateTempFilename() string {
-	// 获取当前时间的纳秒级时间戳
-	timestamp := time.Now().UnixNano()
+//   - string: 生成的临时文件路径
+//   - error: 如果创建失败则返回错误
+func generateTempFilename() (string, error) {
+	// 使用系统临时目录创建临时文件
+	f, err := os.CreateTemp("", "defs_tempfile_*")
+	if err != nil {
+		logger.Errorf("生成临时文件名失败: %v", err)
+		return "", err
+	}
+	defer f.Close()
 
-	// 使用时间戳生成唯一的文件名
-	filename := fmt.Sprintf("defs_tempfile_%d", timestamp)
-
-	// 将文件名与系统临时目录路径拼接
-	fullPath := filepath.Join(os.TempDir(), filename)
-
-	// 记录生成的临时文件名
-	logger.Infof("生成临时文件名: %s", fullPath)
-
-	return fullPath
+	return f.Name(), nil
 }
 
 // Exists 检查与给定键关联的临时文件是否存在
@@ -43,6 +38,7 @@ func Exists(key string) (bool, error) {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
+		logger.Errorf("检查文件是否存在失败: %v", err)
 		return false, err
 	}
 	return true, nil
@@ -62,6 +58,7 @@ func Size(key string) (int64, error) {
 	}
 	fileInfo, err := os.Stat(filename)
 	if err != nil {
+		logger.Errorf("获取文件大小失败: %v", err)
 		return 0, err
 	}
 	return fileInfo.Size(), nil

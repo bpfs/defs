@@ -1,17 +1,22 @@
 package downloads
 
 import (
+	"bytes"
 	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"hash/crc32"
+	"io"
+	"os"
+	"sync"
+
+	"compress/gzip" // 使用标准库的gzip包
 
 	"github.com/bpfs/defs/v2/crypto/gcm"
 	"github.com/bpfs/defs/v2/files"
 	"github.com/bpfs/defs/v2/pb"
 	"github.com/bpfs/defs/v2/script"
 	ecdsa_ "github.com/bpfs/defs/v2/sign/ecdsa"
-
-	"github.com/bpfs/defs/v2/zip/gzip"
 )
 
 // VerifySegmentSignature 验证片段签名
@@ -26,7 +31,6 @@ import (
 //   - 使用ECDSA算法进行签名验证
 //   - 验证签名数据的完整性和真实性
 func VerifySegmentSignature(p *pb.SegmentContentResponse) error {
-
 	// 构造签名数据对象,包含需要验证的数据字段
 	signatureData := &pb.SignatureData{
 		FileId:        p.FileId,                                           // 文件ID
@@ -67,47 +71,272 @@ func VerifySegmentSignature(p *pb.SegmentContentResponse) error {
 	return nil
 }
 
-// DecompressAndDecryptSegmentContent 解压并解密片段内容
+// ProcessFunc 定义处理函数类型
+type ProcessFunc func([]byte) ([]byte, error)
+
+// 定义全局变量
+var (
+	// 与加密时相同的块大小
+	processChunkSize = 1024 * 1024 // 1MB chunks
+
+	globalPool     *ResourcePool
+	globalPoolOnce sync.Once
+)
+
+// DecompressContext 解压缩上下文
+type DecompressContext struct {
+	buffer *bytes.Buffer
+}
+
+// ResourcePool 资源池结构体
+type ResourcePool struct {
+	streamBufferPool sync.Pool
+	decompressPool   sync.Pool
+}
+
+// Global 获取全局资源池实例
+func Global() *ResourcePool {
+	globalPoolOnce.Do(func() {
+		globalPool = &ResourcePool{
+			streamBufferPool: sync.Pool{
+				New: func() interface{} {
+					return make([]byte, processChunkSize)
+				},
+			},
+			decompressPool: sync.Pool{
+				New: func() interface{} {
+					return &DecompressContext{
+						buffer: bytes.NewBuffer(make([]byte, 0, processChunkSize)),
+					}
+				},
+			},
+		}
+	})
+	return globalPool
+}
+
+// GetStreamBuffer 获取流缓冲区
+func (p *ResourcePool) GetStreamBuffer() []byte {
+	return p.streamBufferPool.Get().([]byte)
+}
+
+// PutStreamBuffer 归还流缓冲区
+func (p *ResourcePool) PutStreamBuffer(buf []byte) {
+	p.streamBufferPool.Put(buf)
+}
+
+// GetDecompressContext 获取解压缩上下文
+func (p *ResourcePool) GetDecompressContext() *DecompressContext {
+	return p.decompressPool.Get().(*DecompressContext)
+}
+
+// PutDecompressContext 归还解压缩上下文
+func (p *ResourcePool) PutDecompressContext(ctx *DecompressContext) {
+	p.decompressPool.Put(ctx)
+}
+
+// DecryptPipeline 解密管道
+type DecryptPipeline struct {
+	reader     io.Reader
+	writer     io.Writer
+	processors []ProcessFunc
+}
+
+// Process 流式处理
+// 返回值:
+//   - error: 如果处理失败，返回错误信息
+func (p *DecryptPipeline) Process() error {
+	// 读取整个加密的数据
+	data, err := io.ReadAll(p.reader)
+	if err != nil {
+		logger.Errorf("读取加密数据失败: %v", err)
+		return err
+	}
+
+	// 对整个数据进行处理
+	var processed []byte = data
+	for _, proc := range p.processors {
+		processed, err = proc(processed)
+		if err != nil {
+			logger.Errorf("处理数据失败: %v", err)
+			return err
+		}
+	}
+
+	// 写入解密后的数据
+	if _, err := p.writer.Write(processed); err != nil {
+		logger.Errorf("写入解密数据失败: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// decryptChunk 解密块
+func decryptChunk(key []byte) ProcessFunc {
+	return func(data []byte) ([]byte, error) {
+		if len(data) == 0 {
+			logger.Warn("收到空数据块，跳过解密")
+			return data, nil
+		}
+
+		// 添加输入数据的详细日志
+		logger.Infof("开始解密数据块: 大小=%d bytes", len(data))
+		logger.Infof("使用的解密密钥: %s", hex.EncodeToString(key))
+
+		// 计算AES密钥
+		aesKey := md5.Sum(key)
+		logger.Infof("计算得到的AES密钥: %s", hex.EncodeToString(aesKey[:]))
+
+		// 添加数据块前16字节的日志(如果存在)，用于验证GCM nonce
+		if len(data) >= 16 {
+			logger.Infof("数据块前16字节: %s", hex.EncodeToString(data[:16]))
+		}
+
+		// 解密数据
+		decryptedData, err := gcm.DecryptData(data, aesKey[:])
+		if err != nil {
+			logger.Errorf("解密数据失败: %v", err)
+			// 添加更多错误上下文
+			logger.Errorf("解密失败详情: 数据大小=%d bytes, 密钥大小=%d bytes",
+				len(data), len(aesKey))
+			return nil, err
+		}
+
+		// 添加解密结果的日志
+		logger.Infof("数据解密完成: 加密大小=%d bytes, 解密后大小=%d bytes",
+			len(data), len(decryptedData))
+
+		return decryptedData, nil
+	}
+}
+
+// decompressChunk 解压块
+func decompressChunk() ProcessFunc {
+	return func(data []byte) ([]byte, error) {
+		if len(data) == 0 {
+			logger.Warn("收到空数据，跳过解压")
+			return data, nil
+		}
+
+		ctx := Global().GetDecompressContext()
+		defer Global().PutDecompressContext(ctx)
+
+		ctx.buffer.Reset()
+		reader := bytes.NewReader(data)
+
+		decompressor, err := gzip.NewReader(reader)
+		if err != nil {
+			logger.Errorf("创建解压缩reader失败: %v", err)
+			return nil, err
+		}
+		defer decompressor.Close()
+
+		_, err = io.Copy(ctx.buffer, decompressor)
+		if err != nil {
+			logger.Errorf("解压数据失败: %v", err)
+			return nil, err
+		}
+
+		logger.Infof("解压完成: 压缩大小=%d bytes, 解压后大小=%d bytes",
+			len(data), ctx.buffer.Len())
+
+		return ctx.buffer.Bytes(), nil
+	}
+}
+
+// DecompressAndDecryptSegmentContent 解密并解压片段内容
 // 参数:
 //   - shareOne: 第一个密钥分片
 //   - shareTwo: 第二个密钥分片
-//   - compressedData: 压缩并加密的数据内容
+//   - encryptedData: 压缩并加密的数据内容
+//   - expectedChecksum: 期望的校验和值
 //
 // 返回值:
-//   - []byte: 解压并解密后的原始数据
-//   - error: 解压或解密失败时返回错误信息
+//   - []byte: 解密并解压后的原始数据
+//   - error: 解密或解压失败时返回错误信息
 //
 // 功能:
-//   - 对压缩的加密数据进行解压缩
-//   - 使用密钥分片恢复解密密钥
-//   - 使用AES-GCM模式解密数据
-//   - 返回解密后的原始数据
-func DecompressAndDecryptSegmentContent(shareOne, shareTwo []byte, compressedData []byte) ([]byte, error) {
-	// 解压缩加密数据
-	decompressedData, err := gzip.DecompressData(compressedData)
-	if err != nil {
-		logger.Errorf("解压加密数据失败: %v", err)
-		return nil, err
-	}
+//   - 使用密钥分片恢复原始密钥
+//   - 计算密钥的MD5哈希作为AES密钥
+//   - 先进行AES-GCM解密
+//   - 再解压缩数据
+func DecompressAndDecryptSegmentContent(shareOne, shareTwo []byte, encryptedData []byte, expectedChecksum uint32) ([]byte, error) {
+	// 检查密钥分片
+	logger.Infof("密钥分片1: %x", shareOne)
+	logger.Infof("密钥分片2: %x", shareTwo)
 
-	// 使用密钥分片恢复原始密钥
+	// 恢复密钥
 	decryptionKey, err := files.RecoverSecretFromShares(shareOne, shareTwo)
 	if err != nil {
 		logger.Errorf("从密钥分片恢复密钥失败: %v", err)
 		return nil, err
 	}
 
-	// 计算密钥的MD5哈希作为AES密钥
+	// 添加密钥验证日志
+	logger.Infof("恢复的原始密钥: %x", decryptionKey)
 	aesKey := md5.Sum(decryptionKey)
+	logger.Infof("计算的AES密钥: %x", aesKey[:])
 
-	// 使用AES-GCM解密数据
-	plaintext, err := gcm.DecryptData(decompressedData, aesKey[:])
+	// 创建临时文件
+	tempFile, err := os.CreateTemp("", "decrypt-*")
 	if err != nil {
-		logger.Errorf("AES-GCM解密数据失败: %v", err)
+		return nil, err
+	}
+	defer os.Remove(tempFile.Name())
+
+	// 写入加密数据到临时文件
+	if _, err := tempFile.Write(encryptedData); err != nil {
 		return nil, err
 	}
 
-	return plaintext, nil
+	// 重置文件指针到开始位置
+	if _, err := tempFile.Seek(0, 0); err != nil {
+		return nil, err
+	}
+
+	// 创建解密缓冲区
+	decryptBuffer := &bytes.Buffer{}
+
+	// 先解密
+	pipe := &DecryptPipeline{
+		reader: tempFile,
+		writer: decryptBuffer,
+		processors: []ProcessFunc{
+			decryptChunk(decryptionKey),
+		},
+	}
+
+	// 执行解密处理
+	if err := pipe.Process(); err != nil {
+		logger.Errorf("解密处理失败: %v", err)
+		return nil, err
+	}
+
+	// 计算解密后(压缩状态)的校验和
+	decryptedData := decryptBuffer.Bytes()
+	actualChecksum := crc32.ChecksumIEEE(decryptedData)
+	if actualChecksum != expectedChecksum {
+		logger.Errorf("校验和验证失败: 期望值=%d, 实际值=%d", expectedChecksum, actualChecksum)
+		return nil, fmt.Errorf("校验和不匹配")
+	}
+
+	// 再解压
+	decompressBuffer := &bytes.Buffer{}
+	pipe = &DecryptPipeline{
+		reader: bytes.NewReader(decryptedData),
+		writer: decompressBuffer,
+		processors: []ProcessFunc{
+			decompressChunk(),
+		},
+	}
+
+	if err := pipe.Process(); err != nil {
+		logger.Errorf("解压处理失败: %v", err)
+		return nil, err
+	}
+
+	return decompressBuffer.Bytes(), nil
 }
 
 // VerifySegmentChecksum 验证片段校验和

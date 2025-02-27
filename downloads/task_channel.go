@@ -104,6 +104,12 @@ func (t *DownloadTask) ForceNetworkTransfer(peerSegments map[peer.ID][]string) e
 // ForceSegmentVerify 强制触发片段验证
 // 验证已传输片段的完整性，如果通道已满则先清空再写入
 func (t *DownloadTask) ForceSegmentVerify() error {
+	// 检查验证状态
+	if t.verifyInProgress.Load() {
+		logger.Debug("验证已在进行中，跳过本次验证")
+		return nil
+	}
+
 	select {
 	case <-t.ctx.Done():
 		return fmt.Errorf("任务已取消")

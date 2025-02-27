@@ -72,62 +72,60 @@ func GetUploadProgress(db *badgerhold.Store, taskID string) (*bitset.BitSet, err
 	return progress, nil
 }
 
-// CreateUploadSegmentRecord 创建上传分片记录并保存到数据库
-// 该方法用于初始化一个新的分片上传记录，并将其保存到持久化存储中
-//
+// CreateUploadSegmentRecord 创建上传分片记录
 // 参数:
-//   - db: 数据库存储接口
-//   - taskID: 上传任务的唯一标识
-//   - segmentID: 分片的唯一标识
-//   - index: 分片在文件中的索引位置
-//   - size: 分片大小
-//   - checksum: 分片的CRC32校验和
-//   - content: 分片的加密后内容
-//   - isRsCodes: 是否为纠删码冗余分片
-//   - status: 分片的上传状态
+//   - db: *badgerhold.Store 数据库实例
+//   - taskID: string 任务ID
+//   - segmentID: string 分片ID
+//   - segmentIndex: int64 分片索引
+//   - size: int64 分片大小
+//   - checksum: uint32 CRC32校验和
+//   - readKey: string 临时文件读取标识
+//   - isRsCodes: bool 是否为纠删码分片
+//   - status: SegmentUploadStatus 分片状态
 //
 // 返回值:
-//   - error: 如果创建或存储过程中发生错误则返回相应错误，否则返回 nil
+//   - error: 如果创建过程中发生错误，返回错误信息
 func CreateUploadSegmentRecord(
 	db *badgerhold.Store,
 	taskID string,
 	segmentID string,
-	index int64,
+	segmentIndex int64,
 	size int64,
 	checksum uint32,
-	content []byte,
+	readKey string,
 	isRsCodes bool,
 	status pb.SegmentUploadStatus,
 ) error {
-	// 创建 UploadSegmentStore 实例
-	store := database.NewUploadSegmentStore(db)
-
-	// 构建完整的 UploadSegmentRecord 对象
-	segmentRecord := &pb.UploadSegmentRecord{
-		// 分片唯一标识 (@gotags: badgerhold:"key")
+	// 创建分片记录
+	record := &pb.UploadSegmentRecord{
+		// 分片ID
 		SegmentId: segmentID,
-		// 分片在文件中的索引位置 (@gotags: badgerhold:"index")
-		SegmentIndex: index,
-		// 任务唯一标识 (@gotags: badgerhold:"index")
+		// 分片索引
+		SegmentIndex: segmentIndex,
+		// 任务ID
 		TaskId: taskID,
-		// 分片大小，单位：字节
+		// 分片大小
 		Size_: size,
-		// 分片的CRC32校验和 (@gotags: badgerhold:"index")
+		// CRC32校验和
 		Crc32Checksum: checksum,
-		// 分片的加密后内容
-		SegmentContent: content,
-		// 是否为纠删码冗余分片
+		// 临时文件读取标识
+		ReadKey: readKey,
+		// 是否为纠删码分片
 		IsRsCodes: isRsCodes,
-		// 分片的上传状态 (@gotags: badgerhold:"index")
+		// 分片状态
 		Status: status,
+		// 过滤的节点ID列表
+		FilteredPeerIds: make([]string, 0),
 	}
 
-	// 将分片记录保存到数据库
-	if err := store.CreateUploadSegment(segmentRecord); err != nil {
-		logger.Errorf("创建分片记录失败: taskID=%s, segmentID=%s, err=%v", taskID, segmentID, err)
+	// 将记录插入数据库
+	if err := db.Insert(segmentID, record); err != nil {
+		logger.Errorf("创建分片记录失败: segmentID=%s err=%v", segmentID, err)
 		return err
 	}
 
+	// logger.Infof("创建分片记录成功: segmentID=%s", segmentID)
 	return nil
 }
 
@@ -172,8 +170,8 @@ func UpdateSegmentUploadInfo(
 		return err
 	}
 
-	logger.Infof("成功更新分片上传信息: taskID=%s, index=%d, status=%s",
-		taskID, index, status.String())
+	// logger.Infof("成功更新分片上传信息: taskID=%s, index=%d, status=%s",
+	// 	taskID, index, status.String())
 
 	return nil
 }

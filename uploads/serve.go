@@ -445,12 +445,20 @@ func (m *UploadManager) GetAllUploadFilesSummaries() ([]*pb.UploadFilesSummaries
 			return false
 		}
 
-		progress, err := task.GetProgress()
-		if err != nil {
-			logger.Errorf("获取上传进度失败: taskID=%s, err=%v", task.TaskID(), err)
-			lastError = err
-			return false
+		// 获取上传进度
+		var progress int64
+		if fileRecord.Status == pb.UploadStatus_UPLOAD_STATUS_COMPLETED {
+			// 如果文件已完成，进度设为100%
+			progress = 100
+		} else {
+			progress, err = task.GetProgress()
+			if err != nil {
+				logger.Errorf("获取上传进度失败: taskID=%s, err=%v", task.TaskID(), err)
+				lastError = err
+				return false
+			}
 		}
+		logger.Infof("上传进度: taskID=%s, progress=%v", task.TaskID(), progress)
 
 		// 获取原始文件大小
 		var parityShards int64

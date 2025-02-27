@@ -7,7 +7,7 @@ require (
 	github.com/dep2p/go-dep2p v0.0.2
 	github.com/dep2p/kaddht v0.0.3
 	github.com/dep2p/log v0.0.1
-	github.com/dep2p/pointsub v1.1.4
+	github.com/dep2p/pointsub v1.1.5
 	github.com/dep2p/pubsub v1.0.7
 	github.com/dgraph-io/badger/v4 v4.5.0
 	github.com/dustin/go-humanize v1.0.1

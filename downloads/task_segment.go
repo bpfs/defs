@@ -26,6 +26,27 @@ const (
 	segmentsPerWorker = 10 // 每个工作协程处理的片段数
 )
 
+// NetworkErrorType 定义网络错误类型
+type NetworkErrorType int
+
+const (
+	// 临时性错误，可以重试
+	TempError NetworkErrorType = iota
+	// 严重错误，需要终止任务
+	CriticalError
+)
+
+// NetworkError 自定义网络错误结构
+type NetworkError struct {
+	errType NetworkErrorType
+	message string
+	err     error
+}
+
+func (e *NetworkError) Error() string {
+	return fmt.Sprintf("%s: %v", e.message, e.err)
+}
+
 // handleSegmentIndex 处理片段索引请求
 // 从网络获取文件片段的索引信息
 //
@@ -315,21 +336,43 @@ func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) 
 	}()
 
 	// 收集所有错误
-	var errs []error
+	var tempErrors, criticalErrors []error
 	for err := range errChan {
-		errs = append(errs, err)
+		if isCriticalError(err) {
+			criticalErrors = append(criticalErrors, err)
+		} else {
+			tempErrors = append(tempErrors, err)
+		}
 	}
 
-	// 记录错误但不中断流程
-	if len(errs) > 0 {
-		logger.Errorf("发送过程中出现 %d 个错误: %v", len(errs), errs)
-		// 这里不再直接返回错误
+	// 处理严重错误
+	if len(criticalErrors) > 0 {
+		errMsg := fmt.Sprintf("发生严重错误: %v", criticalErrors)
+		logger.Error(errMsg)
+		t.NotifyTaskError(fmt.Errorf(errMsg))
+		return fmt.Errorf(errMsg)
 	}
 
-	// 无论是否有错误都触发片段验证
-	// 验证会重新处理失败的片段
-	return t.ForceSegmentVerify()
+	// 处理临时错误
+	if len(tempErrors) > 0 {
+		logger.Warnf("发生临时错误: %v", tempErrors)
+		// 添加短暂延迟，避免立即重试
+		time.Sleep(100 * time.Millisecond)
+		return t.ForceSegmentVerify()
+	}
 
+	return nil
+}
+
+// 判断是否为严重错误
+func isCriticalError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "data corruption") ||
+		strings.Contains(errStr, "checksum mismatch") ||
+		strings.Contains(errStr, "authentication failed")
 }
 
 // sendToPeer 向单个节点发送数据
@@ -535,16 +578,26 @@ func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, peerID pee
 		return err
 	}
 
+	// 打印接收到的分片信息（替换原有的简单日志）
+	logger.Infof("接收分片[%d] - 响应数据: 大小=%d bytes, 校验和=%d, 片段ID=%s, 发送节点=%s",
+		response.SegmentIndex,
+		len(response.SegmentContent),
+		response.Crc32Checksum,
+		response.SegmentId,
+		peerID.String())
+
 	// 验证并存储下载的文件片段
 	if err := ValidateAndStoreSegment(t.db, fileRecord.FirstKeyShare, response); err != nil {
 		logger.Errorf("验证响应数据失败: %v", err)
 		return err
 	}
+	// 更新分片状态
 	if err := t.updateSegmentStatus(segmentID); err != nil {
 		logger.Errorf("更新分片状态失败: %v", err)
 		return err
 	}
 
+	// 获取进度
 	progress, err := t.GetProgress()
 	if err != nil {
 		logger.Errorf("获取进度失败: %v", err)
@@ -623,6 +676,29 @@ func (t *DownloadTask) getSegmentData(fileRecord *pb.DownloadFileRecord, segment
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *DownloadTask) handleSegmentVerify() error {
+	// 获取验证锁
+	t.verifyMutex.Lock()
+	defer t.verifyMutex.Unlock()
+
+	// 设置验证状态
+	if !t.verifyInProgress.CompareAndSwap(false, true) {
+		logger.Debug("验证已在进行中，跳过本次验证")
+		return nil
+	}
+	defer t.verifyInProgress.Store(false)
+
+	// 检查重试次数和时间间隔
+	if t.verifyRetryCount > 0 {
+		if time.Since(t.lastVerifyTime) < verifyRetryDelay {
+			logger.Infof("验证请求太频繁，跳过本次验证: taskID=%s, retryCount=%d",
+				t.taskId, t.verifyRetryCount)
+			return nil
+		}
+	}
+
+	// 更新验证时间
+	t.lastVerifyTime = time.Now()
+
 	logger.Infof("验证片段下载状态: taskID=%s", t.taskId)
 
 	// 创建存储实例

@@ -4,18 +4,26 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+
 	"github.com/bpfs/defs/v2/files"
 	logging "github.com/dep2p/log"
 
-	"github.com/pkg/errors"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
+
+	"github.com/pkg/errors"
 )
 
 var logger = logging.Logger("tempfile")
+
+const (
+	defaultBufferSize = 32 * 1024 // 32KB
+	streamBufferSize  = 1 << 20   // 1MB 流处理缓冲区
+)
 
 // WriteShards 将多个分片写入临时文件
 // 参数:
@@ -30,22 +38,29 @@ func WriteShards(fileID string, shards []io.Writer) error {
 		// 生成分片ID
 		segmentID, err := files.GenerateSegmentID(fileID, int64(i))
 		if err != nil {
-			return fmt.Errorf("生成分片ID失败: %v", err)
+			logger.Errorf("生成分片ID失败: %v", err)
+			return err
 		}
 
 		// 生成临时文件名
-		filename := generateTempFilename()
+		filename, err := generateTempFilename()
+		if err != nil {
+			logger.Errorf("生成临时文件名失败: %v", err)
+			return err
+		}
 		// 获取文件所在目录
 		dir := filepath.Dir(filename)
 		// 创建目录
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("创建目录失败: %v", err)
+			logger.Errorf("创建目录失败: %v", err)
+			return err
 		}
 
 		// 创建临时文件
 		file, err := os.Create(filename)
 		if err != nil {
-			return fmt.Errorf("创建临时文件失败: %v", err)
+			logger.Errorf("创建临时文件失败: %v", err)
+			return err
 		}
 		defer file.Close()
 
@@ -56,7 +71,8 @@ func WriteShards(fileID string, shards []io.Writer) error {
 			_, err = io.Copy(file, shard.(io.Reader))
 		}
 		if err != nil {
-			return fmt.Errorf("写入分片数据失败: %v", err)
+			logger.Errorf("写入分片数据失败: %v", err)
+			return err
 		}
 
 		// 将分片ID与文件名关联
@@ -74,7 +90,11 @@ func WriteShards(fileID string, shards []io.Writer) error {
 //   - error: 如果写入过程中发生错误，返回相应的错误信息
 func Write(key string, value []byte) error {
 	// 生成临时文件名
-	filename := generateTempFilename()
+	filename, err := generateTempFilename()
+	if err != nil {
+		logger.Errorf("生成临时文件名失败: %v", err)
+		return err
+	}
 
 	// 确保目录存在
 	dir := filepath.Dir(filename)
@@ -84,7 +104,7 @@ func Write(key string, value []byte) error {
 	}
 
 	// 将数据写入临时文件
-	err := os.WriteFile(filename, value, 0666)
+	err = os.WriteFile(filename, value, 0666)
 	if err != nil {
 		logger.Errorf("写入临时文件失败: %v", err)
 		return err
@@ -102,34 +122,34 @@ func Write(key string, value []byte) error {
 // 返回值:
 //   - error: 如果写入过程中发生错误，返回相应的错误信息
 func WriteBatch(segments map[string][]byte) error {
-	var wg sync.WaitGroup
-	errChan := make(chan error, len(segments))
-
-	// 并发写入每个分片
-	for segmentID, data := range segments {
-		wg.Add(1)
-		go func(id string, value []byte) {
-			defer wg.Done()
-			if err := Write(id, value); err != nil {
-				errChan <- errors.Wrapf(err, "写入分片 %s 失败", id)
-			}
-		}(segmentID, data)
+	// 预分配足够大的缓冲区
+	totalSize := int64(0)
+	for _, data := range segments {
+		totalSize += int64(len(data))
 	}
 
-	// 等待所有goroutine完成并关闭错误通道
-	go func() {
-		wg.Wait()
-		close(errChan)
-	}()
+	pool := NewBufferPool()
+	buf := pool.Get(totalSize)
+	defer pool.Put(buf)
 
-	// 检查是否有错误发生
-	for err := range errChan {
-		if err != nil {
+	// 批量写入到缓冲区
+	for segmentID, data := range segments {
+		if _, err := buf.Write(data); err != nil {
+			logger.Errorf("写入缓冲区失败: %v", err)
 			return err
 		}
+		// 记录偏移量用于后续分割
+		addKeyToFileMapping(segmentID, fmt.Sprintf("%d:%d", buf.Len()-len(data), len(data)))
 	}
 
-	return nil
+	// 一次性写入文件
+	filename, err := generateTempFilename()
+	if err != nil {
+		logger.Errorf("生成临时文件名失败: %v", err)
+		return err
+	}
+
+	return os.WriteFile(filename, buf.Bytes(), 0666)
 }
 
 // WriteBatchStream 批量写入多个临时文件，使用流式处理
@@ -163,6 +183,7 @@ func WriteBatchStream(segments map[string]io.Reader) error {
 	// 检查是否有错误发生
 	for err := range errChan {
 		if err != nil {
+			logger.Errorf("批量写入分片失败: %v", err)
 			return err
 		}
 	}
@@ -179,7 +200,11 @@ func WriteBatchStream(segments map[string]io.Reader) error {
 //   - error: 如果写入过程中发生错误，返回相应的错误信息
 func WriteStream(key string, reader io.Reader) error {
 	// 生成临时文件名
-	filename := generateTempFilename()
+	filename, err := generateTempFilename()
+	if err != nil {
+		logger.Errorf("生成临时文件名失败: %v", err)
+		return err
+	}
 
 	// 确保目录存在
 	dir := filepath.Dir(filename)
@@ -220,6 +245,56 @@ func WriteStream(key string, reader io.Reader) error {
 
 	// 将键与文件名关联
 	addKeyToFileMapping(key, filename)
+	return nil
+}
+
+// WriteStreamOptimized 优化的流式写入
+func WriteStreamOptimized(key string, reader io.Reader) error {
+	const chunkSize = 32 * 1024 // 32KB chunks
+
+	pool := NewBufferPool()
+	buf := pool.Get(chunkSize)
+	defer pool.Put(buf)
+
+	file, err := generateTempFilename()
+	if err != nil {
+		logger.Errorf("生成临时文件名失败: %v", err)
+		return err
+	}
+
+	f, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		logger.Errorf("打开临时文件失败: %v", err)
+		return err
+	}
+	defer f.Close()
+
+	// 使用bufio提升性能
+	w := bufio.NewWriterSize(f, chunkSize)
+
+	for {
+		buf.Reset()
+		_, err := io.CopyN(buf, reader, chunkSize)
+		if err == io.EOF {
+			break
+		}
+		if err != nil && err != io.EOF {
+			logger.Errorf("写入临时文件失败: %v", err)
+			return err
+		}
+
+		if _, err := w.Write(buf.Bytes()); err != nil {
+			logger.Errorf("写入临时文件失败: %v", err)
+			return err
+		}
+	}
+
+	if err := w.Flush(); err != nil {
+		logger.Errorf("刷新缓冲区失败: %v", err)
+		return err
+	}
+
+	addKeyToFileMapping(key, file)
 	return nil
 }
 
@@ -337,7 +412,6 @@ func Delete(key string) error {
 //   - bool: 文件是否存在
 //   - error: 如果检查过程中发生错误，返回相应的错误信息
 func CheckFileExistsAndInfo(key string) (fs.FileInfo, bool, error) {
-
 	// 获取与键关联的文件名
 	filename, ok := getKeyToFileMapping(key)
 	if !ok {
@@ -351,6 +425,7 @@ func CheckFileExistsAndInfo(key string) (fs.FileInfo, bool, error) {
 		if os.IsNotExist(err) {
 			return nil, false, nil
 		}
+		logger.Errorf("获取文件信息失败: %v", err)
 		return nil, false, err
 	}
 
@@ -358,114 +433,379 @@ func CheckFileExistsAndInfo(key string) (fs.FileInfo, bool, error) {
 	return fileInfo, true, nil
 }
 
-// 废弃：syscall.Mmap不兼容问题
-// ReadMmap 使用内存映射来读取临时文件的内容
+// init 初始化临时文件
 // 参数:
-//   - key: string 用于检索临时文件的唯一键
+//   - config: Config 配置
 //
 // 返回值:
-//   - []byte: 内存映射的文件内容
-//   - func(): 用于解除内存映射和清理资源的函数
-//   - error: 果过程中发生错误，返回相应的错误信息
-// func ReadMmap(key string) ([]byte, func(), error) {
-// 	// 获取与键关联的文件名
-// 	filename, ok := getKeyToFileMapping(key)
-// 	if !ok {
-// 		return nil, nil, fmt.Errorf("未找到与键关联的文件")
-// 	}
+//   - error: 如果初始化过程中发生错误，返回相应的错误信息
+func (tf *TempFile) init(config Config) error {
+	// 生成临时文件路径
+	path, err := generateTempFilename()
+	if err != nil {
+		return &TempFileError{Op: "init", Err: err}
+	}
 
-// 	// 打开文件
-// 	file, err := os.Open(filename)
-// 	if err != nil {
-// 		logger.Errorf("打开临时文件失败: %v", err)
-// 		return nil, nil, err
-// 	}
+	// 打开文件
+	file, err := os.OpenFile(path, os.O_RDWR, 0600)
+	if err != nil {
+		return &TempFileError{Op: "init", Path: path, Err: err}
+	}
 
-// 	// 获取文件信息
-// 	fileInfo, err := file.Stat()
-// 	if err != nil {
-// 		file.Close()
-// 		logger.Errorf("获取文件信息失败: %v", err)
-// 		return nil, nil, err
-// 	}
+	tf.path = path
+	tf.file = file
+	tf.size = 0
+	tf.maxSize = config.MaxFileSize
+	tf.bufferSize = _32KB // 使用固定的32KB缓冲区大小
+	tf.lastAccess = time.Now()
+	tf.buffer.Reset()
 
-// 	// 创建内存映射
-// 	mmap, err := syscall.Mmap(int(file.Fd()), 0, int(fileInfo.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
-// 	if err != nil {
-// 		file.Close()
-// 		logger.Errorf("创建内存映射失败: %v", err)
-// 		return nil, nil, err
-// 	}
+	return nil
+}
 
-// 	// 定义清理函数
-// 	cleanup := func() {
-// 		syscall.Munmap(mmap)
-// 		file.Close()
-// 		os.Remove(filename)
-// 		deleteKeyToFileMapping(key)
-// 	}
-
-// 	return mmap, cleanup, nil
-// }
-
-// 废弃：syscall.Mmap不兼容问题
-// ReadMmapReader 使用内存映射创建一个读取器
+// Write 优化写入逻辑
 // 参数:
-//   - key: string 文件的唯一标识符
+//   - p: []byte 要写入的数据
 //
 // 返回值:
-//   - io.Reader: 用于读取文件内容的读取器
-//   - func(): 清理函数，用于释放资源
-//   - error: 如果在过程中发生错误，返回错误信息
-// func ReadMmapReader(key string) (io.Reader, func(), error) {
-// 	// 获取文件名
-// 	filename, ok := getKeyToFileMapping(key)
-// 	if !ok {
-// 		return nil, nil, fmt.Errorf("未找到与键关联的文件")
-// 	}
+//   - int: 写入的字节数
+//   - error: 如果写入过程中发生错误，返回相应的错误信息
+func (tf *TempFile) Write(p []byte) (n int, err error) {
+	tf.lastAccess = time.Now()
 
-// 	// 打开文件
-// 	file, err := os.Open(filename)
-// 	if err != nil {
-// 		// 如果打开文件失败，记录错误并返回
-// 		logger.Errorf("打开文件失败: %v", err)
-// 		return nil, nil, err
-// 	}
+	// 检查大小限制
+	if tf.size+int64(len(p)) > tf.maxSize {
+		return 0, &TempFileError{Op: "write", Path: tf.path, Err: errors.New("超出文件大小限制")}
+	}
 
-// 	// 获取文件信息
-// 	fileInfo, err := file.Stat()
-// 	if err != nil {
-// 		// 如果获取文件信息失败，关闭文件并返回错误
-// 		file.Close()
-// 		logger.Errorf("获取文件信息失败: %v", err)
-// 		return nil, nil, err
-// 	}
+	// 大数据块直接写入文件
+	if len(p) >= tf.bufferSize {
+		if tf.buffer.Len() > 0 {
+			// 先刷新缓冲区
+			if err := tf.flush(); err != nil {
+				logger.Errorf("刷新缓冲区失败: %v", err)
+				return 0, err
+			}
+		}
+		n, err = tf.file.Write(p)
+		tf.size += int64(n)
+		return n, err
+	}
 
-// 	// 获取文件大小
-// 	size := fileInfo.Size()
+	// 小数据块写入缓冲区
+	n, err = tf.buffer.Write(p)
+	if err != nil {
+		return n, &TempFileError{Op: "write", Path: tf.path, Err: err}
+	}
 
-// 	// 创建内存映射
-// 	mmap, err := syscall.Mmap(int(file.Fd()), 0, int(size), syscall.PROT_READ, syscall.MAP_SHARED)
-// 	if err != nil {
-// 		// 如果创建内存映射失败，关闭文件并返回错误
-// 		file.Close()
-// 		logger.Errorf("创建内存映射失败: %v", err)
-// 		return nil, nil, err
-// 	}
+	// 缓冲区满时刷新
+	if tf.buffer.Len() >= tf.bufferSize {
+		if err := tf.flush(); err != nil {
+			logger.Errorf("刷新缓冲区失败: %v", err)
+			return n, err
+		}
+	}
 
-// 	// 创建字节切片读取器
-// 	reader := bytes.NewReader(mmap)
+	tf.size += int64(n)
+	return n, nil
+}
 
-// 	// 定义清理函数
-// 	cleanup := func() {
-// 		// 解除内存映射
-// 		syscall.Munmap(mmap)
-// 		// 关闭文件
-// 		file.Close()
-// 		// 删除文件名到键的映射
-// 		deleteKeyToFileMapping(key)
-// 	}
+// Read 优化读取逻辑
+// 参数:
+//   - p: []byte 要读取的数据
+//
+// 返回值:
+//   - int: 读取的字节数
+//   - error: 如果读取过程中发生错误，返回相应的错误信息
+func (tf *TempFile) Read(p []byte) (n int, err error) {
+	tf.lastAccess = time.Now()
 
-// 	// 返回读取器和清理函数
-// 	return reader, cleanup, nil
-// }
+	// 大块读取直接从文件读
+	if tf.buffer.Len() == 0 && len(p) >= tf.bufferSize {
+		return tf.file.Read(p)
+	}
+
+	// 缓冲区为空时预读取
+	if tf.buffer.Len() == 0 {
+		buf := make([]byte, tf.bufferSize)
+		n, err := tf.file.Read(buf)
+		if err != nil && err != io.EOF {
+			logger.Errorf("读取临时文件失败: %v", err)
+			return 0, err
+		}
+		if n > 0 {
+			tf.buffer.Write(buf[:n])
+		}
+	}
+
+	// 从缓冲区读取
+	return tf.buffer.Read(p)
+}
+
+// flush 将缓冲区数据写入文件
+// 返回值:
+//   - error: 如果写入过程中发生错误，返回相应的错误信息
+func (tf *TempFile) flush() error {
+	if tf.buffer.Len() == 0 {
+		return nil
+	}
+
+	_, err := tf.buffer.WriteTo(tf.file)
+	if err != nil {
+		return &TempFileError{Op: "flush", Path: tf.path, Err: err}
+	}
+
+	tf.buffer.Reset()
+	return nil
+}
+
+// reset 重置文件状态
+// 返回值:
+//   - error: 如果重置过程中发生错误，返回相应的错误信息
+func (tf *TempFile) reset() error {
+	if err := tf.flush(); err != nil {
+		logger.Errorf("刷新缓冲区失败: %v", err)
+		return err
+	}
+
+	if err := tf.file.Truncate(0); err != nil {
+		return &TempFileError{Op: "reset", Path: tf.path, Err: err}
+	}
+
+	if _, err := tf.file.Seek(0, 0); err != nil {
+		return &TempFileError{Op: "reset", Path: tf.path, Err: err}
+	}
+
+	tf.size = 0
+	tf.buffer.Reset()
+	return nil
+}
+
+// close 关闭并删除文件
+// 返回值:
+//   - error: 如果关闭过程中发生错误，返回相应的错误信息
+func (tf *TempFile) close() error {
+	if tf.file != nil {
+		tf.file.Close()
+		os.Remove(tf.path)
+		tf.file = nil
+	}
+	return nil
+}
+
+// WriteBatchOptimized 优化批量写入
+// 参数:
+//   - segments: map[string][]byte 键为分片ID，值为分片数据的映射
+//
+// 返回值:
+//   - error: 如果写入过程中发生错误，返回相应的错误信息
+func WriteBatchOptimized(segments map[string][]byte) error {
+	// 按大小分组
+	smallSegs := make(map[string][]byte)
+	largeSegs := make(map[string][]byte)
+
+	for id, data := range segments {
+		if len(data) <= _32KB {
+			smallSegs[id] = data
+		} else {
+			largeSegs[id] = data
+		}
+	}
+
+	// 小文件合并写入
+	if len(smallSegs) > 0 {
+		if err := writeBatchSmall(smallSegs); err != nil {
+			logger.Errorf("写入小文件失败: %v", err)
+			return err
+		}
+	}
+
+	// 大文件并发写入
+	if len(largeSegs) > 0 {
+		if err := writeBatchLarge(largeSegs); err != nil {
+			logger.Errorf("写入大文件失败: %v", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+// writeBatchSmall 合并写入小文件
+// 参数:
+//   - segments: map[string][]byte 键为分片ID，值为分片数据的映射
+//
+// 返回值:
+//   - error: 如果写入过程中发生错误，返回相应的错误信息
+func writeBatchSmall(segments map[string][]byte) error {
+	// 预分配缓冲区
+	totalSize := int64(0)
+	for _, data := range segments {
+		totalSize += int64(len(data))
+	}
+
+	pool := NewBufferPool()
+	buf := pool.Get(totalSize)
+	defer pool.Put(buf)
+
+	// 创建临时文件
+	filename, err := generateTempFilename()
+	if err != nil {
+		logger.Errorf("生成临时文件名失败: %v", err)
+		return err
+	}
+
+	// 写入所有数据并记录偏移量
+	offset := 0
+	for id, data := range segments {
+		if _, err := buf.Write(data); err != nil {
+			logger.Errorf("写入缓冲区失败: %v", err)
+			return err
+		}
+		addKeyToFileMapping(id, fmt.Sprintf("%s:%d:%d", filename, offset, len(data)))
+		offset += len(data)
+	}
+
+	// 一次性写入文件
+	return os.WriteFile(filename, buf.Bytes(), 0666)
+}
+
+// writeBatchLarge 并发写入大文件
+// 参数:
+//   - segments: map[string][]byte 键为分片ID，值为分片数据的映射
+//
+// 返回值:
+//   - error: 如果写入过程中发生错误，返回相应的错误信息
+func writeBatchLarge(segments map[string][]byte) error {
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(segments))
+
+	for id, data := range segments {
+		wg.Add(1)
+		go func(id string, data []byte) {
+			defer wg.Done()
+			if err := Write(id, data); err != nil {
+				errChan <- err
+			}
+		}(id, data)
+	}
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	for err := range errChan {
+		if err != nil {
+			logger.Errorf("写入大文件失败: %v", err)
+			return err
+		}
+	}
+	return nil
+}
+
+// WriteEncryptedSegment 写入加密的分片数据
+// 参数:
+//   - segmentID: string 分片ID
+//   - reader: io.Reader 要写入的数据读取器
+//   - isRsCodes: bool 是否是RsCodes
+//
+// 返回值:
+//   - string: 读取标识
+func WriteEncryptedSegment(segmentID string, reader io.Reader, isRsCodes bool) (string, error) {
+	// 生成唯一的读取标识
+	readKey := fmt.Sprintf("segment_%s_%v", segmentID, isRsCodes)
+
+	// 创建临时文件
+	filename, err := generateTempFilename()
+	if err != nil {
+		logger.Errorf("生成临时文件名失败: %v", err)
+		return "", err
+	}
+
+	// 创建目录
+	dir := filepath.Dir(filename)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		logger.Errorf("创建目录失败: %v", err)
+		return "", err
+	}
+
+	// 创建文件
+	file, err := os.Create(filename)
+	if err != nil {
+		logger.Errorf("创建文件失败: %v", err)
+		return "", err
+	}
+	defer file.Close()
+
+	// 使用缓冲写入
+	bufWriter := bufio.NewWriterSize(file, streamBufferSize)
+
+	// 复制数据
+	written, err := io.Copy(bufWriter, reader)
+	if err != nil {
+		os.Remove(filename)
+		logger.Errorf("写入数据失败: %v", err)
+		return "", err
+	}
+
+	// 刷新缓冲区
+	if err := bufWriter.Flush(); err != nil {
+		os.Remove(filename)
+		logger.Errorf("刷新缓冲区失败: %v", err)
+		return "", err
+	}
+
+	// 同步到磁盘
+	if err := file.Sync(); err != nil {
+		os.Remove(filename)
+		logger.Errorf("同步文件失败: %v", err)
+		return "", err
+	}
+
+	// 检查写入大小
+	if written == 0 {
+		os.Remove(filename)
+		logger.Errorf("写入数据大小为0")
+		return "", errors.New("写入数据大小为0")
+	}
+
+	// 记录映射关系
+	addKeyToFileMapping(readKey, filename)
+
+	return readKey, nil
+}
+
+// ReadEncryptedSegment 读取加密的分片数据
+// 参数:
+//   - readKey: WriteEncryptedSegment返回的读取标识
+//
+// 返回值:
+//   - []byte: 加密的数据
+//   - error: 读取失败时返回错误
+func ReadEncryptedSegment(readKey string) ([]byte, error) {
+	return OnlyRead(readKey)
+}
+
+// CleanupTempFiles 清理所有临时文件
+func CleanupTempFiles() error {
+	// 获取临时目录
+	tempDir := os.TempDir()
+
+	// 查找所有defs_tempfile_*文件
+	pattern := filepath.Join(tempDir, "defs_tempfile_*")
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		logger.Errorf("查找临时文件失败: %v", err)
+		return err
+	}
+
+	// 删除文件
+	for _, file := range files {
+		if err := os.Remove(file); err != nil {
+			logger.Warnf("删除临时文件失败: file=%s err=%v", file, err)
+		}
+	}
+
+	return nil
+}

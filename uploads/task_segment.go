@@ -3,12 +3,15 @@ package uploads
 import (
 	"fmt"
 	"net"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/files"
+	"github.com/bpfs/defs/v2/files/tempfile"
 	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/pb"
 
@@ -22,6 +25,52 @@ const (
 	maxTotalWorkers   = 50 // 总的最大工作协程数
 	segmentsPerWorker = 10 // 每个工作协程处理的片段数
 )
+
+// NetworkErrorType 定义网络错误类型
+type NetworkErrorType int
+
+const (
+	// 临时性错误，可以重试
+	TempError NetworkErrorType = iota
+	// 永久性错误，不应重试
+	PermanentError
+	// 致命错误，需要终止任务
+	FatalError
+)
+
+// NetworkError 自定义网络错误结构
+type NetworkError struct {
+	errType NetworkErrorType
+	message string
+	err     error
+}
+
+func (e *NetworkError) Error() string {
+	return fmt.Sprintf("%s: %v", e.message, e.err)
+}
+
+// newNetworkError 创建新的网络错误
+func newNetworkError(errType NetworkErrorType, message string, err error) *NetworkError {
+	return &NetworkError{
+		errType: errType,
+		message: message,
+		err:     err,
+	}
+}
+
+// 添加错误处理上下文
+type UploadError struct {
+	SegmentID string
+	PeerID    peer.ID
+	Operation string // 操作类型：如 "network", "verify", "process"
+	Time      time.Time
+	Err       error
+}
+
+func (e *UploadError) Error() string {
+	return fmt.Sprintf("[%s] %s failed for segment %s (peer: %s): %v",
+		e.Time.Format(time.RFC3339), e.Operation, e.SegmentID, e.PeerID, e.Err)
+}
 
 // handleSegmentProcess 处理文件片段
 // 主要步骤：
@@ -286,20 +335,33 @@ func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) er
 	}()
 
 	// 收集所有错误
-	var errs []error
+	var tempErrors, criticalErrors []error
 	for err := range errChan {
-		errs = append(errs, err)
+		if isCriticalError(err) {
+			criticalErrors = append(criticalErrors, err)
+		} else {
+			tempErrors = append(tempErrors, err)
+		}
 	}
 
-	// 记录错误但不中断流程
-	if len(errs) > 0 {
-		logger.Errorf("发送过程中出现 %d 个错误: %v", len(errs), errs)
-		// 这里不再直接返回错误
+	// 处理严重错误
+	if len(criticalErrors) > 0 {
+		errMsg := fmt.Sprintf("发生严重错误: %v", criticalErrors)
+		logger.Error(errMsg)
+		t.NotifyTaskError(fmt.Errorf(errMsg))
+		return fmt.Errorf(errMsg)
 	}
 
-	// 无论是否有错误都触发片段验证
-	// 验证会重新处理失败的片段
-	return t.ForceSegmentVerify()
+	// 处理临时错误
+	if len(tempErrors) > 0 {
+		logger.Warnf("发生临时错误: %v", tempErrors)
+		// 添加短暂延迟，避免立即重试
+		time.Sleep(100 * time.Millisecond)
+		// 继续触发验证
+		return t.ForceSegmentVerify()
+	}
+
+	return nil
 }
 
 // sendToPeer 向单个节点发送数据
@@ -316,8 +378,50 @@ func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) er
 // 返回值:
 //   - error: 如果发送过程中发生错误，返回相应的错误信息
 func (t *UploadTask) sendToPeer(peerID peer.ID, segments []string) error {
+	maxRetries := 3
+	retryDelay := time.Second
+
+	for retry := 0; retry < maxRetries; retry++ {
+		err := t.doSendToPeer(peerID, segments)
+		if err == nil {
+			return nil
+		}
+
+		if isCriticalError(err) {
+			return err
+		}
+
+		if retry < maxRetries-1 {
+			logger.Warnf("发送失败，将在 %v 后重试: peer=%s, err=%v",
+				retryDelay, peerID, err)
+			select {
+			case <-time.After(retryDelay):
+				retryDelay *= 2 // 指数退避
+			case <-t.ctx.Done():
+				return fmt.Errorf("任务已取消")
+			}
+		}
+	}
+
+	return fmt.Errorf("发送重试次数超过限制: peer=%s", peerID)
+}
+
+// doSendToPeer 实际发送数据到节点
+// 主要步骤：
+// 1. 计算分片数量
+// 2. 动态计算worker数量
+// 3. 计算每个worker处理的分片数
+// 4. 遍历每个worker，发送分片
+// 5. 等待所有发送完成并收集错误
+// 参数:
+//   - peerID: 目标节点ID
+//   - segments: 需要发送的分片列表
+//
+// 返回值:
+//   - error: 如果发送过程中发生错误，返回相应的错误信息
+func (t *UploadTask) doSendToPeer(peerID peer.ID, segments []string) error {
 	segmentCount := len(segments)
-	logger.Infof("向节点发送数据: peerID=%s, segmentCount=%d", peerID, segmentCount)
+	// logger.Infof("向节点发送数据: peerID=%s, segmentCount=%d", peerID, segmentCount)
 
 	// 计算合适的worker数量，但不超过最大限制
 	workerCount := min(maxWorkersPerPeer, (segmentCount+segmentsPerWorker-1)/segmentsPerWorker)
@@ -352,7 +456,27 @@ func (t *UploadTask) sendToPeer(peerID peer.ID, segments []string) error {
 
 			// 处理分片
 			if err := t.processSegments(peerID, conn, segments[start:end]); err != nil {
-				errChan <- err
+				switch {
+				case isConnectionError(err):
+					// 连接错误视为临时错误
+					errChan <- newNetworkError(TempError,
+						fmt.Sprintf("节点 %s 连接错误", peerID), err)
+
+				case isAuthError(err):
+					// 认证错误视为永久错误
+					errChan <- newNetworkError(PermanentError,
+						fmt.Sprintf("节点 %s 认证失败", peerID), err)
+
+				case isDataCorruptionError(err):
+					// 数据损坏视为致命错误
+					errChan <- newNetworkError(FatalError,
+						fmt.Sprintf("节点 %s 数据损坏", peerID), err)
+
+				default:
+					// 未知错误视为临时错误
+					errChan <- newNetworkError(TempError,
+						fmt.Sprintf("节点 %s 未知错误", peerID), err)
+				}
 			}
 		}(i, startIdx, endIdx)
 	}
@@ -492,16 +616,22 @@ func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn
 		return err
 	}
 
+	// 打印发送前的数据信息
+	logger.Infof("发送分片[%d] - 准备发送: 大小=%d bytes, 校验和=%d, 接收节点=%s",
+		segment.SegmentIndex, len(storage.SegmentContent), segment.Crc32Checksum, peerID.String())
+
 	// 创建StreamUtils实例
 	streamUtils := NewStreamUtils(conn)
 
 	// 写入数据
 	if err := streamUtils.WriteSegmentData(storage); err != nil {
+		logger.Errorf("写入数据失败: %v", err)
 		return err
 	}
 
 	// 读取响应
 	if err := streamUtils.ReadResponse(); err != nil {
+		logger.Errorf("读取响应失败: %v", err)
 		return err
 	}
 
@@ -543,28 +673,37 @@ func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *UploadTask) handleSegmentVerify() error {
-	logger.Infof("验证片段上传状态: taskID=%s", t.taskId)
+	// 获取验证锁
+	t.verifyMutex.Lock()
+	defer t.verifyMutex.Unlock()
 
-	// 创建存储实例
+	// 设置验证状态
+	if !t.verifyInProgress.CompareAndSwap(false, true) {
+		logger.Debug("验证已在进行中，跳过本次验证")
+		return nil
+	}
+	defer t.verifyInProgress.Store(false)
+
+	// 检查重试次数和时间间隔
+	if t.verifyRetryCount > 0 {
+		if time.Since(t.lastVerifyTime) < verifyRetryDelay {
+			logger.Infof("验证请求太频繁，跳过本次验证: taskID=%s, retryCount=%d",
+				t.taskId, t.verifyRetryCount)
+			return nil
+		}
+	}
+
+	// 更新验证时间
+	t.lastVerifyTime = time.Now()
+
+	// 获取文件记录
 	uploadFileStore := database.NewUploadFileStore(t.db)
 	uploadSegmentStore := database.NewUploadSegmentStore(t.db)
 
-	// 获取文件记录
 	fileRecord, exists, err := uploadFileStore.GetUploadFile(t.taskId)
-	if err != nil {
+	if err != nil || !exists {
 		logger.Errorf("获取文件记录失败: taskID=%s, err=%v", t.taskId, err)
 		return err
-	}
-	if !exists {
-		logger.Errorf("文件记录不存在: taskID=%s", t.taskId)
-		return fmt.Errorf("文件记录不存在: taskID=%s", t.taskId)
-	}
-
-	// 获取文件总片段数
-	totalSegments := len(fileRecord.SliceTable)
-	if totalSegments == 0 {
-		logger.Errorf("文件切片表为空: taskID=%s", t.taskId)
-		return fmt.Errorf("文件切片表为空: taskID=%s", t.taskId)
 	}
 
 	// 获取已完成的片段
@@ -576,17 +715,37 @@ func (t *UploadTask) handleSegmentVerify() error {
 		logger.Errorf("获取已完成片段失败: taskID=%s, err=%v", t.taskId, err)
 		return err
 	}
+
+	// 检查是否所有片段都已完成
+	totalSegments := len(fileRecord.SliceTable)
 	completedCount := len(completedSegments)
 
-	// 如果完成数量不等于总片段数，说明存在未上传的片段
 	if completedCount != totalSegments {
-		logger.Infof("存在未上传的片段，触发片段处理: taskID=%s", t.taskId)
-		// 强制触发片段处理
+		// 增加重试计数
+		t.verifyRetryCount++
+
+		// 检查是否超过最大重试次数
+		if t.verifyRetryCount > maxVerifyRetries {
+			logger.Errorf("验证重试次数超过限制: taskID=%s, retryCount=%d",
+				t.taskId, t.verifyRetryCount)
+			// 将任务标记为失败状态
+			if err := t.SetStatus(pb.UploadStatus_UPLOAD_STATUS_FAILED); err != nil {
+				logger.Errorf("更新任务状态失败: taskID=%s, err=%v", t.taskId, err)
+			}
+			return fmt.Errorf("验证重试次数超过限制")
+		}
+
+		logger.Infof("存在未完成片段，触发重试: taskID=%s, retryCount=%d, "+
+			"completed=%d, total=%d",
+			t.taskId, t.verifyRetryCount, completedCount, totalSegments)
+
 		return t.ForceSegmentProcess()
 	}
 
-	// 如果完成数量等于总片段数，说明所有片段都已上传完成
-	logger.Infof("所有片段上传完成，触发文件完成处理: taskID=%s", t.taskId)
+	// 验证成功，重置重试计数
+	t.verifyRetryCount = 0
+
+	logger.Infof("所有片段验证完成: taskID=%s", t.taskId)
 	return t.ForceFileFinalize()
 }
 
@@ -632,11 +791,26 @@ func (t *UploadTask) handleFileFinalize() error {
 		return err
 	}
 
-	// 3. 删除所有已完成的文件片段
+	// 3. 删除所有已完成的文件片段记录
 	if err := uploadSegmentStore.DeleteUploadSegmentByTaskID(t.taskId); err != nil {
-		logger.Errorf("删除文件片段失败: taskID=%s, err=%v", t.taskId, err)
+		logger.Errorf("删除文件片段记录失败: taskID=%s, err=%v", t.taskId, err)
 		return err
 	}
+
+	// 4. 按顺序清理所有临时文件
+	// 4.1 清理加密临时文件
+	if err := tempfile.CleanupTempFiles(); err != nil {
+		logger.Warnf("清理加密临时文件失败: err=%v", err)
+	}
+
+	// 4.2 清理分片临时文件
+	if err := CleanupSegmentTempFiles(); err != nil {
+		logger.Warnf("清理分片临时文件失败: err=%v", err)
+	}
+
+	// 4.3 强制执行一次GC
+	runtime.GC()
+	debug.FreeOSMemory()
 
 	logger.Infof("文件上传完成: taskID=%s, fileID=%s", t.taskId, fileRecord.FileId)
 	return nil
@@ -668,6 +842,17 @@ func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, *
 		return nil, nil, nil, err
 	}
 
+	// 从临时文件读取加密数据
+	encryptedData, err := tempfile.ReadEncryptedSegment(segment.ReadKey)
+	if err != nil {
+		logger.Errorf("读取分片加密数据失败: segmentID=%s err=%v", segment.SegmentId, err)
+		return nil, nil, nil, err
+	}
+
+	// 添加日志记录读取到的数据大小和对应的校验和
+	logger.Infof("读取分片[%d] - 从临时文件读取: 大小=%d bytes, 原始校验和=%d",
+		segment.SegmentIndex, len(encryptedData), segment.Crc32Checksum)
+
 	// 构造签名数据
 	signatureData := &pb.SignatureData{
 		FileId:        fileRecord.FileId,                                           // 文件ID
@@ -677,7 +862,7 @@ func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, *
 		SegmentId:     segment.SegmentId,                                           // 分片ID
 		SegmentIndex:  segment.SegmentIndex,                                        // 分片索引
 		Crc32Checksum: segment.Crc32Checksum,                                       // CRC32校验和
-		EncryptedData: segment.SegmentContent,                                      // 加密数据
+		EncryptedData: encryptedData,                                               // 加密数据
 	}
 
 	// 解析私钥
@@ -713,38 +898,18 @@ func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, *
 		Extension:      fileRecord.FileMeta.Extension,       // 文件扩展名
 		Sha256Hash:     fileRecord.FileMeta.Sha256Hash,      // SHA256哈希值
 		UploadTime:     time.Now().Unix(),                   // 上传时间
-		P2PkhScript:    fileRecord.FileSecurity.P2PkhScript, // P2PKH脚本
-		P2PkScript:     fileRecord.FileSecurity.P2PkScript,  // P2PK脚本
+		P2PkhScript:    fileRecord.FileSecurity.P2PkhScript, // P2Pkh脚本
+		P2PkScript:     fileRecord.FileSecurity.P2PkScript,  // P2Pk脚本
 		SliceTable:     fileRecord.SliceTable,               // 切片表
 		SegmentId:      segment.SegmentId,                   // 分片ID
 		SegmentIndex:   segment.SegmentIndex,                // 分片索引
 		Crc32Checksum:  segment.Crc32Checksum,               // CRC32校验和
-		SegmentContent: segment.SegmentContent,              // 分片内容
-		EncryptionKey:  encryptionKey,                       // 加密密钥(传输共享密钥的第2片密钥)
+		SegmentContent: encryptedData,                       // 分片内容
+		EncryptionKey:  encryptionKey,                       // 加密密钥
 		Signature:      signature,                           // 数字签名
 		Shared:         false,                               // 是否共享
 		Version:        version,                             // 版本
 	}, segment, fileRecord, nil
-
-	// 构造存储对象
-	// return &pb.FileSegmentStorage{
-	// 	FileId:         fileRecord.FileId,
-	// 	Name:           fileRecord.FileMeta.Name,
-	// 	Size_:          fileRecord.FileMeta.Size_,
-	// 	ContentType:    fileRecord.FileMeta.ContentType,
-	// 	Extension:      fileRecord.FileMeta.Extension,
-	// 	Sha256Hash:     fileRecord.FileMeta.Sha256Hash,
-	// 	UploadTime:     time.Now().Unix(),
-	// 	P2PkhScript:    fileRecord.FileSecurity.P2PkhScript,
-	// 	P2PkScript:     fileRecord.FileSecurity.P2PkScript,
-	// 	SliceTable:     fileRecord.SliceTable,
-	// 	SegmentId:      segment.SegmentId,
-	// 	SegmentIndex:   segment.SegmentIndex,
-	// 	Crc32Checksum:  segment.Crc32Checksum,
-	// 	SegmentContent: segment.SegmentContent,
-	// 	EncryptionKey:  fileRecord.FileSecurity.EncryptionKey[1], // 传输共享密钥的第2片密钥
-	// 	Version:        version,
-	// }, nil
 }
 
 // updateSegmentStatus 更新分片状态
@@ -760,4 +925,26 @@ func (t *UploadTask) updateSegmentStatus(segmentID string) error {
 		return err
 	}
 	return nil
+}
+
+// 错误类型判断函数
+func isAuthError(err error) bool {
+	return strings.Contains(err.Error(), "authentication failed") ||
+		strings.Contains(err.Error(), "permission denied")
+}
+
+func isDataCorruptionError(err error) bool {
+	return strings.Contains(err.Error(), "data corruption") ||
+		strings.Contains(err.Error(), "checksum mismatch")
+}
+
+// 判断是否为严重错误
+func isCriticalError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "data corruption") ||
+		strings.Contains(errStr, "checksum mismatch") ||
+		strings.Contains(errStr, "authentication failed")
 }
