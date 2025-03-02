@@ -20,23 +20,25 @@ import (
 func (t *DownloadTask) Start() error {
 	// 启动goroutine处理各种事件
 	go func() {
-		// 创建定时器，每30秒触发一次
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
+		// 确保定时器已初始化
+		t.indexTickerMutex.Lock()
+		if t.indexTicker == nil {
+			t.indexTicker = time.NewTicker(30 * time.Second)
+		}
+		t.indexTickerMutex.Unlock()
+
+		defer t.stopIndexTicker()
 
 		// 无限循环处理事件,直到任务完成或取消
 		for {
 			select {
 			case <-t.ctx.Done():
-				// 上下文被取消,退出处理循环
 				logger.Info("任务上下文已取消，退出处理循环")
 				return
 
-			case <-ticker.C:
-				// 每30秒触发一次片段索引请求
+			case <-t.indexTicker.C:
 				logger.Info("定时触发片段索引请求")
-
-				if err := t.ForceSegmentIndex(); err != nil {
+				if err := t.TriggerSegmentIndexRequest(); err != nil {
 					logger.Errorf("定时触发片段索引请求失败: %v", err)
 					t.NotifyTaskError(err)
 				}
@@ -100,12 +102,26 @@ func (t *DownloadTask) Start() error {
 				}
 				return // 文件处理完成，退出循环
 
+			case <-t.chRecoverySegments:
+				// 处理片段恢复
+				if err := t.HandleRecoverySegments(t.ctx); err != nil {
+					logger.Errorf("处理片段恢复失败: %v", err)
+					t.NotifyTaskError(err)
+				}
 			}
 		}
 	}()
 
 	// 触发初始的文件片段索引
-	return t.ForceSegmentIndex()
+	return t.TriggerSegmentIndexRequest()
+}
+
+// isValidSegment 验证片段数据的有效性
+func isValidSegment(segment *pb.DownloadSegmentRecord) bool {
+	return segment != nil &&
+		segment.SegmentId != "" &&
+		segment.TaskId != "" &&
+		segment.SegmentIndex >= 0
 }
 
 // GetProgress 获取下载进度的百分比
@@ -143,6 +159,13 @@ func (t *DownloadTask) GetProgress() (int64, error) {
 	if err != nil {
 		logger.Errorf("获取已完成片段失败: taskID=%s, err=%v", t.taskId, err)
 		return 0, err
+	}
+
+	// 添加数据有效性验证
+	for _, segment := range segments {
+		if !isValidSegment(segment) {
+			return 0, fmt.Errorf("无效的片段数据")
+		}
 	}
 
 	// 计算进度百分比

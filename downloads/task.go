@@ -13,6 +13,7 @@ import (
 	"github.com/bpfs/defs/v2/fscfg"
 	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/pb"
+	"golang.org/x/time/rate"
 
 	"github.com/dep2p/go-dep2p/core/host"
 	"github.com/dep2p/go-dep2p/core/peer"
@@ -35,13 +36,14 @@ type DownloadTask struct {
 	distribution *files.SegmentDistribution // 分片分配管理器，用于管理文件分片在节点间的分配
 
 	// 内部操作通道
-	chSegmentIndex    chan struct{}             // 片段索引：请求文件片段的索引信息
-	chSegmentProcess  chan struct{}             // 处理文件片段：将文件片段整合并写入队列
-	chNodeDispatch    chan struct{}             // 节点分发：以节点为单位从队列中读取文件片段
-	chNetworkTransfer chan map[peer.ID][]string // 网络传输：key为节点ID，value为该节点负责的分片ID列表
-	chSegmentVerify   chan struct{}             // 片段验证：验证已传输片段的完整性
-	chSegmentMerge    chan struct{}             // 片段合并：合并已下载的文件片段
-	chFileFinalize    chan struct{}             // 文件完成：处理文件下载完成后的操作
+	chSegmentIndex     chan struct{}             // 片段索引：请求文件片段的索引信息
+	chSegmentProcess   chan struct{}             // 处理文件片段：将文件片段整合并写入队列
+	chNodeDispatch     chan struct{}             // 节点分发：以节点为单位从队列中读取文件片段
+	chNetworkTransfer  chan map[peer.ID][]string // 网络传输：key为节点ID，value为该节点负责的分片ID列表
+	chSegmentVerify    chan struct{}             // 片段验证：验证已传输片段的完整性
+	chSegmentMerge     chan struct{}             // 片段合并：合并已下载的文件片段
+	chFileFinalize     chan struct{}             // 文件完成：处理文件下载完成后的操作
+	chRecoverySegments chan struct{}             // 片段恢复通道
 
 	// 外部通知通道
 	chSegmentStatus chan *pb.DownloadChan // 片段状态：通知文件片段的处理状态
@@ -52,12 +54,30 @@ type DownloadTask struct {
 	lastVerifyTime   time.Time   // 上次验证时间
 	verifyMutex      sync.Mutex  // 验证互斥锁
 	verifyInProgress atomic.Bool // 使用原子操作追踪验证状态
-}
 
-const (
-	maxVerifyRetries = 3               // 最大验证重试次数
-	verifyRetryDelay = time.Second * 5 // 重试等待时间
-)
+	// 索引请求控制
+	indexTicker      *time.Ticker // 索引请求定时器
+	indexTickerMutex sync.Mutex   // 保护定时器操作的互斥锁
+	indexInProgress  atomic.Bool  // 标记索引请求是否正在进行中
+
+	// 索引请求状态跟踪
+	lastIndexInfo struct {
+		pendingIDs    string        // 上次请求的片段ID列表的hash
+		timestamp     time.Time     // 上次请求的时间
+		retryCount    int           // 连续重复请求次数
+		lastProgress  int64         // 上次的下载进度
+		noProgressFor time.Duration // 无进度持续时间
+	}
+	indexInfoMutex sync.Mutex // 保护索引信息的互斥锁
+
+	requestLimiter *rate.Limiter
+
+	// 合并相关字段
+	mergeMutex      sync.Mutex  // 合并操作互斥锁
+	mergeInProgress atomic.Bool // 合并状态标记
+	mergeRetryCount int         // 合并重试次数
+	lastMergeTime   time.Time   // 上次合并时间
+}
 
 // NewDownloadTask 创建并初始化一个新的文件下载任务实例
 // 参数:
@@ -96,23 +116,48 @@ func NewDownloadTask(ctx context.Context, opt *fscfg.Options, db *database.DB, f
 		distribution: files.NewSegmentDistribution(), // 初始化分片分配管理器
 
 		// 内部操作通道
-		chSegmentIndex:    make(chan struct{}, 1),                                           // 片段索引：请求文件片段的索引信息
-		chSegmentProcess:  make(chan struct{}, 1),                                           // 处理文件片段：将文件片段整合并写入队列
-		chNodeDispatch:    make(chan struct{}, 1),                                           // 节点分发：以节点为单位从队列中读取文件片段
-		chNetworkTransfer: make(chan map[peer.ID][]string, opt.GetMaxConcurrentDownloads()), // 网络传输：向目标节点传输文件片段
-		chSegmentVerify:   make(chan struct{}, 1),                                           // 片段验证：验证已传输片段的完整性
-		chSegmentMerge:    make(chan struct{}, 1),                                           // 片段合并：合并已下载的文件片段
-		chFileFinalize:    make(chan struct{}, 1),                                           // 文件完成：处理文件下载完成后的操作
+		chSegmentIndex:     make(chan struct{}, 1),                                           // 片段索引：请求文件片段的索引信息
+		chSegmentProcess:   make(chan struct{}, 1),                                           // 处理文件片段：将文件片段整合并写入队列
+		chNodeDispatch:     make(chan struct{}, 1),                                           // 节点分发：以节点为单位从队列中读取文件片段
+		chNetworkTransfer:  make(chan map[peer.ID][]string, opt.GetMaxConcurrentDownloads()), // 网络传输：向目标节点传输文件片段
+		chSegmentVerify:    make(chan struct{}, 1),                                           // 片段验证：验证已传输片段的完整性
+		chSegmentMerge:     make(chan struct{}, 1),                                           // 片段合并：合并已下载的文件片段
+		chFileFinalize:     make(chan struct{}, 1),                                           // 文件完成：处理文件下载完成后的操作
+		chRecoverySegments: make(chan struct{}, 1),                                           // 片段恢复通道
 
 		// 外部通知通道
 		chSegmentStatus: statusChan, // 片段状态：通知文件片段的处理状态
 		chError:         errChan,    // 错误通知：向外部传递错误信息
 
-		// 初始化验证重试相关字段
+		// 验证相关字段初始化
 		verifyRetryCount: 0,
 		lastVerifyTime:   time.Time{},
 		verifyMutex:      sync.Mutex{},
 		verifyInProgress: atomic.Bool{},
+
+		// 索引请求控制
+		indexTicker:     nil, // 初始为nil，在Start时创建
+		indexInProgress: atomic.Bool{},
+
+		// 索引请求状态跟踪
+		lastIndexInfo: struct {
+			pendingIDs    string
+			timestamp     time.Time
+			retryCount    int
+			lastProgress  int64
+			noProgressFor time.Duration
+		}{
+			timestamp:    time.Now(),
+			lastProgress: 0,
+		},
+
+		requestLimiter: rate.NewLimiter(rate.Every(5*time.Second), 1),
+
+		// 合并相关字段初始化
+		mergeMutex:      sync.Mutex{},
+		mergeInProgress: atomic.Bool{},
+		mergeRetryCount: 0,
+		lastMergeTime:   time.Time{},
 	}
 
 	return task, nil
@@ -211,6 +256,10 @@ func (t *DownloadTask) Cleanup() {
 	if t.chSegmentIndex != nil {
 		safeClose(t.chSegmentIndex)
 		t.chSegmentIndex = nil
+	}
+	if t.chRecoverySegments != nil {
+		safeClose(t.chRecoverySegments)
+		t.chRecoverySegments = nil
 	}
 
 	// 安全关闭外部通知通道

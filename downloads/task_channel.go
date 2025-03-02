@@ -176,13 +176,35 @@ func (t *DownloadTask) ForceFileFinalize() error {
 	}
 }
 
+// ForceRecoverySegments 强制触发片段恢复
+func (t *DownloadTask) ForceRecoverySegments() error {
+	select {
+	case <-t.ctx.Done():
+		return fmt.Errorf("任务已取消")
+	case t.chRecoverySegments <- struct{}{}:
+		return nil
+	default:
+		select {
+		case <-t.ctx.Done():
+			return fmt.Errorf("任务已取消")
+		case <-t.chRecoverySegments:
+			select {
+			case <-t.ctx.Done():
+				return fmt.Errorf("任务已取消")
+			case t.chRecoverySegments <- struct{}{}:
+				return nil
+			}
+		}
+	}
+}
+
 // NotifySegmentStatus 通知片段状态更新
 // 向外部通知文件片段的处理状态，超时后记录警告日志
 func (t *DownloadTask) NotifySegmentStatus(status *pb.DownloadChan) {
 	select {
 	case t.chSegmentStatus <- status:
 		return
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(500 * time.Millisecond):
 		logger.Warnf("片段状态通知超时: taskID=%s", t.taskId)
 	}
 }

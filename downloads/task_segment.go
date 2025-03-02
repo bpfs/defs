@@ -1,29 +1,32 @@
 package downloads
 
 import (
-	"bufio"
+	"crypto/md5"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/pb"
-	"github.com/bpfs/defs/v2/reedsolomon"
 
+	defsproto "github.com/bpfs/defs/v2/utils/protocol"
 	"github.com/dep2p/go-dep2p/core/peer"
 	"github.com/dep2p/go-dep2p/core/protocol"
 	"github.com/dep2p/pointsub"
 )
 
 const (
-	maxWorkersPerPeer = 10 // 每个节点的最大工作协程数
-	maxTotalWorkers   = 50 // 总的最大工作协程数
-	segmentsPerWorker = 10 // 每个工作协程处理的片段数
+	maxWorkersPerPeer = 10                     // 每个节点的最大工作协程数
+	maxTotalWorkers   = 50                     // 总的最大工作协程数
+	segmentsPerWorker = 10                     // 每个工作协程处理的片段数
+	maxVerifyRetries  = 3                      // 最大验证重试次数
+	verifyRetryDelay  = time.Second * 5        // 重试等待时间
+	batchWindow       = 100 * time.Millisecond // 请求批处理窗口时间
 )
 
 // NetworkErrorType 定义网络错误类型
@@ -43,8 +46,13 @@ type NetworkError struct {
 	err     error
 }
 
+// Error 实现 error 接口
 func (e *NetworkError) Error() string {
-	return fmt.Sprintf("%s: %v", e.message, e.err)
+	errTypeStr := "临时错误"
+	if e.errType == CriticalError {
+		errTypeStr = "严重错误"
+	}
+	return fmt.Sprintf("%s - %s: %v", errTypeStr, e.message, e.err)
 }
 
 // handleSegmentIndex 处理片段索引请求
@@ -98,10 +106,10 @@ func (t *DownloadTask) handleSegmentIndex() error {
 		return err
 	}
 
-	logger.Infof("已发送索引清单请求: taskID=%s, pendingSegments=%d",
-		t.TaskID(),
-		len(pendingSegmentIds),
-	)
+	// logger.Infof("已发送索引清单请求: taskID=%s, pendingSegments=%d",
+	// 	t.TaskID(),
+	// 	len(pendingSegmentIds),
+	// )
 
 	// 在 HandleDownloadManifestResponsePubSub 中处理索引清单响应
 	// 通过 ForceNodeDispatch 强制触发节点分发
@@ -172,8 +180,22 @@ func (t *DownloadTask) handleSegmentProcess() error {
 		t.distribution.AddDistribution(distribution)
 	}
 
-	// 强制触发节点分发
-	return t.ForceNodeDispatch()
+	// 触发网络传输
+	if err := t.ForceNetworkTransfer(peerSegments); err != nil {
+		logger.Errorf("触发网络传输失败: taskID=%s, err=%v", t.taskId, err)
+		return err
+	}
+
+	// 添加延迟，等待网络传输完成
+	time.Sleep(500 * time.Millisecond)
+
+	// 再触发验证
+	if err := t.ForceSegmentVerify(); err != nil {
+		logger.Errorf("触发验证失败: taskID=%s, err=%v", t.taskId, err)
+		return err
+	}
+
+	return nil
 }
 
 // handleNodeDispatch 处理节点分发
@@ -283,6 +305,7 @@ func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) 
 	// 创建一个信号量来限制总并发数
 	sem := make(chan struct{}, maxTotalWorkers)
 	var globalWg sync.WaitGroup
+	var errors []error
 	errChan := make(chan error, len(peerSegments))
 
 	// 记录已处理的片段，避免重复发送
@@ -316,6 +339,7 @@ func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) 
 		globalWg.Add(1)
 		go func(peerID peer.ID, segments []string) {
 			defer globalWg.Done()
+			// 发送数据到节点
 			if err := t.sendToPeer(peerID, fileRecord, segments, sem); err != nil {
 				logger.Errorf("向节点发送数据失败: peerID=%s, err=%v", peerID, err)
 				// 发送失败时，将片段标记为未处理
@@ -324,55 +348,40 @@ func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) 
 					delete(processedSegments, segID)
 				}
 				processedMu.Unlock()
-				errChan <- fmt.Errorf("节点 %s 发送失败: %v", peerID, err)
+				errChan <- &SegmentError{
+					PeerID:   peerID,
+					Err:      err,
+					Segments: segments,
+				}
 			}
 		}(peerID, unprocessedSegments)
 	}
 
-	// 等待所有发送完成并收集错误
-	go func() {
-		globalWg.Wait()
-		close(errChan)
-	}()
+	// 等待所有发送完成
+	globalWg.Wait()
+	close(errChan)
 
 	// 收集所有错误
-	var tempErrors, criticalErrors []error
 	for err := range errChan {
-		if isCriticalError(err) {
-			criticalErrors = append(criticalErrors, err)
-		} else {
-			tempErrors = append(tempErrors, err)
+		if segErr, ok := err.(*SegmentError); ok {
+			errors = append(errors, segErr)
 		}
 	}
 
-	// 处理严重错误
-	if len(criticalErrors) > 0 {
-		errMsg := fmt.Sprintf("发生严重错误: %v", criticalErrors)
-		logger.Error(errMsg)
-		t.NotifyTaskError(fmt.Errorf(errMsg))
-		return fmt.Errorf(errMsg)
+	// 等待片段实际写入完成
+	time.Sleep(100 * time.Millisecond)
+
+	// 如果所有节点都失败了，才返回错误
+	if len(errors) == len(peerSegments) {
+		return fmt.Errorf("所有节点下载失败: %v", errors)
 	}
 
-	// 处理临时错误
-	if len(tempErrors) > 0 {
-		logger.Warnf("发生临时错误: %v", tempErrors)
-		// 添加短暂延迟，避免立即重试
-		time.Sleep(100 * time.Millisecond)
-		return t.ForceSegmentVerify()
+	// 有部分成功就继续
+	if len(errors) > 0 {
+		logger.Warnf("部分节点下载失败: %v", errors)
 	}
 
 	return nil
-}
-
-// 判断是否为严重错误
-func isCriticalError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "data corruption") ||
-		strings.Contains(errStr, "checksum mismatch") ||
-		strings.Contains(errStr, "authentication failed")
 }
 
 // sendToPeer 向单个节点发送数据
@@ -413,6 +422,7 @@ func (t *DownloadTask) sendToPeer(peerID peer.ID, fileRecord *pb.DownloadFileRec
 		startIdx := i * segmentsPerGoroutine
 		endIdx := min((i+1)*segmentsPerGoroutine, segmentCount)
 
+		// 如果startIdx大于segmentCount，则退出
 		if startIdx >= segmentCount {
 			break
 		}
@@ -424,6 +434,7 @@ func (t *DownloadTask) sendToPeer(peerID peer.ID, fileRecord *pb.DownloadFileRec
 			defer wg.Done()
 			defer func() { <-sem }()
 
+			// 发送数据到节点
 			if err := t.workerSendSegments(peerID, fileRecord, segments[start:end]); err != nil {
 				logger.Errorf("worker %d 发送失败: %v", workerID, err)
 				errChan <- err
@@ -455,9 +466,8 @@ func (t *DownloadTask) sendToPeer(peerID peer.ID, fileRecord *pb.DownloadFileRec
 // 主要步骤：
 // 1. 创建连接
 // 2. 设置更大的缓冲区
-// 3. 创建带缓冲的读写器
-// 4. 处理每个分片
-// 5. 返回错误信息
+// 3. 处理每个分片
+// 4. 返回错误信息
 // 参数:
 //   - peerID: 目标节点ID
 //   - segments: 需要发送的分片列表
@@ -479,15 +489,25 @@ func (t *DownloadTask) workerSendSegments(peerID peer.ID, fileRecord *pb.Downloa
 		tcpConn.SetReadBuffer(MaxBlockSize)
 	}
 
-	// 创建带缓冲的读写器
-	writer := bufio.NewWriterSize(conn, MaxBlockSize)
-	reader := bufio.NewReaderSize(conn, MaxBlockSize)
-
 	// 处理每个分片
+	var errors []error
 	for _, segmentID := range segments {
-		if err := t.sendSegment(fileRecord, peerID, segmentID, conn, reader, writer); err != nil {
+		// 发送分片
+		if err := t.sendSegment(fileRecord, peerID, segmentID, conn); err != nil {
 			logger.Errorf("发送分片 %s 失败: %v", segmentID, err)
-			return err
+			// 下载失败时设置状态为失败
+			if updateErr := t.updateSegmentStatus(segmentID, pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_FAILED, peerID.String()); updateErr != nil {
+				logger.Warnf("更新片段状态为失败状态失败: %v", updateErr)
+			}
+			errors = append(errors, err)
+		}
+	}
+
+	// 如果有可恢复的错误，返回组合错误
+	if len(errors) > 0 {
+		return &SegmentErrors{
+			PeerID: peerID,
+			Errors: errors,
 		}
 	}
 
@@ -497,16 +517,28 @@ func (t *DownloadTask) workerSendSegments(peerID peer.ID, fileRecord *pb.Downloa
 // sendSegment 发送单个分片
 // 主要步骤：
 // 1. 获取分片数据
-// 2. 序列化数据
-// 3. 写入长度前缀
-// 4. 使用缓冲写入
-// 5. 刷新缓冲区
+// 2. 打印请求消息的详细内容
+// 3. 发送请求
+// 4. 接收响应
+// 5. 检查错误响应
+// 6. 验证并存储下载的文件片段
+// 7. 更新分片状态
+// 8. 获取进度
+// 9. 发送成功后通知片段完成
 // 参数:
+//   - fileRecord: 文件记录
+//   - peerID: 目标节点ID
 //   - segmentID: 分片ID
 //   - conn: 连接
-//   - reader: 读取器
-//   - writer: 写入器
-func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, peerID peer.ID, segmentID string, conn net.Conn, reader *bufio.Reader, writer *bufio.Writer) error {
+//
+// 返回值:
+//   - error: 如果发送过程中发生错误，返回相应的错误信息
+func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, peerID peer.ID, segmentID string, conn net.Conn) error {
+	// 开始下载时设置状态为下载中
+	if err := t.updateSegmentStatus(segmentID, pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_DOWNLOADING, peerID.String()); err != nil {
+		logger.Warnf("更新片段状态为下载中失败: %v", err)
+	}
+
 	// 获取分片数据
 	segmentContentRequest, segment, err := t.getSegmentData(fileRecord, segmentID)
 	if err != nil {
@@ -514,111 +546,179 @@ func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, peerID pee
 		return err
 	}
 
-	// 序列化数据
-	data, err := segmentContentRequest.Marshal()
+	// 打印请求消息的详细内容
+	logger.Infof("准备发送请求消息: %+v", segmentContentRequest)
+
+	// 发送请求
+	reqMsg := &SegmentRequestMessage{
+		Request: segmentContentRequest,
+	}
+
+	// 序列化测试
+	testData, err := reqMsg.Marshal()
 	if err != nil {
-		logger.Errorf("序列化数据失败: %v", err)
+		logger.Errorf("测试序列化失败: %v", err)
+		return err
+	}
+	logger.Infof("测试序列化数据(hex): %x", testData)
+
+	// 添加详细的请求日志
+	logger.Infof("发送分片请求: taskID=%s, fileID=%s, segmentID=%s, peerID=%s",
+		segmentContentRequest.TaskId,
+		segmentContentRequest.FileId,
+		segmentContentRequest.SegmentId,
+		peerID)
+
+	if err := defsproto.NewHandler(conn, &defsproto.Options{
+		MaxRetries:     3,
+		RetryDelay:     time.Second,
+		WriteTimeout:   ConnTimeout,
+		ReadTimeout:    ConnTimeout,
+		ProcessTimeout: ConnTimeout,
+		Rate:           1024 * 1024,      // 1MB/s
+		Window:         1024 * 1024 * 10, // 10MB window
+		Threshold:      1024 * 1024 * 5,  // 5MB threshold
+	}).SendMessage(reqMsg); err != nil {
+		logger.Errorf("发送请求失败: taskID=%s, segmentID=%s, err=%v",
+			t.TaskID(), segmentID, err)
 		return err
 	}
 
-	// 每次写入前重置超时
-	conn.SetDeadline(time.Now().Add(ConnTimeout))
-
-	// 写入长度前缀
-	lenBuf := make([]byte, 4)
-	lenBuf[0] = byte(len(data) >> 24)
-	lenBuf[1] = byte(len(data) >> 16)
-	lenBuf[2] = byte(len(data) >> 8)
-	lenBuf[3] = byte(len(data))
-
-	// 使用缓冲写入
-	if _, err := writer.Write(lenBuf); err != nil {
-		logger.Errorf("写入长度失败: %v", err)
-		return err
-	}
-	if _, err := writer.Write(data); err != nil {
-		logger.Errorf("写入数据失败: %v", err)
-		return err
-	}
-	if err := writer.Flush(); err != nil {
-		logger.Errorf("刷新缓冲区失败: %v", err)
+	// 接收响应
+	respMsg := &SegmentResponseMessage{}
+	if err := defsproto.NewHandler(conn, &defsproto.Options{
+		MaxRetries:     3,
+		RetryDelay:     time.Second,
+		WriteTimeout:   ConnTimeout,
+		ReadTimeout:    ConnTimeout,
+		ProcessTimeout: ConnTimeout,
+		Rate:           1024 * 1024,      // 1MB/s
+		Window:         1024 * 1024 * 10, // 10MB window
+		Threshold:      1024 * 1024 * 5,  // 5MB threshold
+	}).ReceiveMessage(respMsg); err != nil {
+		logger.Errorf("接收响应失败: taskID=%s, segmentID=%s, err=%v",
+			t.TaskID(), segmentID, err)
 		return err
 	}
 
-	// 重置读取超时
-	conn.SetDeadline(time.Now().Add(ConnTimeout))
+	// 处理响应消息
+	if respMsg.Response.HasError {
+		// 根据错误码进行不同的处理
+		switch respMsg.Response.ErrorCode {
+		case pb.SegmentError_SEGMENT_ERROR_SEGMENT_NOT_FOUND:
+			// 分片不存在，可以尝试从其他节点获取
+			logger.Warnf("分片不存在，将尝试其他节点: %s", respMsg.Response.ErrorMessage)
+			return fmt.Errorf("分片不存在: %s", respMsg.Response.ErrorMessage)
 
-	// 读取响应长度
-	lenBuf = make([]byte, 4)
-	if _, err := io.ReadFull(reader, lenBuf); err != nil {
-		logger.Errorf("读取响应长度失败: %v", err)
-		return err
+		case pb.SegmentError_SEGMENT_ERROR_FILE_PERMISSION:
+			// 权限错误，可能需要重新验证
+			logger.Errorf("文件访问权限错误: %s", respMsg.Response.ErrorMessage)
+			return fmt.Errorf("权限错误: %s", respMsg.Response.ErrorMessage)
+
+		case pb.SegmentError_SEGMENT_ERROR_SEGMENT_CORRUPTED:
+			// 分片损坏，需要从其他节点重新下载
+			logger.Errorf("分片数据损坏: %s", respMsg.Response.ErrorMessage)
+			return fmt.Errorf("分片损坏: %s", respMsg.Response.ErrorMessage)
+
+		case pb.SegmentError_SEGMENT_ERROR_SYSTEM:
+			// 系统错误(存储空间不足、速率限制、节点忙等)
+			switch {
+			case strings.Contains(respMsg.Response.ErrorMessage, "存储空间不足"):
+				logger.Errorf("节点存储空间不足: %s", respMsg.Response.ErrorMessage)
+				return fmt.Errorf("存储空间不足: %s", respMsg.Response.ErrorMessage)
+			case strings.Contains(respMsg.Response.ErrorMessage, "速率限制"):
+				logger.Warnf("节点速率限制: %s", respMsg.Response.ErrorMessage)
+				return fmt.Errorf("速率限制: %s", respMsg.Response.ErrorMessage)
+			case strings.Contains(respMsg.Response.ErrorMessage, "节点忙"):
+				logger.Warnf("节点忙: %s", respMsg.Response.ErrorMessage)
+				return fmt.Errorf("节点忙: %s", respMsg.Response.ErrorMessage)
+			default:
+				logger.Errorf("系统错误: %s", respMsg.Response.ErrorMessage)
+				return fmt.Errorf("系统错误: %s", respMsg.Response.ErrorMessage)
+			}
+
+		case pb.SegmentError_SEGMENT_ERROR_NETWORK,
+			pb.SegmentError_SEGMENT_ERROR_TIMEOUT:
+			// 系统级错误，可以重试
+			logger.Errorf("系统错误: %s (错误码: %v)",
+				respMsg.Response.ErrorMessage,
+				respMsg.Response.ErrorCode)
+			return fmt.Errorf("系统错误: %s", respMsg.Response.ErrorMessage)
+
+		default:
+			// 其他错误
+			logger.Errorf("未知错误: %s (错误码: %v)",
+				respMsg.Response.ErrorMessage,
+				respMsg.Response.ErrorCode)
+			return fmt.Errorf("远程节点返回错误: %s (错误码: %v)",
+				respMsg.Response.ErrorMessage,
+				respMsg.Response.ErrorCode)
+		}
 	}
 
-	// 解析响应长度
-	msgLen := int(lenBuf[0])<<24 | int(lenBuf[1])<<16 | int(lenBuf[2])<<8 | int(lenBuf[3])
-
-	// 验证响应长度
-	if msgLen <= 0 || msgLen > MaxBlockSize {
-		logger.Errorf("无效的响应长度: %d", msgLen)
-		return err
+	// 如果没有错误，继续处理正常响应
+	if respMsg.Response.SegmentId == "" {
+		logger.Errorf("响应中缺少分片ID")
+		return fmt.Errorf("响应中缺少分片ID")
 	}
 
-	// 读取响应数据
-	responseBuf := make([]byte, msgLen)
-	if _, err := io.ReadFull(reader, responseBuf); err != nil {
-		logger.Errorf("读取响应数据失败: %v", err)
-		return err
+	// 验证响应数据
+	if err := validateResponse(respMsg.Response); err != nil {
+		logger.Errorf("响应数据验证失败: %v", err)
+		return fmt.Errorf("响应数据无效: %v", err)
 	}
-
-	// 解析响应
-	response := &pb.SegmentContentResponse{}
-	if err := response.Unmarshal(responseBuf); err != nil {
-		logger.Errorf("解析响应失败: %v", err)
-		return err
-	}
-
-	// 打印接收到的分片信息（替换原有的简单日志）
-	logger.Infof("接收分片[%d] - 响应数据: 大小=%d bytes, 校验和=%d, 片段ID=%s, 发送节点=%s",
-		response.SegmentIndex,
-		len(response.SegmentContent),
-		response.Crc32Checksum,
-		response.SegmentId,
-		peerID.String())
 
 	// 验证并存储下载的文件片段
-	if err := ValidateAndStoreSegment(t.db, fileRecord.FirstKeyShare, response); err != nil {
-		logger.Errorf("验证响应数据失败: %v", err)
+	if err := ValidateAndStoreSegment(t.db, fileRecord.FirstKeyShare, respMsg.Response); err != nil {
+		logger.Errorf("验证并存储下载的文件片段失败: %v", err)
 		return err
 	}
+
 	// 更新分片状态
-	if err := t.updateSegmentStatus(segmentID); err != nil {
+	if err := t.updateSegmentStatus(segmentID, pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED, peerID.String()); err != nil {
 		logger.Errorf("更新分片状态失败: %v", err)
 		return err
 	}
 
-	// 获取进度
-	progress, err := t.GetProgress()
-	if err != nil {
-		logger.Errorf("获取进度失败: %v", err)
-		return nil
-	}
-	// 发送成功后通知片段完成
-	t.NotifySegmentStatus(&pb.DownloadChan{
-		TaskId:           t.taskId,                          // 设置任务ID
-		IsComplete:       progress == 100,                   // 检查是否所有分片都已完成
-		DownloadProgress: progress,                          // 获取当前上传进度(0-100)
-		TotalShards:      int64(len(fileRecord.SliceTable)), // 设置总分片数
-		SegmentId:        response.SegmentId,                // 设置分片ID
-		SegmentIndex:     response.SegmentIndex,             // 设置分片索引
-		SegmentSize:      segment.Size_,                     // 设置分片大小
-		IsRsCodes:        segment.IsRsCodes,                 // 设置是否使用纠删码
-		NodeId:           peerID.String(),                   // 设置存储节点ID
-		DownloadTime:     time.Now().Unix(),                 // 设置当前时间戳
-	})
+	// 异步通知状态更新
+	go func() {
+		// 获取进度
+		progress, err := t.GetProgress()
+		if err != nil {
+			logger.Errorf("获取进度失败: %v", err)
+			return
+		}
 
-	// 更新状态
-	return err
+		// 发送通知
+		t.NotifySegmentStatus(&pb.DownloadChan{
+			TaskId:           t.taskId,
+			IsComplete:       progress == 100,
+			DownloadProgress: progress,
+			TotalShards:      int64(len(fileRecord.SliceTable)),
+			SegmentId:        respMsg.Response.SegmentId,
+			SegmentIndex:     respMsg.Response.SegmentIndex,
+			SegmentSize:      segment.Size_,
+			IsRsCodes:        segment.IsRsCodes,
+			NodeId:           peerID.String(),
+			DownloadTime:     time.Now().Unix(),
+		})
+	}()
+
+	return nil
+}
+
+// validateResponse 验证响应数据完整性
+func validateResponse(resp *pb.SegmentContentResponse) error {
+	if resp.FileMeta == nil {
+		return fmt.Errorf("文件元数据为空")
+	}
+	if resp.P2PkScript == nil {
+		return fmt.Errorf("P2PK脚本为空")
+	}
+	if len(resp.Signature) == 0 {
+		return fmt.Errorf("签名数据为空")
+	}
+	return nil
 }
 
 // getSegmentData 获取分片数据
@@ -721,8 +821,8 @@ func (t *DownloadTask) handleSegmentVerify() error {
 		return fmt.Errorf("文件切片表为空: taskID=%s", t.taskId)
 	}
 
-	// 获取已完成的片段
-	completedSegments, err := downloadSegmentStore.FindByTaskIDAndStatus(
+	// 获取所有已完成的片段
+	segments, err := downloadSegmentStore.FindByTaskIDAndStatus(
 		t.taskId,
 		pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED,
 	)
@@ -730,29 +830,27 @@ func (t *DownloadTask) handleSegmentVerify() error {
 		logger.Errorf("获取已完成片段失败: taskID=%s, err=%v", t.taskId, err)
 		return err
 	}
-	completedCount := len(completedSegments)
 
 	// 获取所需的数据片段数量
 	requiredShards := getRequiredDataShards(fileRecord.SliceTable)
 
-	if completedCount >= requiredShards {
-		if err := t.ForceSegmentMerge(); err != nil {
-			logger.Errorf("强制触发片段合并 合并已下载的文件片段: taskID=%s, err=%v", t.taskId, err)
-			return err
+	// 打印片段统计信息
+	logger.Infof("片段统计: 已下载数=%d, 所需片段数=%d, 总片段数=%d",
+		len(segments), requiredShards, len(fileRecord.SliceTable))
+
+	// 检查是否有足够的片段
+	if len(segments) < requiredShards {
+		logger.Warnf("分片未全部下载完成: 已下载=%d, 所需数据片段=%d",
+			len(segments), requiredShards)
+		// 触发恢复操作
+		if err := t.ForceRecoverySegments(); err != nil {
+			logger.Errorf("触发片段恢复失败: %v", err)
 		}
-		return nil
+		return fmt.Errorf("数据片段未下载完成: 已下载=%d, 所需数据片段=%d",
+			len(segments), requiredShards)
 	}
 
-	// 如果完成数量不等于总片段数，说明存在未下载的片段
-	if completedCount != totalSegments {
-		logger.Infof("存在未下载的片段，触发片段处理: taskID=%s, 已完成=%d, 总数=%d",
-			t.taskId, completedCount, totalSegments)
-		// 强制触发片段处理
-		return t.ForceSegmentProcess()
-	}
-
-	// 如果完成数量等于总片段数，说明所有片段都已下载完成
-	logger.Infof("所有片段下载完成，触发文件合并处理: taskID=%s", t.taskId)
+	// 只有在有足够的片段时才进行合并
 	return t.ForceSegmentMerge()
 }
 
@@ -766,10 +864,22 @@ func (t *DownloadTask) handleSegmentVerify() error {
 // 返回值:
 //   - error: 如果合并过程中发生错误，返回相应的错误信息
 func (t *DownloadTask) handleSegmentMerge() error {
+	// 添加合并锁
+	t.mergeMutex.Lock()
+	defer t.mergeMutex.Unlock()
+
+	// 检查合并状态
+	if !t.mergeInProgress.CompareAndSwap(false, true) {
+		logger.Debug("合并已在进行中，跳过本次合并")
+		return nil
+	}
+	defer t.mergeInProgress.Store(false)
+
 	logger.Infof("开始合并文件片段: taskID=%s", t.taskId)
 
 	// 创建存储实例
 	downloadFileStore := database.NewDownloadFileStore(t.db)
+	downloadSegmentStore := database.NewDownloadSegmentStore(t.db)
 
 	// 获取文件记录
 	fileRecord, exists, err := downloadFileStore.Get(t.taskId)
@@ -781,46 +891,31 @@ func (t *DownloadTask) handleSegmentMerge() error {
 		return fmt.Errorf("文件记录不存在: taskID=%s", t.taskId)
 	}
 
+	// 获取所有已完成的片段
+	segments, err := downloadSegmentStore.FindByTaskIDAndStatus(
+		t.taskId,
+		pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED,
+	)
+	if err != nil {
+		logger.Errorf("获取已完成片段失败: taskID=%s, err=%v", t.taskId, err)
+		return err
+	}
+
 	// 获取所需的数据片段数量
 	requiredShards := getRequiredDataShards(fileRecord.SliceTable)
 
-	// 创建分片文件数组
-	shards := make([][]byte, len(fileRecord.SliceTable))
-	shardsPresent := 0
-
-	// 获取下载任务所有的切片信息
-	segments, err := GetListDownloadSegments(t.db, t.TaskID())
-	if err != nil {
-		logger.Errorf("获取下载片段列表失败: %v", err)
-		return err
+	// 检查是否有足够的片段
+	if len(segments) < requiredShards {
+		logger.Errorf("没有足够的片段进行合并: 需要 %d 个, 当前有 %d 个",
+			len(segments), requiredShards)
+		// 如果片段不足，触发继续下载
+		return t.ForceSegmentProcess()
 	}
 
-	// 读取所有下载的片段
-	for index := range fileRecord.SliceTable {
-		for _, v := range segments {
-			if v.SegmentIndex == index {
-
-				shards[index] = v.SegmentContent
-				shardsPresent++
-				break
-			}
-		}
-	}
-
-	// 检查是否有足够的分片来重构文件
-	if shardsPresent < requiredShards {
-		err := fmt.Errorf("没有足够的分片来重构文件，需要 %d 个，但只有 %d 个",
-			requiredShards, shardsPresent)
-		logger.Errorf(err.Error())
-		return err
-	}
-
-	// 创建Reed-Solomon编码器
-	rs, err := reedsolomon.New(requiredShards, len(shards)-requiredShards)
-	if err != nil {
-		logger.Errorf("创建Reed-Solomon编码器失败: %v", err)
-		return err
-	}
+	// 按片段索引排序
+	sort.Slice(segments, func(i, j int) bool {
+		return segments[i].SegmentIndex < segments[j].SegmentIndex
+	})
 
 	// 创建临时文件用于存储合并后的数据
 	tempFilePath := filepath.Join(fileRecord.TempStorage, fileRecord.FileId+".defs")
@@ -831,11 +926,35 @@ func (t *DownloadTask) handleSegmentMerge() error {
 	}
 	defer tempFile.Close()
 
-	// 使用JoinFile方法将分片合并为完整文件
-	if err := rs.Join(tempFile, shards, int(fileRecord.FileMeta.Size_)); err != nil {
-		os.Remove(fileRecord.TempStorage)
-		logger.Errorf("合并分片失败: %v", err)
-		return err
+	// 逐个处理片段
+	for _, segment := range segments {
+		// 读取加密数据
+		encryptedData, err := os.ReadFile(segment.StoragePath)
+		if err != nil {
+			logger.Errorf("读取临时文件失败: %v", err)
+			return err
+		}
+
+		// 解密并解压数据
+		decryptedData, err := DecompressAndDecryptSegmentContent(
+			fileRecord.FirstKeyShare,
+			segment.EncryptionKey, // 使用存储的加密密钥
+			encryptedData,
+			segment.Crc32Checksum,
+		)
+		if err != nil {
+			logger.Errorf("解密解压片段失败: %v", err)
+			return err
+		}
+
+		// 写入解密后的数据
+		if _, err := tempFile.Write(decryptedData); err != nil {
+			logger.Errorf("写入临时文件失败: %v", err)
+			return err
+		}
+
+		// 清理临时文件
+		os.Remove(segment.StoragePath)
 	}
 
 	// 构建基础文件路径
@@ -846,10 +965,14 @@ func (t *DownloadTask) handleSegmentMerge() error {
 
 	// 将临时文件重命名为最终文件
 	if err := os.Rename(tempFilePath, finalFilePath); err != nil {
-		os.Remove(fileRecord.TempStorage)
 		logger.Errorf("重命名文件失败: %v", err)
+		// 清理临时文件
+		os.Remove(tempFilePath)
 		return err
 	}
+
+	// 清理临时目录
+	os.RemoveAll(filepath.Join(fileRecord.TempStorage, t.taskId))
 
 	logger.Infof("文件 %s 合并完成，保存在 %s", fileRecord.FileMeta.Name, finalFilePath)
 
@@ -941,14 +1064,180 @@ func generateUniqueFilePath(basePath, extension string) string {
 // updateSegmentStatus 更新分片状态
 // 参数:
 //   - segmentID: 分片ID
+//   - status: 要更新的状态(下载中/已完成/失败)
+//   - peerID: 可选的节点ID，用于标记节点状态
 //
 // 返回值:
 //   - error: 如果更新状态失败，返回相应的错误信息
-func (t *DownloadTask) updateSegmentStatus(segmentID string) error {
+func (t *DownloadTask) updateSegmentStatus(segmentID string, status pb.SegmentDownloadStatus, peerID ...string) error {
 	downloadSegmentStore := database.NewDownloadSegmentStore(t.db)
-	if err := downloadSegmentStore.UpdateSegmentStatus(segmentID, pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED); err != nil {
+	if err := downloadSegmentStore.UpdateSegmentStatus(segmentID, status, peerID...); err != nil {
 		logger.Errorf("更新状态失败: %v", err)
 		return err
 	}
 	return nil
+}
+
+// TriggerSegmentIndexRequest 触发片段索引请求
+// 主要功能：
+// 1. 检查是否有正在进行的索引请求
+// 2. 检查下载是否已完成
+// 3. 获取当前下载进度
+// 4. 检查进度变化和重试次数
+// 5. 发送索引清单请求
+func (t *DownloadTask) TriggerSegmentIndexRequest() error {
+	// 检查任务是否已完成
+	progress, err := t.GetProgress()
+	if err != nil {
+		logger.Errorf("获取下载进度失败: %v", err)
+		return err
+	}
+
+	// 如果已完成,停止定时器并返回
+	if progress >= 100 {
+		t.stopIndexTicker()
+		return nil
+	}
+
+	// 使用原子操作检查是否已有请求在进行中
+	if !t.indexInProgress.CompareAndSwap(false, true) {
+		logger.Debug("索引请求正在进行中，跳过本次请求")
+		return nil
+	}
+	defer t.indexInProgress.Store(false)
+
+	t.indexInfoMutex.Lock()
+	defer t.indexInfoMutex.Unlock()
+
+	// 获取当前进度
+	currentProgress, err := t.GetProgress()
+	if err != nil {
+		logger.Errorf("获取当前进度失败: %v", err)
+		return err
+	}
+
+	// 检查进度变化
+	if currentProgress == t.lastIndexInfo.lastProgress {
+		t.lastIndexInfo.noProgressFor += time.Since(t.lastIndexInfo.timestamp)
+	} else {
+		// 有进度更新，重置计时
+		t.lastIndexInfo.noProgressFor = 0
+		t.lastIndexInfo.lastProgress = currentProgress
+	}
+
+	// 获取未完成片段列表
+	pendingSegmentIds, err := GetPendingSegments(t.db, t.TaskID())
+	if err != nil {
+		logger.Errorf("获取未完成片段列表失败: %v", err)
+		return err
+	}
+
+	// 如果没有未完成的片段，验证并可能完成任务
+	if len(pendingSegmentIds) == 0 {
+		t.stopIndexTicker() // 停止定时器
+		return t.ForceSegmentVerify()
+	}
+
+	// 计算当前请求的特征值
+	sort.Strings(pendingSegmentIds)
+	currentHash := fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(pendingSegmentIds, ","))))
+
+	now := time.Now()
+	if currentHash == t.lastIndexInfo.pendingIDs {
+		t.lastIndexInfo.retryCount++
+
+		// 根据无进度时间和重试次数调整策略
+		if t.lastIndexInfo.noProgressFor > 5*time.Minute || t.lastIndexInfo.retryCount >= 5 {
+			logger.Warnf("下载可能存在问题: taskID=%s, 无进度持续时间=%v, 重试次数=%d",
+				t.TaskID(), t.lastIndexInfo.noProgressFor, t.lastIndexInfo.retryCount)
+
+			// 调整定时器间隔
+			t.adjustIndexInterval()
+
+			if t.lastIndexInfo.retryCount >= 10 {
+				return fmt.Errorf("下载似乎已停滞，请检查网络连接")
+			}
+		}
+	} else {
+		// 新的请求内容，重置状态
+		t.lastIndexInfo.pendingIDs = currentHash
+		t.lastIndexInfo.retryCount = 0
+		t.resetIndexTicker() // 恢复正常的定时间隔
+	}
+
+	t.lastIndexInfo.timestamp = now
+
+	// 等待一小段时间，合并可能的多个请求
+	select {
+	case <-time.After(batchWindow):
+	case <-t.ctx.Done():
+		return fmt.Errorf("任务已取消")
+	}
+
+	// 发送索引清单请求
+	return t.ForceSegmentIndex()
+}
+
+// stopIndexTicker 停止索引请求定时器
+func (t *DownloadTask) stopIndexTicker() {
+	t.indexTickerMutex.Lock()
+	defer t.indexTickerMutex.Unlock()
+
+	if t.indexTicker != nil {
+		t.indexTicker.Stop()
+	}
+}
+
+// resetIndexTicker 重置索引请求定时器
+func (t *DownloadTask) resetIndexTicker() {
+	t.indexTickerMutex.Lock()
+	defer t.indexTickerMutex.Unlock()
+
+	if t.indexTicker != nil {
+		t.indexTicker.Stop()
+	}
+	t.indexTicker = time.NewTicker(30 * time.Second)
+}
+
+// adjustIndexInterval 调整索引请求间隔
+func (t *DownloadTask) adjustIndexInterval() {
+	t.indexTickerMutex.Lock()
+	defer t.indexTickerMutex.Unlock()
+
+	if t.indexTicker != nil {
+		t.indexTicker.Stop()
+	}
+
+	// 使用指数退避算法计算新间隔
+	baseInterval := 30 * time.Second
+	maxInterval := 2 * time.Minute
+	interval := baseInterval * time.Duration(1<<uint(t.lastIndexInfo.retryCount))
+
+	if interval > maxInterval {
+		interval = maxInterval
+	}
+
+	t.indexTicker = time.NewTicker(interval)
+	logger.Infof("调整索引请求间隔: taskID=%s, 新间隔=%v", t.TaskID(), interval)
+}
+
+// 添加自定义错误类型
+type SegmentError struct {
+	PeerID   peer.ID
+	Err      error
+	Segments []string
+}
+
+func (e *SegmentError) Error() string {
+	return fmt.Sprintf("节点 %s 发送失败: %v", e.PeerID, e.Err)
+}
+
+type SegmentErrors struct {
+	PeerID peer.ID
+	Errors []error
+}
+
+func (e *SegmentErrors) Error() string {
+	return fmt.Sprintf("节点 %s 发送过程中出现 %d 个错误: %v",
+		e.PeerID, len(e.Errors), e.Errors)
 }

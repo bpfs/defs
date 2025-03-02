@@ -470,19 +470,26 @@ func monitorDownloadProgress(db *badgerhold.Store, taskId string) {
 
 	logger.Infof("\n开始监控下载进度 - TaskId: %s", taskId)
 
+	// 首次检查任务是否存在
+	if _, _, _, err := store.TaskByFileID(taskId); err != nil {
+		logger.Errorf("任务不存在或已完成: TaskId=%s, Error=%v", taskId, err)
+		return
+	}
+
 	// 循环检查下载进度
 	for {
 		select {
 		case <-ctx.Done():
 			// 超时退出
-			logger.Infof("\n下载监控已结束 - TaskId: %s", taskId)
+			logger.Infof("\n下载监控已超时结束 - TaskId: %s", taskId)
 			return
 		case <-ticker.C:
 			// 获取下载进度
 			_, completedIndices, dataSegmentCount, err := store.TaskByFileID(taskId)
 			if err != nil {
-				logger.Errorf("获取下载进度失败: TaskId=%s, Error=%v", taskId, err)
-				continue
+				// 如果任务不存在,可能是已经完成并清理了,直接退出监控
+				logger.Infof("\n下载任务已结束 - TaskId: %s", taskId)
+				return
 			}
 
 			// 计算并显示完成率
@@ -554,69 +561,6 @@ func connectToBootstrapPeers(ctx context.Context, host host.Host, bootstrapPeers
 
 	return nil
 }
-
-// parseCommandLine 解析命令行输入，正确处理带引号和空格的参数
-// 参数:
-//   - cmd: 要解析的命令行字符串
-//
-// 返回值:
-//   - []string: 解析后参数列表
-// func parseCommandLine(cmd string) []string {
-// 	// 存储解析后的参数
-// 	var args []string
-// 	// 用于构建当前参数
-// 	var currentArg strings.Builder
-// 	// 标记是否在引号内
-// 	inQuotes := false
-// 	// 当前使用的引号字符
-// 	var quoteChar rune
-
-// 	// 历命令行字符串的每个字符
-// 	for _, char := range cmd {
-// 		switch char {
-// 		case '"', '\'':
-// 			if inQuotes && char == quoteChar {
-// 				// 如果在引号内且遇到相同的引号字符，结束引号
-// 				inQuotes = false
-// 				if currentArg.Len() > 0 {
-// 					args = append(args, currentArg.String())
-// 					currentArg.Reset()
-// 				}
-// 			} else if !inQuotes {
-// 				// 如果不在引号内，开始新的引号
-// 				inQuotes = true
-// 				quoteChar = char
-// 			} else {
-// 				// 如果在其他型的引号内，当作普通字符处理
-// 				currentArg.WriteRune(char)
-// 			}
-// 		case ' ':
-// 			if inQuotes {
-// 				// 如果在引号内，空格作为参数的一部分
-// 				currentArg.WriteRune(char)
-// 			} else if currentArg.Len() > 0 {
-// 				// 如果不在引号内且当前参数不为空，结束当前参数
-// 				args = append(args, currentArg.String())
-// 				currentArg.Reset()
-// 			}
-// 		default:
-// 			// 其他字符直接添加到当前参数
-// 			currentArg.WriteRune(char)
-// 		}
-// 	}
-
-// 	// 处理最后一个参数
-// 	if currentArg.Len() > 0 {
-// 		args = append(args, currentArg.String())
-// 	}
-
-// 	// 去除参数两端的空格和引号
-// 	for i, arg := range args {
-// 		args[i] = strings.Trim(arg, "\" '\t")
-// 	}
-
-// 	return args
-// }
 
 // handlePauseUpload 处理暂停上传任务的请求
 // 参数:

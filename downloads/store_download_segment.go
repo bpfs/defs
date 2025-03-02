@@ -1,7 +1,10 @@
 package downloads
 
 import (
+	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -115,7 +118,7 @@ func GetListDownloadSegments(db *badgerhold.Store, taskID string) ([]*pb.Downloa
 	store := database.NewDownloadSegmentStore(db)
 
 	// 获取所有分片记录
-	segments, err := store.FindByTaskID(taskID, true)
+	segments, err := store.FindByTaskID(taskID)
 	if err != nil {
 		logger.Errorf("获取分片记录失败: %v", err)
 		return nil, err
@@ -169,8 +172,9 @@ func GetSegmentStorageData(db *database.DB, hostID string, taskID string, fileID
 	// 打开片段文件
 	file, err := os.Open(filepath.Join(subDir, segmentStorage.SegmentId))
 	if err != nil {
+		// 过滤掉文件路径,只返回基本错误信息
 		logger.Errorf("打开文件失败: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("打开文件失败")
 	}
 	defer file.Close()
 
@@ -320,9 +324,37 @@ func GetPendingSegments(db *badgerhold.Store, taskID string) ([]string, error) {
 	// 收集未完成的片段ID
 	pendingSegmentIds := make([]string, 0)
 	for _, segment := range segments {
-		if !segment.IsRsCodes && segment.Status != pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED {
-			pendingSegmentIds = append(pendingSegmentIds, segment.SegmentId)
+		// 跳过校验片段
+		if segment.IsRsCodes {
+			continue
 		}
+
+		// 跳过已完成的片段
+		if segment.Status == pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED {
+			continue
+		}
+
+		// 检查是否有活跃的下载节点
+		hasActiveNode := false
+		if segment.SegmentNode != nil {
+			for _, isAvailable := range segment.SegmentNode {
+				if isAvailable {
+					hasActiveNode = true
+					break
+				}
+			}
+		}
+
+		// 如果片段正在下载或有活跃节点，跳过
+		if segment.Status == pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_DOWNLOADING || hasActiveNode {
+			continue
+		}
+
+		// 以下情况需要重新下载:
+		// 1. 状态为 UNSPECIFIED 且没有活跃节点
+		// 2. 状态为 PENDING 且没有活跃节点
+		// 3. 状态为 FAILED 且没有活跃节点
+		pendingSegmentIds = append(pendingSegmentIds, segment.SegmentId)
 	}
 
 	return pendingSegmentIds, nil
@@ -338,56 +370,77 @@ func GetPendingSegments(db *badgerhold.Store, taskID string) ([]string, error) {
 //
 // 返回值:
 // - error: 错误信息
-func ValidateAndStoreSegment(
-	db *badgerhold.Store,
-	shareOne []byte,
-	response *pb.SegmentContentResponse,
-) error {
-	// 验证片段签名
+func ValidateAndStoreSegment(db *badgerhold.Store, shareOne []byte, response *pb.SegmentContentResponse) error {
+	// 1. 验证签名
 	if err := VerifySegmentSignature(response); err != nil {
 		logger.Errorf("验证片段签名失败: %v", err)
 		return err
 	}
 
-	// 解密并解压缩片段内容
-	decryptedData, err := DecompressAndDecryptSegmentContent(
-		shareOne,
-		response.EncryptionKey,
-		response.SegmentContent,
-		response.Crc32Checksum,
-	)
-	if err != nil {
-		logger.Errorf("解密片段内容失败: %v", err)
+	// 2. 创建临时文件存储加密数据
+	tempDir := filepath.Join(os.TempDir(), "bpfs_downloads")
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		logger.Errorf("创建临时目录失败: %v", err)
 		return err
 	}
 
-	// // 验证数据完整性
-	// if err := VerifySegmentChecksum(
-	// 	decryptedData,
-	// 	response.Crc32Checksum,
-	// ); err != nil {
-	// 	logger.Errorf("验证片段校验和失败: %v", err)
-	// 	return err
-	// }
+	// 使用片段ID和校验和创建唯一的临时文件名
+	tempFileName := fmt.Sprintf("%s_%d", response.SegmentId, response.Crc32Checksum)
+	tempFilePath := filepath.Join(tempDir, tempFileName)
 
-	// 创建片段存储实例
+	// 使用流式写入替代一次性写入
+	f, err := os.OpenFile(tempFilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		logger.Errorf("创建临时文件失败: %v", err)
+		return err
+	}
+	defer f.Close()
+
+	// 使用缓冲写入器
+	bufWriter := bufio.NewWriterSize(f, 1024*1024) // 1MB buffer
+
+	// 分块写入数据
+	reader := bytes.NewReader(response.SegmentContent)
+	buf := make([]byte, 1024*1024) // 1MB chunks
+	for {
+		n, err := reader.Read(buf)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			logger.Errorf("读取数据失败: %v", err)
+			return err
+		}
+
+		if _, err := bufWriter.Write(buf[:n]); err != nil {
+			logger.Errorf("写入数据失败: %v", err)
+			return err
+		}
+	}
+
+	// 确保所有数据都写入磁盘
+	if err := bufWriter.Flush(); err != nil {
+		logger.Errorf("刷新缓冲区失败: %v", err)
+		return err
+	}
+
+	// 3. 更新片段记录
 	store := database.NewDownloadSegmentStore(db)
+	record := &pb.DownloadSegmentRecord{
+		SegmentId:     response.SegmentId,
+		SegmentIndex:  response.SegmentIndex,
+		TaskId:        response.TaskId,
+		Crc32Checksum: response.Crc32Checksum,
+		StoragePath:   tempFilePath,
+		EncryptionKey: response.EncryptionKey,
+		Status:        pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED,
+	}
 
-	// 更新片段状态和内容
-	if err := store.Update(&pb.DownloadSegmentRecord{
-		SegmentId:    response.SegmentId,    // 片段唯一标识
-		SegmentIndex: response.SegmentIndex, // 片段在文件中的索引位置
-		TaskId:       response.TaskId,       // 所属下载任务的ID
-
-		Size_: int64(len(decryptedData)), // 解密后的片段数据大小
-
-		Crc32Checksum: response.Crc32Checksum, // CRC32校验和,用于验证数据完整性
-
-		SegmentContent: decryptedData, // 解密后的片段内容
-
-		Status: pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED, // 片段下载状态设为已完成
-	}, true); err != nil {
-		logger.Errorf("更新片段数据失败: %v", err)
+	// 4. 更新数据库记录
+	if err := store.Update(record); err != nil {
+		// 清理临时文件
+		os.Remove(tempFilePath)
+		logger.Errorf("更新片段记录失败: %v", err)
 		return err
 	}
 
@@ -436,7 +489,7 @@ func GetSegmentStats(db *badgerhold.Store, taskID string) (*struct {
 	stats.ParitySegments.Pending = make(map[int64]string)
 
 	// 获取所有片段记录
-	segments, err := store.FindByTaskID(taskID, true)
+	segments, err := store.FindByTaskID(taskID)
 	if err != nil {
 		logger.Errorf("获取片段记录失败: %v", err)
 		return nil, err
@@ -449,7 +502,7 @@ func GetSegmentStats(db *badgerhold.Store, taskID string) (*struct {
 			stats.DataSegments.Total++
 			switch segment.Status {
 			case pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED:
-				if len(segment.SegmentContent) > 0 {
+				if segment.StoragePath != "" {
 					stats.DataSegments.Completed++
 				}
 			case pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_FAILED:
@@ -458,7 +511,7 @@ func GetSegmentStats(db *badgerhold.Store, taskID string) (*struct {
 		} else {
 			// 统计校验片段
 			if segment.Status == pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED &&
-				len(segment.SegmentContent) > 0 {
+				segment.StoragePath != "" {
 				stats.ParitySegments.Completed++
 			} else {
 				stats.ParitySegments.Pending[segment.SegmentIndex] = segment.SegmentId
@@ -484,7 +537,7 @@ func GetSegmentsForRecovery(db *badgerhold.Store, taskID string) (map[int64]stri
 	store := database.NewDownloadSegmentStore(db)
 
 	// 获取所有片段记录
-	segments, err := store.FindByTaskID(taskID, true)
+	segments, err := store.FindByTaskID(taskID)
 	if err != nil {
 		logger.Errorf("获取片段记录失败: %v", err)
 		return nil, err
@@ -512,7 +565,7 @@ func GetSegmentsForRecovery(db *badgerhold.Store, taskID string) (map[int64]stri
 			// 统计校验片段状态
 			switch segment.Status {
 			case pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED:
-				if len(segment.SegmentContent) > 0 {
+				if len(segment.StoragePath) > 0 {
 					completedParityCount++
 				}
 			case pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_FAILED:

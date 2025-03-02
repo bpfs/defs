@@ -1,7 +1,9 @@
 package database
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 
 	"github.com/bpfs/defs/v2/badgerhold"
 	"github.com/bpfs/defs/v2/pb"
@@ -70,14 +72,6 @@ func (s *DownloadSegmentStore) Update(record *pb.DownloadSegmentRecord, validate
 		return err
 	}
 
-	// 打印更新前的记录状态
-	// logger.Infof("更新前的记录状态: ID=%s", record.SegmentId)
-	// logger.Infof("- Status: %s", existingRecord.Status)
-	// logger.Infof("- SegmentIndex: %d", existingRecord.SegmentIndex)
-	// logger.Infof("- IsRsCodes: %v", existingRecord.IsRsCodes)
-	// logger.Infof("- ContentLength: %d", len(existingRecord.SegmentContent))
-	// logger.Infof("- TaskId: %s", existingRecord.TaskId)
-
 	// 检查字段是否需要更新
 	needsUpdate := false
 
@@ -119,26 +113,16 @@ func (s *DownloadSegmentStore) Update(record *pb.DownloadSegmentRecord, validate
 		needsUpdate = true
 	}
 
-	// 内容更新
-	if record.SegmentContent != nil {
-		// 打印更新前的内容长度
-		// logger.Infof("内容更新检查: ID=%s", record.SegmentId)
-		// logger.Infof("- 现有内容长度: %d", len(existingRecord.SegmentContent))
-		// logger.Infof("- 新内容长度: %d", len(record.SegmentContent))
-
-		// 如果传入有内容，直接更新
-		existingRecord.SegmentContent = record.SegmentContent
+	// StoragePath变更
+	if record.StoragePath != "" && record.StoragePath != existingRecord.StoragePath {
+		existingRecord.StoragePath = record.StoragePath
 		needsUpdate = true
+	}
 
-		// 更新校验和
-		if record.Crc32Checksum > 0 {
-			existingRecord.Crc32Checksum = record.Crc32Checksum
-		}
-
-		// logger.Infof("内容已更新: ID=%s, 新内容长度=%d, 校验和=%d",
-		// 	record.SegmentId,
-		// 	len(existingRecord.SegmentContent),
-		// 	existingRecord.Crc32Checksum)
+	// EncryptionKey变更
+	if record.EncryptionKey != nil && !bytes.Equal(record.EncryptionKey, existingRecord.EncryptionKey) {
+		existingRecord.EncryptionKey = record.EncryptionKey
+		needsUpdate = true
 	}
 
 	// 只有在字段发生变化时才执行更新
@@ -197,12 +181,11 @@ func (s *DownloadSegmentStore) Delete(segmentID string) error {
 // FindByTaskID 根据任务ID查找相关的片段记录
 // 参数:
 //   - taskID: 任务的唯一标识符
-//   - includeContent: 可选参数，是否包含片段内容，默认为 false
 //
 // 返回值:
 //   - []*pb.DownloadSegmentRecord: 符合条件的下载片段记录列表
 //   - error: 如果查找过程中出现错误，返回相应的错误信息
-func (s *DownloadSegmentStore) FindByTaskID(taskID string, includeContent ...bool) ([]*pb.DownloadSegmentRecord, error) {
+func (s *DownloadSegmentStore) FindByTaskID(taskID string) ([]*pb.DownloadSegmentRecord, error) {
 	// 先获取预计的记录数量
 	count, err := s.store.Count(&pb.DownloadSegmentRecord{}, badgerhold.Where("TaskId").Eq(taskID))
 	if err != nil {
@@ -215,13 +198,7 @@ func (s *DownloadSegmentStore) FindByTaskID(taskID string, includeContent ...boo
 	// 预分配切片容量
 	records := make([]*pb.DownloadSegmentRecord, 0, count)
 
-	// 检查是否需要包含内容
-	needContent := len(includeContent) > 0 && includeContent[0]
-
 	err = s.store.ForEach(badgerhold.Where("TaskId").Eq(taskID), func(record *pb.DownloadSegmentRecord) error {
-		// logger.Printf("处理记录: TaskId=%s, SegmentIndex=%d, SegmentId=%s",
-		// 	record.TaskId, record.SegmentIndex, record.SegmentId)
-
 		lightRecord := &pb.DownloadSegmentRecord{
 			SegmentId:     record.SegmentId,
 			SegmentIndex:  record.SegmentIndex,
@@ -230,11 +207,8 @@ func (s *DownloadSegmentStore) FindByTaskID(taskID string, includeContent ...boo
 			Crc32Checksum: record.Crc32Checksum,
 			IsRsCodes:     record.IsRsCodes,
 			Status:        record.Status,
-		}
-
-		// 如果需要包含内容，则复制内容
-		if needContent {
-			lightRecord.SegmentContent = record.SegmentContent
+			StoragePath:   record.StoragePath,
+			EncryptionKey: record.EncryptionKey,
 		}
 
 		records = append(records, lightRecord)
@@ -263,7 +237,7 @@ func (s *DownloadSegmentStore) FindByTaskID(taskID string, includeContent ...boo
 // 返回值:
 //   - []*pb.DownloadSegmentRecord: 符合条件的下载片段记录列表
 //   - error: 如果查找过程中出现错误，返回相应的错误信息
-func (s *DownloadSegmentStore) FindByTaskIDAndStatus(taskID string, status pb.SegmentDownloadStatus, includeContent ...bool) ([]*pb.DownloadSegmentRecord, error) {
+func (s *DownloadSegmentStore) FindByTaskIDAndStatus(taskID string, status pb.SegmentDownloadStatus) ([]*pb.DownloadSegmentRecord, error) {
 	// 先获取预计的记录数量
 	count, err := s.store.Count(&pb.DownloadSegmentRecord{},
 		badgerhold.Where("TaskId").Eq(taskID).And("Status").Eq(status))
@@ -274,9 +248,6 @@ func (s *DownloadSegmentStore) FindByTaskIDAndStatus(taskID string, status pb.Se
 
 	// 预分配切片容量
 	records := make([]*pb.DownloadSegmentRecord, 0, count)
-
-	// 检查是否需要包含内容
-	needContent := len(includeContent) > 0 && includeContent[0]
 
 	err = s.store.ForEach(
 		badgerhold.Where("TaskId").Eq(taskID).And("Status").Eq(status),
@@ -289,11 +260,8 @@ func (s *DownloadSegmentStore) FindByTaskIDAndStatus(taskID string, status pb.Se
 				Crc32Checksum: record.Crc32Checksum,
 				IsRsCodes:     record.IsRsCodes,
 				Status:        record.Status,
-			}
-
-			// 如果需要包含内容，则复制内容
-			if needContent {
-				lightRecord.SegmentContent = record.SegmentContent
+				StoragePath:   record.StoragePath,
+				EncryptionKey: record.EncryptionKey,
 			}
 
 			records = append(records, lightRecord)
@@ -340,9 +308,9 @@ func (s *DownloadSegmentStore) TaskByFileID(taskId string) (int, []int64, int, e
 			dataSegmentCount++
 		}
 
-		// 检查片段是否已完成下载（状态为完成且内容不为空）
+		// 检查片段是否已完成下载
 		if segment.Status == pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_COMPLETED &&
-			len(segment.SegmentContent) > 0 {
+			segment.StoragePath != "" {
 			completedIndices = append(completedIndices, segment.SegmentIndex)
 		}
 	}
@@ -364,7 +332,11 @@ func (s *DownloadSegmentStore) FindSegmentContent(segmentID string) ([]byte, err
 		logger.Errorf("获取片段内容失败: %v", err)
 		return nil, err
 	}
-	return record.SegmentContent, nil
+	// 从文件中读取内容
+	if record.StoragePath == "" {
+		return nil, fmt.Errorf("片段存储路径为空")
+	}
+	return os.ReadFile(record.StoragePath)
 }
 
 // GetDownloadSegmentBySegmentID 根据片段ID获取下载片段记录
@@ -414,11 +386,12 @@ func (s *DownloadSegmentStore) GetDownloadSegment(segmentID string) (*pb.Downloa
 // UpdateSegmentStatus 更新片段状态
 // 参数:
 //   - segmentID: string 片段ID
-//   - status: pb.SegmentUploadStatus 新的状态
+//   - status: pb.SegmentDownloadStatus 新的状态
+//   - peerID: string 可选的节点ID，用于标记节点状态
 //
 // 返回值:
 //   - error: 如果更新成功返回nil，否则返回错误信息
-func (s *DownloadSegmentStore) UpdateSegmentStatus(segmentID string, status pb.SegmentDownloadStatus) error {
+func (s *DownloadSegmentStore) UpdateSegmentStatus(segmentID string, status pb.SegmentDownloadStatus, peerID ...string) error {
 	// 获取片段记录
 	segment, err := s.GetDownloadSegment(segmentID)
 	if err != nil {
@@ -429,6 +402,14 @@ func (s *DownloadSegmentStore) UpdateSegmentStatus(segmentID string, status pb.S
 	// 更新状态
 	segment.Status = status
 
+	// 如果提供了节点ID且状态是失败，标记该节点不可用
+	if len(peerID) > 0 && status == pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_FAILED {
+		if segment.SegmentNode == nil {
+			segment.SegmentNode = make(map[string]bool)
+		}
+		segment.SegmentNode[peerID[0]] = false
+	}
+
 	// 保存更新
 	if err := s.UpdateDownloadSegment(segment); err != nil {
 		logger.Errorf("更新片段状态失败: segmentID=%s, status=%s, err=%v",
@@ -436,7 +417,6 @@ func (s *DownloadSegmentStore) UpdateSegmentStatus(segmentID string, status pb.S
 		return err
 	}
 
-	// logger.Infof("成功更新片段状态: segmentID=%s, status=%s",segmentID, status.String())
 	return nil
 }
 

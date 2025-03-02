@@ -3,7 +3,6 @@ package downloads
 import (
 	"bytes"
 	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -95,6 +94,12 @@ type ResourcePool struct {
 }
 
 // Global 获取全局资源池实例
+// 返回值:
+//   - *ResourcePool: 全局资源池实例
+//
+// 功能:
+//   - 创建并返回一个全局资源池实例
+//   - 使用sync.Once确保实例只被创建一次
 func Global() *ResourcePool {
 	globalPoolOnce.Do(func() {
 		globalPool = &ResourcePool{
@@ -116,21 +121,46 @@ func Global() *ResourcePool {
 }
 
 // GetStreamBuffer 获取流缓冲区
+// 返回值:
+//   - []byte: 获取的流缓冲区
+//
+// 功能:
+//   - 从资源池中获取一个预分配的流缓冲区
+//   - 使用sync.Pool管理缓冲区的生命周期
+
 func (p *ResourcePool) GetStreamBuffer() []byte {
 	return p.streamBufferPool.Get().([]byte)
 }
 
 // PutStreamBuffer 归还流缓冲区
+// 参数:
+//   - buf: 需要归还的流缓冲区
+//
+// 功能:
+//   - 将流缓冲区归还到资源池中
+//   - 使用sync.Pool管理缓冲区的生命周期
 func (p *ResourcePool) PutStreamBuffer(buf []byte) {
 	p.streamBufferPool.Put(buf)
 }
 
 // GetDecompressContext 获取解压缩上下文
+// 返回值:
+//   - *DecompressContext: 获取的解压缩上下文
+//
+// 功能:
+//   - 从资源池中获取一个预分配的解压缩上下文
+//   - 使用sync.Pool管理上下文的实例
 func (p *ResourcePool) GetDecompressContext() *DecompressContext {
 	return p.decompressPool.Get().(*DecompressContext)
 }
 
 // PutDecompressContext 归还解压缩上下文
+// 参数:
+//   - ctx: 需要归还的解压缩上下文
+//
+// 功能:
+//   - 将解压缩上下文归还到资源池中
+//   - 使用sync.Pool管理上下文的实例
 func (p *ResourcePool) PutDecompressContext(ctx *DecompressContext) {
 	p.decompressPool.Put(ctx)
 }
@@ -181,31 +211,28 @@ func decryptChunk(key []byte) ProcessFunc {
 		}
 
 		// 添加输入数据的详细日志
-		logger.Infof("开始解密数据块: 大小=%d bytes", len(data))
-		logger.Infof("使用的解密密钥: %s", hex.EncodeToString(key))
+		// logger.Infof("开始解密数据块: 大小=%d bytes", len(data))
+		// logger.Infof("使用的解密密钥: %s", hex.EncodeToString(key))
 
 		// 计算AES密钥
 		aesKey := md5.Sum(key)
-		logger.Infof("计算得到的AES密钥: %s", hex.EncodeToString(aesKey[:]))
+		// logger.Infof("计算得到的AES密钥: %s", hex.EncodeToString(aesKey[:]))
 
 		// 添加数据块前16字节的日志(如果存在)，用于验证GCM nonce
-		if len(data) >= 16 {
-			logger.Infof("数据块前16字节: %s", hex.EncodeToString(data[:16]))
-		}
+		// if len(data) >= 16 {
+		// 	logger.Infof("数据块前16字节: %s", hex.EncodeToString(data[:16]))
+		// }
 
 		// 解密数据
 		decryptedData, err := gcm.DecryptData(data, aesKey[:])
 		if err != nil {
 			logger.Errorf("解密数据失败: %v", err)
-			// 添加更多错误上下文
-			logger.Errorf("解密失败详情: 数据大小=%d bytes, 密钥大小=%d bytes",
-				len(data), len(aesKey))
 			return nil, err
 		}
 
 		// 添加解密结果的日志
-		logger.Infof("数据解密完成: 加密大小=%d bytes, 解密后大小=%d bytes",
-			len(data), len(decryptedData))
+		// logger.Infof("数据解密完成: 加密大小=%d bytes, 解密后大小=%d bytes",
+		// 	len(data), len(decryptedData))
 
 		return decryptedData, nil
 	}
@@ -238,8 +265,8 @@ func decompressChunk() ProcessFunc {
 			return nil, err
 		}
 
-		logger.Infof("解压完成: 压缩大小=%d bytes, 解压后大小=%d bytes",
-			len(data), ctx.buffer.Len())
+		// logger.Infof("解压完成: 压缩大小=%d bytes, 解压后大小=%d bytes",
+		// 	len(data), ctx.buffer.Len())
 
 		return ctx.buffer.Bytes(), nil
 	}
@@ -263,8 +290,8 @@ func decompressChunk() ProcessFunc {
 //   - 再解压缩数据
 func DecompressAndDecryptSegmentContent(shareOne, shareTwo []byte, encryptedData []byte, expectedChecksum uint32) ([]byte, error) {
 	// 检查密钥分片
-	logger.Infof("密钥分片1: %x", shareOne)
-	logger.Infof("密钥分片2: %x", shareTwo)
+	// logger.Infof("密钥分片1: %x", shareOne)
+	// logger.Infof("密钥分片2: %x", shareTwo)
 
 	// 恢复密钥
 	decryptionKey, err := files.RecoverSecretFromShares(shareOne, shareTwo)
@@ -274,24 +301,27 @@ func DecompressAndDecryptSegmentContent(shareOne, shareTwo []byte, encryptedData
 	}
 
 	// 添加密钥验证日志
-	logger.Infof("恢复的原始密钥: %x", decryptionKey)
-	aesKey := md5.Sum(decryptionKey)
-	logger.Infof("计算的AES密钥: %x", aesKey[:])
+	// logger.Infof("恢复的原始密钥: %x", decryptionKey)
+	// aesKey := md5.Sum(decryptionKey)
+	// logger.Infof("计算的AES密钥: %x", aesKey[:])
 
 	// 创建临时文件
 	tempFile, err := os.CreateTemp("", "decrypt-*")
 	if err != nil {
+		logger.Errorf("创建临时文件失败: %v", err)
 		return nil, err
 	}
 	defer os.Remove(tempFile.Name())
 
 	// 写入加密数据到临时文件
 	if _, err := tempFile.Write(encryptedData); err != nil {
+		logger.Errorf("写入加密数据失败: %v", err)
 		return nil, err
 	}
 
 	// 重置文件指针到开始位置
 	if _, err := tempFile.Seek(0, 0); err != nil {
+		logger.Errorf("重置文件指针失败: %v", err)
 		return nil, err
 	}
 

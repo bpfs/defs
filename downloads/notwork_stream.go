@@ -1,11 +1,11 @@
 package downloads
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -14,10 +14,11 @@ import (
 	"github.com/bpfs/defs/v2/fscfg"
 	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/pb"
+	defsproto "github.com/bpfs/defs/v2/utils/protocol"
+	"github.com/dep2p/go-dep2p/core/host"
 	"github.com/dep2p/pointsub"
 	"github.com/dep2p/pubsub"
 
-	"github.com/dep2p/go-dep2p/core/host"
 	"github.com/dep2p/go-dep2p/core/protocol"
 	"go.uber.org/fx"
 )
@@ -130,26 +131,172 @@ func RegisterDownloadStreamProtocol(lc fx.Lifecycle, input RegisterStreamProtoco
 
 }
 
-// handleDownloadConnection 下载业务处理
-// 参数:
-//   - ctx: 上下文
-//   - conn: 连接
-//   - usp: 流协议实例
-func handleDownloadConnection(ctx context.Context, conn net.Conn, usp *StreamProtocol) {
-	defer conn.Close()
+// SegmentMessage 定义片段消息接口
+type SegmentMessage interface {
+	defsproto.Message
+	GetSegmentId() string
+}
 
-	reader := bufio.NewReader(conn)
-	writer := bufio.NewWriter(conn)
+// SegmentRequestMessage 请求消息封装
+type SegmentRequestMessage struct {
+	Request *pb.SegmentContentRequest
+}
+
+// 实现 Message 接口
+func (m *SegmentRequestMessage) Marshal() ([]byte, error) {
+	// 添加日志记录序列化前的数据
+	logger.Infof("序列化请求消息: taskID=%s, fileID=%s, segmentID=%s",
+		m.Request.TaskId,
+		m.Request.FileId,
+		m.Request.SegmentId)
+
+	data, err := m.Request.Marshal()
+	if err != nil {
+		logger.Errorf("序列化请求消息失败: %v", err)
+		return nil, err
+	}
+	logger.Infof("序列化后的数据(hex): %x", data)
+	return data, nil
+}
+
+func (m *SegmentRequestMessage) Unmarshal(data []byte) error {
+	if m.Request == nil {
+		m.Request = &pb.SegmentContentRequest{}
+	}
+
+	// 添加反序列化前数据的十六进制打印
+	logger.Infof("准备反序列化的数据(hex): %x", data)
+
+	// 解析消息包装器
+	wrapper := &defsproto.MessageWrapper{}
+	if err := wrapper.Unmarshal(data); err != nil {
+		logger.Errorf("解析消息包装器失败: %v, 数据(hex): %x", err, data)
+		return err
+	}
+
+	// 使用包装器中的实际负载
+	// logger.Infof("解析后的负载数据(hex): %x", wrapper.Payload)
+
+	// 反序列化实际的消息内容
+	err := m.Request.Unmarshal(wrapper.Payload)
+	if err != nil {
+		logger.Errorf("反序列化请求消息失败: %v, 数据(hex): %x", err, wrapper.Payload)
+		return err
+	}
+
+	// 添加日志记录反序列化后的数据
+	logger.Infof("反序列化请求消息: taskID=%s, fileID=%s, segmentID=%s",
+		m.Request.TaskId,
+		m.Request.FileId,
+		m.Request.SegmentId)
+
+	return nil
+}
+
+func (m *SegmentRequestMessage) GetSegmentId() string {
+	return m.Request.SegmentId
+}
+
+// SegmentResponseMessage 响应消息封装
+type SegmentResponseMessage struct {
+	Response *pb.SegmentContentResponse
+}
+
+// Marshal 实现 Message 接口
+func (m *SegmentResponseMessage) Marshal() ([]byte, error) {
+	if m.Response == nil {
+		return nil, fmt.Errorf("response is nil")
+	}
+	return m.Response.Marshal()
+}
+
+func (m *SegmentResponseMessage) Unmarshal(data []byte) error {
+	if m.Response == nil {
+		m.Response = &pb.SegmentContentResponse{}
+	}
+
+	// 添加调试日志
+	logger.Infof("开始反序列化响应消息, 数据长度=%d", len(data))
+
+	// 解析消息包装器
+	wrapper := &defsproto.MessageWrapper{}
+	if err := wrapper.Unmarshal(data); err != nil {
+		logger.Errorf("解析消息包装器失败: %v, 数据(hex): %x", err, data)
+		return err
+	}
+
+	// 尝试反序列化实际的消息内容
+	err := m.Response.Unmarshal(wrapper.Payload)
+	if err != nil {
+		logger.Errorf("响应消息反序列化失败: %v, 数据前50字节(hex): %x",
+			err, wrapper.Payload[:min(50, len(wrapper.Payload))])
+		return err
+	}
+
+	// 只有在非错误响应时才验证必要字段
+	if !m.Response.HasError {
+		if m.Response.SegmentId == "" {
+			logger.Errorf("响应消息中缺少分片ID")
+			return fmt.Errorf("响应消息中缺少分片ID")
+		}
+	}
+
+	// 添加成功日志
+	if m.Response.HasError {
+		logger.Infof("响应消息反序列化成功: 错误信息=%s, 错误码=%v",
+			m.Response.ErrorMessage,
+			m.Response.ErrorCode)
+	} else {
+		logger.Infof("响应消息反序列化成功: segmentID=%s, dataSize=%d",
+			m.Response.SegmentId,
+			len(m.Response.SegmentContent))
+	}
+
+	return nil
+}
+
+func (m *SegmentResponseMessage) GetSegmentId() string {
+	if m.Response == nil {
+		return ""
+	}
+	return m.Response.SegmentId
+}
+
+// handleDownloadConnection 修改连接处理
+func handleDownloadConnection(ctx context.Context, conn net.Conn, usp *StreamProtocol) {
+	// 创建协议处理器
+	handler := defsproto.NewHandler(conn, &defsproto.Options{
+		MaxRetries:     3,
+		RetryDelay:     time.Second,
+		HeartBeat:      30 * time.Second,
+		DialTimeout:    ConnTimeout,
+		WriteTimeout:   ConnTimeout * 2, // 增加写超时
+		ReadTimeout:    ConnTimeout * 2, // 增加读超时
+		ProcessTimeout: ConnTimeout * 2, // 增加处理超时
+		MaxConns:       100,
+		Rate:           50 * 1024 * 1024, // 50MB/s
+		Window:         20 * 1024 * 1024, // 20MB window
+		Threshold:      10 * 1024 * 1024, // 10MB threshold
+		QueueSize:      1000,
+		QueuePolicy:    defsproto.PolicyBlock,
+	})
+	defer func() {
+		handler.StopHeartbeat() // 确保心跳停止
+		handler.Close()
+	}()
+
+	// 启动心跳
+	handler.StartHeartbeat()
+
+	// 启动消息处理
+	handler.StartQueueProcessor(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			// 每次处理前重置超时
-			conn.SetDeadline(time.Now().Add(ConnTimeout))
-
-			if err := handleSegmentData(reader, writer, usp); err != nil {
+			if err := handleSegmentData(handler, usp); err != nil {
 				if err != io.EOF {
 					logger.Errorf("处理分片数据失败: %v", err)
 				}
@@ -159,110 +306,104 @@ func handleDownloadConnection(ctx context.Context, conn net.Conn, usp *StreamPro
 	}
 }
 
-// handleSegmentData 处理分片数据的通用函数
-// 参数:
-//   - reader: *bufio.Reader 读取器，用于读取数据
-//   - writer: *bufio.Writer 写入器，用于写入数据
-//   - usp: *StreamProtocol 流协议实例
-//
-// 返回值:
-//   - error: 如果在处理过程中发生错误，返回相应的错误信息
-func handleSegmentData(reader *bufio.Reader, writer *bufio.Writer, usp *StreamProtocol) error {
-	// 创建一个可重用的长度缓冲区
-	lenBuf := make([]byte, 4)
+// handleSegmentData 使用协议处理器处理数据
+func handleSegmentData(handler *defsproto.Handler, usp *StreamProtocol) error {
+	// 接收请求消息
+	reqMsg := &SegmentRequestMessage{
+		Request: &pb.SegmentContentRequest{},
+	}
 
-	// 读取请求长度
-	if _, err := io.ReadFull(reader, lenBuf); err != nil {
+	if err := handler.ReceiveMessage(reqMsg); err != nil {
+		// 如果是EOF，属于正常连接关闭
 		if err == io.EOF {
-			return io.EOF
+			return err
 		}
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			logger.Warnf("读取消息超时，将重试: %v", err)
-			return nil
-		}
-		logger.Errorf("读取消息长度失败: %v", err)
-		sendErrorResponse(writer, "读取消息失败")
-		return err
+		logger.Errorf("接收请求消息失败: %v", err)
+		return sendErrorResponse(handler, pb.SegmentError_SEGMENT_ERROR_NETWORK, "接收请求消息失败")
 	}
 
-	// 解析请求长度
-	msgLen := int(lenBuf[0])<<24 | int(lenBuf[1])<<16 | int(lenBuf[2])<<8 | int(lenBuf[3])
-
-	// 验证消息长度
-	if msgLen <= 0 || msgLen > MaxBlockSize {
-		logger.Errorf("无效的消息长度: %d", msgLen)
-		sendErrorResponse(writer, fmt.Sprintf("无效的消息长度: %d", msgLen))
-		return fmt.Errorf("无效的消息长度: %d", msgLen)
-	}
-
-	// 读取请求内容
-	msgBuf := make([]byte, msgLen)
-	if _, err := io.ReadFull(reader, msgBuf); err != nil {
-		if err == io.EOF {
-			return io.EOF
-		}
-		logger.Errorf("读取消息内容失败: %v", err)
-		sendErrorResponse(writer, "读取消息失败")
-		return err
-	}
-
-	// 解析载荷
-	payload := new(pb.SegmentContentRequest)
-	if err := payload.Unmarshal(msgBuf); err != nil {
-		logger.Errorf("解码请求载荷失败: %v", err)
-		sendErrorResponse(writer, "解码失败")
-		return err
+	// 验证接收到的消息
+	if reqMsg.Request == nil {
+		logger.Errorf("请求消息为空")
+		return sendErrorResponse(handler, pb.SegmentError_SEGMENT_ERROR_INVALID_REQUEST, "请求消息为空")
 	}
 
 	// 验证载荷
-	if err := validatePayload(payload, usp); err != nil {
-		logger.Errorf("验证载荷失败: %v", err)
-		sendErrorResponse(writer, err.Error())
-		return err
-	}
-	// TODO:这里应该获取判断内容组成一个结构体返回，然后发送方接收？？？
+	if err := validatePayload(reqMsg.Request, usp); err != nil {
+		logger.Errorf("验证载荷失败: taskID=%s, fileID=%s, segmentID=%s, error=%v",
+			reqMsg.Request.TaskId,
+			reqMsg.Request.FileId,
+			reqMsg.Request.SegmentId,
+			err)
 
-	// 获取片段存储数据
-	segmentStorageData, err := GetSegmentStorageData(usp.db, usp.host.ID().String(),
-		payload.TaskId, payload.FileId, payload.SegmentId)
+		// 根据具体错误类型返回对应的错误码
+		var errCode pb.SegmentError
+		switch {
+		case reqMsg.Request.FileId == "":
+			errCode = pb.SegmentError_SEGMENT_ERROR_INVALID_FILEID
+		case reqMsg.Request.SegmentId == "":
+			errCode = pb.SegmentError_SEGMENT_ERROR_INVALID_SEGMENTID
+		case reqMsg.Request.TaskId == "":
+			errCode = pb.SegmentError_SEGMENT_ERROR_INVALID_TASKID
+		case reqMsg.Request.PubkeyHash == nil:
+			errCode = pb.SegmentError_SEGMENT_ERROR_INVALID_REQUEST
+			err = fmt.Errorf("公钥哈希为空")
+		default:
+			errCode = pb.SegmentError_SEGMENT_ERROR_INVALID_REQUEST
+		}
+		return sendErrorResponse(handler, errCode, err.Error())
+	}
+
+	// 获取片段数据
+	segmentData, err := GetSegmentStorageData(usp.db, usp.host.ID().String(),
+		reqMsg.Request.TaskId, reqMsg.Request.FileId, reqMsg.Request.SegmentId)
 	if err != nil {
-		logger.Errorf("获取片段数据失败: %v", err)
-		sendErrorResponse(writer, err.Error())
-		return err
+		logger.Errorf("获取片段数据失败: taskID=%s, fileID=%s, segmentID=%s, error=%v",
+			reqMsg.Request.TaskId,
+			reqMsg.Request.FileId,
+			reqMsg.Request.SegmentId,
+			err)
+
+		var errCode pb.SegmentError
+		if os.IsNotExist(err) {
+			errCode = pb.SegmentError_SEGMENT_ERROR_SEGMENT_NOT_FOUND
+		} else if os.IsPermission(err) {
+			errCode = pb.SegmentError_SEGMENT_ERROR_FILE_PERMISSION
+		} else {
+			errCode = pb.SegmentError_SEGMENT_ERROR_SYSTEM
+			// 错误信息中包含具体原因，接收方会根据消息内容处理
+		}
+		return sendErrorResponse(handler, errCode, err.Error())
 	}
 
-	// 序列化响应数据
-	responseData, err := segmentStorageData.Marshal()
-	if err != nil {
-		logger.Errorf("序列化响应数据失败: %v", err)
-		sendErrorResponse(writer, err.Error())
-		return err
+	// 验证返回的数据完整性
+	if segmentData == nil {
+		logger.Errorf("获取到的片段数据为空")
+		return sendErrorResponse(handler, pb.SegmentError_SEGMENT_ERROR_SEGMENT_CORRUPTED, "片段数据为空")
 	}
 
-	// 重用 lenBuf 写入响应长度
-	msgLen = len(responseData)
-	lenBuf[0] = byte(msgLen >> 24)
-	lenBuf[1] = byte(msgLen >> 16)
-	lenBuf[2] = byte(msgLen >> 8)
-	lenBuf[3] = byte(msgLen)
-
-	// 写入长度和数据
-	if _, err := writer.Write(lenBuf); err != nil {
-		logger.Errorf("写入响应长度失败: %v", err)
-		return err
+	// 发送响应
+	respMsg := &SegmentResponseMessage{
+		Response: segmentData,
 	}
 
-	if _, err := writer.Write(responseData); err != nil {
-		logger.Errorf("写入响应数据失败: %v", err)
-		return err
+	if err := handler.SendMessage(respMsg); err != nil {
+		logger.Errorf("发送响应失败: %v", err)
+		return sendErrorResponse(handler, pb.SegmentError_SEGMENT_ERROR_NETWORK, "发送响应失败")
 	}
-
-	if err := writer.Flush(); err != nil {
-		logger.Errorf("刷新响应缓冲区失败: %v", err)
-		return err
-	}
-
 	return nil
+}
+
+// sendErrorResponse 使用协议发送错误响应
+func sendErrorResponse(handler *defsproto.Handler, errCode pb.SegmentError, errMsg string) error {
+	resp := &SegmentResponseMessage{
+		Response: &pb.SegmentContentResponse{
+			HasError:     true,
+			ErrorMessage: errMsg,
+			ErrorCode:    errCode,
+		},
+	}
+	return handler.SendMessage(resp)
 }
 
 // validatePayload 验证载荷数据
@@ -295,85 +436,3 @@ func validatePayload(payload *pb.SegmentContentRequest, usp *StreamProtocol) err
 
 	return nil
 }
-
-// 辅助函数：发送错误响应
-// 参数:
-//   - writer: *bufio.Writer 写入器，用于写入错误响应
-//   - msg: string 错误消息
-//
-// 返回值:
-//   - error: 如果在发送过程中发生错误，返回相应的错误信息
-func sendErrorResponse(writer *bufio.Writer, msg string) error {
-	return sendResponse(writer, fmt.Sprintf("错误: %s\n", msg))
-}
-
-// 辅助函数：发送响应
-// 参数:
-//   - writer: *bufio.Writer 写入器，用于写入响应
-//   - msg: string 响应消息
-//
-// 返回值:
-//   - error: 如果在发送过程中发生错误，返回相应的错误信息
-func sendResponse(writer *bufio.Writer, msg string) error {
-	if _, err := writer.WriteString(msg); err != nil {
-		logger.Errorf("发送响应失败: %v", err)
-		return err
-	}
-	return writer.Flush()
-}
-
-// // handleRequestSegment 处理请求数据片段的请求
-// // 参数:
-// //   - req: 包含请求的详细信息
-// //   - res: 用于设置响应内容
-// //
-// // 返回值:
-// //   - int32 - 状态码，200表示成功，其他表示失败
-// //   - string - 状态消息，成功或错误描述
-// //
-// // 功能:
-// //   - 解析请求载荷
-// //   - 获取片段存储数据
-// //   - 序列化响应数据
-// //   - 返回处理结果
-// func handleRequestSegment(req *streams.RequestMessage, res *streams.ResponseMessage) (int32, string) {
-// 	// 创建一个新的 ContinuousDownloadRequest 对象用于解析请求载荷
-// 	payload := new(pb.SegmentContentRequest)
-// 	// 尝试解析请求载荷，如果失败则返回错误
-// 	if err := payload.Unmarshal(req.Payload); err != nil {
-// 		// 记录解码错误日志
-// 		logger.Errorf("解码错误: %v", err)
-// 		// 返回错误状态码和消息
-// 		return 6603, "解码错误"
-// 	}
-
-// 	// 记录收到片段请求的日志
-// 	logger.Infof("收到片段请求:  TaskID= %s, FileID= %s, SegmentIndex= %d, SegmentId= %s", payload.FileId, payload.TaskId, payload.SegmentIndex, payload.SegmentId)
-
-// 	// 获取片段存储数据
-// 	response, err := GetSegmentStorageData(sp.db, sp.host.ID().String(),
-// 		payload.TaskId, payload.FileId, payload.SegmentId)
-// 	if err != nil {
-// 		logger.Errorf("获取片段数据失败: %v", err)
-// 		return 500, err.Error()
-// 	}
-
-// 	// 序列化响应载荷
-// 	responseData, err := response.Marshal()
-// 	// 如果序列化失败，记录错误日志并返回
-// 	if err != nil {
-// 		// 记录序列化响应数据失败的错误日志
-// 		logger.Errorf("序列化响应数据失败: %v", err)
-// 		// 返回错误状态码和消息
-// 		return 500, "序列化响应数据失败"
-// 	}
-
-// 	// 设置响应内容
-// 	res.Data = responseData
-
-// 	// 记录成功发送片段的日志
-// 	logger.Infof("成功发送片段: FileID=%s, SegmentIndex=%d, 响应大小=%d字节",
-// 		payload.FileId, response.SegmentIndex, len(responseData))
-// 	// 返回成功状态码和消息
-// 	return 200, "成功"
-// }

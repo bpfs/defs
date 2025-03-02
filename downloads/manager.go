@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	MaxSessions = 10 // 允许的最大并发会话数
+	MaxSessions = 3 // 允许的最大并发会话数
 )
 
 // DownloadManager 管理所有下载任务，提供文件下载的统一入口和管理功能
@@ -202,7 +202,8 @@ func NewDownloadManager(lc fx.Lifecycle, input NewDownloadManagerInput) (out New
 		routingTable: input.RoutingTable,
 		tasks:        sync.Map{},
 		downloadChan: make(chan string, 5),
-		statusChan:   make(chan *pb.DownloadChan, 1),
+		statusChan:   make(chan *pb.DownloadChan, 100),
+		errChan:      make(chan error, 100),
 	}
 
 	// 将创建的 DownloadManager 实例赋值给输出

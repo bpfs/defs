@@ -38,6 +38,39 @@ enum SegmentDownloadStatus {
   SEGMENT_DOWNLOAD_STATUS_FAILED = 4;
 }
 
+// SegmentError 定义分片传输过程中可能出现的错误类型
+enum SegmentError {
+  // 未知错误
+  SEGMENT_ERROR_UNSPECIFIED = 0;
+  
+  // 系统错误
+  SEGMENT_ERROR_SYSTEM = 1;        // 系统级错误(如内存不足等)
+  SEGMENT_ERROR_NETWORK = 2;       // 网络错误
+  SEGMENT_ERROR_TIMEOUT = 3;       // 超时错误
+  
+  // 文件错误
+  SEGMENT_ERROR_FILE_NOT_FOUND = 10;    // 文件不存在
+  SEGMENT_ERROR_FILE_CORRUPTED = 11;    // 文件损坏
+  SEGMENT_ERROR_FILE_PERMISSION = 12;   // 文件权限错误
+  
+  // 分片错误
+  SEGMENT_ERROR_SEGMENT_NOT_FOUND = 20;   // 分片不存在
+  SEGMENT_ERROR_SEGMENT_CORRUPTED = 21;   // 分片损坏
+  SEGMENT_ERROR_SEGMENT_VERIFY = 22;      // 分片验证失败
+  
+  // 参数错误  
+  SEGMENT_ERROR_INVALID_REQUEST = 30;    // 无效的请求
+  SEGMENT_ERROR_INVALID_TASKID = 31;     // 无效的任务ID
+  SEGMENT_ERROR_INVALID_FILEID = 32;     // 无效的文件ID
+  SEGMENT_ERROR_INVALID_SEGMENTID = 33;  // 无效的分片ID
+  
+  // 添加一些新的错误类型
+  SEGMENT_ERROR_STORAGE_FULL = 40;      // 存储空间不足
+  SEGMENT_ERROR_RATE_LIMITED = 41;      // 速率限制
+  SEGMENT_ERROR_PEER_BUSY = 42;         // 节点忙
+  SEGMENT_ERROR_PEER_OFFLINE = 43;      // 节点离线
+}
+
 // DownloadFileRecord 包含待下载文件的详细信息及其分片信息
 message DownloadFileRecord {
   // 任务唯一标识，用于在系统中唯一识别该下载任务
@@ -80,15 +113,18 @@ message DownloadSegmentRecord {
   // 当前片段的CRC32校验和
   // @gotags: badgerhold:"index"
   uint32 crc32_checksum = 5;
-  // 当前片段的解密后内容
-  bytes segment_content = 6;
+  // 文件片段的加密密钥，用于解密片段内容
+  bytes encryption_key = 6;
+  // 加密数据在本地存储的路径
+  string storage_path = 7;
   // 是否是纠删码片段，用于标识该片段是原始数据还是冗余数据
-  bool is_rs_codes = 7;
+  bool is_rs_codes = 8;
   // 分片所在节点，及其是否可用
-  map<string,bool> segment_node = 8;
+  map<string,bool> segment_node = 9;
   // 分片的下载状态，描述该片段的下载进度和结果
   // @gotags: badgerhold:"index"
-  SegmentDownloadStatus status = 9;
+  SegmentDownloadStatus status = 10;
+
 }
 
 // DownloadChan 用于刷新下载任务的通道
@@ -229,4 +265,8 @@ message SegmentContentResponse {
   map<int64, HashTable> slice_table = 11;
   // 本地可用的分片索引数组
   map<int64, string> available_slices = 12;
+  // 错误相关字段
+  bool has_error = 13;                    // 是否存在错误
+  string error_message = 14;              // 错误详细信息
+  SegmentError error_code = 15;           // 错误码,使用枚举类型
 }

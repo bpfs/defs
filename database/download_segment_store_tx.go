@@ -2,8 +2,6 @@
 package database
 
 import (
-	"bytes"
-	"crypto/sha256"
 	"fmt"
 
 	"github.com/bpfs/defs/v2/badgerhold"
@@ -108,7 +106,7 @@ func (s *DownloadSegmentStore) UpdateTx(txn *badger.Txn, record *pb.DownloadSegm
 	}
 
 	// 内容变更检查
-	if record.SegmentContent != nil {
+	if record.StoragePath != "" {
 		shouldUpdate := true
 		// 如果需要校验内容
 		if len(validateContent) > 0 && validateContent[0] {
@@ -116,14 +114,12 @@ func (s *DownloadSegmentStore) UpdateTx(txn *badger.Txn, record *pb.DownloadSegm
 			if record.Crc32Checksum > 0 && existingRecord.Crc32Checksum > 0 {
 				shouldUpdate = record.Crc32Checksum != existingRecord.Crc32Checksum
 			} else {
-				// 否则使用SHA256比较
-				oldHash := sha256.Sum256(existingRecord.SegmentContent)
-				newHash := sha256.Sum256(record.SegmentContent)
-				shouldUpdate = !bytes.Equal(oldHash[:], newHash[:])
+				// 比较存储路径
+				shouldUpdate = record.StoragePath != existingRecord.StoragePath
 			}
 		}
 		if shouldUpdate {
-			existingRecord.SegmentContent = record.SegmentContent
+			existingRecord.StoragePath = record.StoragePath
 			needsUpdate = true
 		}
 	}
@@ -184,7 +180,7 @@ func (s *DownloadSegmentStore) DeleteTx(txn *badger.Txn, segmentID string) error
 // 返回值:
 //   - []*pb.DownloadSegmentRecord: 符合条件的下载片段记录列表（不含片段内容）
 //   - error: 如果查找过程中出现错误，返回相应的错误信息
-func (s *DownloadSegmentStore) FindByTaskIDTx(txn *badger.Txn, taskID string, includeContent ...bool) ([]*pb.DownloadSegmentRecord, error) {
+func (s *DownloadSegmentStore) FindByTaskIDTx(txn *badger.Txn, taskID string) ([]*pb.DownloadSegmentRecord, error) {
 	// 先获取预计的记录数量
 	count, err := s.store.TxCount(txn, &pb.DownloadSegmentRecord{}, badgerhold.Where("TaskId").Eq(taskID))
 	if err != nil {
@@ -195,9 +191,6 @@ func (s *DownloadSegmentStore) FindByTaskIDTx(txn *badger.Txn, taskID string, in
 	// 预分配切片容量
 	records := make([]*pb.DownloadSegmentRecord, 0, count)
 
-	// 检查是否需要包含内容
-	needContent := len(includeContent) > 0 && includeContent[0]
-
 	err = s.store.TxForEach(txn, badgerhold.Where("TaskId").Eq(taskID), func(record *pb.DownloadSegmentRecord) error {
 		lightRecord := &pb.DownloadSegmentRecord{
 			SegmentId:     record.SegmentId,
@@ -207,11 +200,8 @@ func (s *DownloadSegmentStore) FindByTaskIDTx(txn *badger.Txn, taskID string, in
 			Crc32Checksum: record.Crc32Checksum,
 			IsRsCodes:     record.IsRsCodes,
 			Status:        record.Status,
-		}
-
-		// 如果需要包含内容，则复制内容
-		if needContent {
-			lightRecord.SegmentContent = record.SegmentContent
+			StoragePath:   record.StoragePath,
+			EncryptionKey: record.EncryptionKey,
 		}
 
 		records = append(records, lightRecord)
