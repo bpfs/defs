@@ -357,11 +357,11 @@ func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) er
 		logger.Warnf("发生临时错误: %v", tempErrors)
 		// 添加短暂延迟，避免立即重试
 		time.Sleep(100 * time.Millisecond)
-		// 继续触发验证
-		return t.ForceSegmentVerify()
+
 	}
 
-	return nil
+	// 继续触发验证
+	return t.ForceSegmentVerify()
 }
 
 // sendToPeer 向单个节点发送数据
