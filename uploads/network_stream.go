@@ -340,7 +340,7 @@ func processPayload(payload *pb.FileSegmentStorage, usp *StreamProtocol) error {
 	payload.SegmentContent = nil
 
 	// 将payload发送到转发通道
-	usp.upload.TriggerForward(payload)
+	//	usp.upload.TriggerForward(payload)
 
 	// 清空数据和请求载荷以释放内存
 	payload = nil
