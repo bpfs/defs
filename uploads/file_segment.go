@@ -180,16 +180,10 @@ func (tm *TempFileManager) doCleanup() {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	for key, file := range tm.files {
+	for _, file := range tm.files {
 		if file != nil {
 			file.Close()
-			if err := os.Remove(file.Name()); err != nil {
-				logger.Warnf("删除临时文件失败: key=%s file=%s %v",
-					key, file.Name(), err)
-			} else {
-				logger.Infof("成功删除临时文件: key=%s file=%s",
-					key, file.Name())
-			}
+			_ = os.Remove(file.Name())
 		}
 	}
 	tm.files = make(map[string]*os.File)
@@ -201,7 +195,7 @@ func (tm *TempFileManager) doCleanup() {
 //
 // 返回值:
 //   - error: 清理失败错误
-func (tm *TempFileManager) CleanupFilesByType(fileType string) error {
+func (tm *TempFileManager) CleanupFilesByType(fileType string) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -209,19 +203,11 @@ func (tm *TempFileManager) CleanupFilesByType(fileType string) error {
 		if strings.HasPrefix(key, fileType+"_") {
 			if file != nil {
 				file.Close()
-				if err := os.Remove(file.Name()); err != nil {
-					logger.Warnf("删除临时文件失败: key=%s file=%s %v",
-						key, file.Name(), err)
-					return err
-				} else {
-					logger.Infof("成功删除临时文件: key=%s file=%s",
-						key, file.Name())
-				}
+				_ = os.Remove(file.Name())
 				delete(tm.files, key)
 			}
 		}
 	}
-	return nil
 }
 
 // CleanupTaskSegmentFiles 清理特定任务的所有临时文件
@@ -611,11 +597,6 @@ func processShards(db *badgerhold.Store, taskID, fileID string, pk []byte, tempF
 				<-sem // 释放信号量
 				wg.Done()
 
-				// 立即清理资源
-				if f != nil {
-					f.Close()
-				}
-
 				tempFiles[int(index)] = nil
 			}()
 
@@ -700,14 +681,14 @@ func processShardContent(db *badgerhold.Store, taskID, fileID string, file *os.F
 		},
 	}
 
-	file.Close()           // 压缩完成后立即关闭原始文件
-	os.Remove(file.Name()) // 删除原始文件
-
 	// 流式处理
 	if err := compressPipe.Process(); err != nil {
 		logger.Errorf("流式处理失败: %v", err)
 		return err
 	}
+
+	file.Close()           // 压缩完成后立即关闭原始文件
+	os.Remove(file.Name()) // 删除原始文件
 
 	// 获取压缩后的文件大小
 	compressedInfo, err := compressedFile.Stat()

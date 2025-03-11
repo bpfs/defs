@@ -388,6 +388,7 @@ func (t *UploadTask) sendToPeer(peerID peer.ID, segments []string) error {
 		}
 
 		if isCriticalError(err) {
+			logger.Errorf("发送失败，错误严重: peer=%s, err=%v", peerID, err)
 			return err
 		}
 
@@ -565,6 +566,7 @@ func (t *UploadTask) processSegments(peerID peer.ID, conn net.Conn, segments []s
 	defer protocolHandler.Close()
 
 	for _, segmentID := range segments {
+		// 发送分片
 		if err := t.sendSegmentWithHandler(peerID, segmentID, protocolHandler); err != nil {
 			if isConnectionError(err) {
 				logger.Warnf("连接错误, 重试: %v", err)
@@ -889,7 +891,7 @@ func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, *
 	// logger.Infof("Share #%d 十六进制值: %s", 1, hex.EncodeToString(encryptionKey))
 
 	// 构造分片存储对象
-	return &pb.FileSegmentStorage{
+	result := &pb.FileSegmentStorage{
 		FileId:         fileRecord.FileId,                   // 文件ID
 		Name:           fileRecord.FileMeta.Name,            // 文件名
 		Size_:          fileRecord.FileMeta.Size_,           // 文件大小
@@ -908,7 +910,16 @@ func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, *
 		Signature:      signature,                           // 数字签名
 		Shared:         false,                               // 是否共享
 		Version:        version,                             // 版本
-	}, segment, fileRecord, nil
+	}
+
+	// 帮助内存释放：重要数据已经被复制到result中，可以清空这些引用
+	signatureData = nil
+	encryptedData = nil
+
+	// 强制执行一次GC
+	runtime.GC()
+
+	return result, segment, fileRecord, nil
 }
 
 // updateSegmentStatus 更新分片状态
