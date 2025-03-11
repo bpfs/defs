@@ -83,7 +83,9 @@ func NewSafeRWMutex(opts ...func(*MutexConfig)) (*SafeRWMutex, error) {
 
 	// 验证配置
 	if err := validateMutexConfig(config); err != nil {
-		return nil, fmt.Errorf("配置无效: %v", err)
+		logger.Errorf("配置无效: %v", err)
+		return nil, err
+
 	}
 
 	// 创建实例

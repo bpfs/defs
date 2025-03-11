@@ -122,6 +122,7 @@ func NewMemoryManager(opts ...func(*MemoryConfig)) (*MemoryManager, error) {
 
 	// 验证配置
 	if err := validateConfig(config); err != nil {
+		logger.Errorf("配置无效: %v", err)
 		return nil, fmt.Errorf("配置无效: %v", err)
 	}
 
@@ -216,6 +217,7 @@ func (mm *MemoryManager) checkAndUpdateMetrics() error {
 	// 获取系统内存信息
 	v, err := mem.VirtualMemory()
 	if err != nil {
+		logger.Errorf("获取内存信息失败: %v", err)
 		return fmt.Errorf("获取内存信息失败: %v", err)
 	}
 
@@ -366,6 +368,7 @@ func (mm *MemoryManager) GetMemoryStats() (*MemoryMetrics, error) {
 	// 获取系统内存信息
 	vmStat, err := mem.VirtualMemory()
 	if err != nil {
+		logger.Errorf("获取系统内存信息失败: %v", err)
 		return nil, fmt.Errorf("获取系统内存信息失败: %v", err)
 	}
 

@@ -130,14 +130,14 @@ func (m *UploadManager) forwardToNode(peer peer.ID, payload *pb.FileSegmentStora
 	}
 	defer conn.Close()
 
-	// 创建StreamUtils实例
-	streamUtils := NewStreamUtils(conn)
+	// 创建ProtocolHandler实例
+	protocolHandler := NewProtocolHandler(conn)
 
 	// 写入数据
-	if err := streamUtils.WriteSegmentData(payload); err != nil {
+	if err := protocolHandler.WriteSegmentData(payload); err != nil {
 		return err
 	}
 
 	// 读取响应
-	return streamUtils.ReadResponse()
+	return protocolHandler.ReadResponse()
 }

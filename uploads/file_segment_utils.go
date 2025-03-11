@@ -3,7 +3,6 @@ package uploads
 import (
 	"crypto/ecdsa"
 	"crypto/md5"
-	"os"
 
 	"github.com/bpfs/defs/v2/pb"
 	sign "github.com/bpfs/defs/v2/sign/ecdsa"
@@ -12,14 +11,14 @@ import (
 // cleanupTempFiles 清理临时文件
 // 参数:
 //   - files: 临时文件数组
-func cleanupTempFiles(files []*os.File) {
-	for _, f := range files {
-		if f != nil {
-			f.Close()
-			os.Remove(f.Name())
-		}
-	}
-}
+// func cleanupTempFiles(files []*os.File) {
+// 	for _, f := range files {
+// 		if f != nil {
+// 			f.Close()           // 关闭文件
+// 			os.Remove(f.Name()) // 删除临时文件
+// 		}
+// 	}
+// }
 
 // generateSignature 使用私钥对数据进行签名
 // 参数:

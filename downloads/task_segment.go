@@ -400,13 +400,8 @@ func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) 
 //   - error: 如果发送过程中发生错误，返回相应的错误信息
 func (t *DownloadTask) sendToPeer(peerID peer.ID, fileRecord *pb.DownloadFileRecord, segments []string, sem chan struct{}) error {
 	segmentCount := len(segments)
-	logger.Infof("向节点发送数据: peerID=%s, segmentCount=%d", peerID, segmentCount)
-
-	// 动态计算worker数量
-	workerCount := min(
-		min(maxWorkersPerPeer, (segmentCount+segmentsPerWorker-1)/segmentsPerWorker),
-		maxTotalWorkers,
-	)
+	// 减小并发数
+	workerCount := min(5, (segmentCount+segmentsPerWorker-1)/segmentsPerWorker)
 
 	if segmentCount == 0 {
 		return nil
@@ -434,13 +429,18 @@ func (t *DownloadTask) sendToPeer(peerID peer.ID, fileRecord *pb.DownloadFileRec
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			// 发送数据到节点
-			if err := t.workerSendSegments(peerID, fileRecord, segments[start:end]); err != nil {
-				logger.Errorf("worker %d 发送失败: %v", workerID, err)
-				errChan <- err
-				return
+			// 添加错误重试
+			for retries := 0; retries < 3; retries++ {
+				if err := t.workerSendSegments(peerID, fileRecord, segments[start:end]); err != nil {
+					if retries == 2 {
+						errChan <- err
+						return
+					}
+					time.Sleep(time.Second * time.Duration(retries+1))
+					continue
+				}
+				break
 			}
-			logger.Infof("worker %d 完成发送: start=%d, end=%d", workerID, start, end)
 		}(i, startIdx, endIdx)
 	}
 
@@ -465,16 +465,19 @@ func (t *DownloadTask) sendToPeer(peerID peer.ID, fileRecord *pb.DownloadFileRec
 // workerSendSegments 工作协程发送片段
 // 主要步骤：
 // 1. 创建连接
-// 2. 设置更大的缓冲区
+// 2. 设置读写缓冲和超时
 // 3. 处理每个分片
 // 4. 返回错误信息
 // 参数:
 //   - peerID: 目标节点ID
 //   - segments: 需要发送的分片列表
+//   - conn: 连接
 //
 // 返回值:
 //   - error: 如果发送过程中发生错误，返回相应的错误信息
 func (t *DownloadTask) workerSendSegments(peerID peer.ID, fileRecord *pb.DownloadFileRecord, segments []string) error {
+	var errors []error
+
 	// 创建连接
 	conn, err := pointsub.Dial(t.ctx, t.host, peerID, protocol.ID(StreamRequestSegmentProtocol))
 	if err != nil {
@@ -483,35 +486,69 @@ func (t *DownloadTask) workerSendSegments(peerID peer.ID, fileRecord *pb.Downloa
 	}
 	defer conn.Close()
 
-	// 设置更大的缓冲区
+	// 设置读写缓冲和超时
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
 		tcpConn.SetWriteBuffer(MaxBlockSize)
 		tcpConn.SetReadBuffer(MaxBlockSize)
 	}
 
-	// 处理每个分片
-	var errors []error
+	// 使用指数退避重试
+	backoff := 100 * time.Millisecond
+	maxBackoff := 5 * time.Second
+
 	for _, segmentID := range segments {
-		// 发送分片
-		if err := t.sendSegment(fileRecord, peerID, segmentID, conn); err != nil {
-			logger.Errorf("发送分片 %s 失败: %v", segmentID, err)
-			// 下载失败时设置状态为失败
-			if updateErr := t.updateSegmentStatus(segmentID, pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_FAILED, peerID.String()); updateErr != nil {
-				logger.Warnf("更新片段状态为失败状态失败: %v", updateErr)
+		success := false
+		retries := 0
+		for !success && retries < 3 {
+			// 设置本次操作的超时
+			if tcpConn, ok := conn.(*net.TCPConn); ok {
+				tcpConn.SetDeadline(time.Now().Add(10 * time.Second))
 			}
-			errors = append(errors, err)
+
+			if err := t.sendSegment(fileRecord, peerID, segmentID, conn); err != nil {
+				logger.Warnf("发送分片失败(重试 %d): %v", retries, err)
+				retries++
+				time.Sleep(backoff)
+				backoff = min(backoff*2, maxBackoff)
+				// 如果是连接错误，重新建立连接
+				if isConnectionError(err) {
+					conn.Close()
+					conn, err = pointsub.Dial(t.ctx, t.host, peerID, protocol.ID(StreamRequestSegmentProtocol))
+					if err != nil {
+						logger.Errorf("重新建立连接失败: %v", err)
+						break
+					}
+				}
+				continue
+			}
+			success = true
+		}
+
+		if !success {
+			if err := t.updateSegmentStatus(segmentID, pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_FAILED, peerID.String()); err != nil {
+				logger.Warnf("更新片段状态为失败状态失败: %v", err)
+			}
+			errors = append(errors, fmt.Errorf("分片 %s 发送失败", segmentID))
 		}
 	}
 
-	// 如果有可恢复的错误，返回组合错误
 	if len(errors) > 0 {
 		return &SegmentErrors{
 			PeerID: peerID,
 			Errors: errors,
 		}
 	}
-
 	return nil
+}
+
+// isConnectionError 判断是否为连接相关错误
+func isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "connection") ||
+		strings.Contains(err.Error(), "stream reset") ||
+		strings.Contains(err.Error(), "broken pipe")
 }
 
 // sendSegment 发送单个分片

@@ -15,7 +15,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/googleapis/google-cloud-go-testing v0.0.0-20210719221736-1c9a4c676720
 	github.com/jbenet/go-temp-err-catcher v0.1.0
-	github.com/klauspost/cpuid/v2 v2.2.9
+	github.com/klauspost/cpuid/v2 v2.2.10
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/minio/sha256-simd v1.0.1
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
@@ -28,7 +28,7 @@ require (
 	github.com/tyler-smith/go-bip32 v1.0.0
 	go.uber.org/fx v1.23.0
 	golang.org/x/crypto v0.32.0
-	golang.org/x/sys v0.29.0
+	golang.org/x/sys v0.30.0
 	golang.org/x/text v0.21.0
 	golang.org/x/time v0.5.0
 	google.golang.org/api v0.188.0

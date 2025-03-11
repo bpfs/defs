@@ -6,12 +6,28 @@ import (
 )
 
 // generateTempFilename 生成唯一的临时文件名并创建文件
+// 参数:
+//   - basePath: string (可选) 临时文件的基础路径
+//
 // 返回值：
 //   - string: 生成的临时文件路径
 //   - error: 如果创建失败则返回错误
-func generateTempFilename() (string, error) {
-	// 使用系统临时目录创建临时文件
-	f, err := os.CreateTemp("", "defs_tempfile_*")
+func generateTempFilename(basePath ...string) (string, error) {
+	pattern := "defs_tempfile_*"
+	dir := ""
+
+	// 如果提供了基础路径，使用它
+	if len(basePath) > 0 && basePath[0] != "" {
+		dir = basePath[0]
+		// 确保目录存在
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			logger.Errorf("创建临时目录失败: %v", err)
+			return "", err
+		}
+	}
+
+	// 创建临时文件
+	f, err := os.CreateTemp(dir, pattern)
 	if err != nil {
 		logger.Errorf("生成临时文件名失败: %v", err)
 		return "", err

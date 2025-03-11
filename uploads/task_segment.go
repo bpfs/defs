@@ -560,15 +560,18 @@ func (t *UploadTask) processSegments(peerID peer.ID, conn net.Conn, segments []s
 		tcpConn.SetReadBuffer(MaxBlockSize)
 	}
 
+	// 创建一个协议处理器用于所有片段
+	protocolHandler := NewProtocolHandler(conn)
+	defer protocolHandler.Close()
+
 	for _, segmentID := range segments {
-		if err := t.sendSegment(peerID, segmentID, conn); err != nil {
+		if err := t.sendSegmentWithHandler(peerID, segmentID, protocolHandler); err != nil {
 			if isConnectionError(err) {
 				logger.Warnf("连接错误, 重试: %v", err)
 				return err
 			}
 			logger.Errorf("发送分片失败: %v", err)
 		}
-
 	}
 	return nil
 }
@@ -593,22 +596,12 @@ func isConnectionError(err error) bool {
 	return strings.Contains(errStr, "connection") ||
 		strings.Contains(errStr, "broken pipe") ||
 		strings.Contains(errStr, "reset by peer") ||
-		strings.Contains(errStr, "timeout")
+		strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "closed")
 }
 
-// sendSegment 发送单个分片
-// 主要步骤：
-// 1. 获取分片数据
-// 2. 序列化数据
-// 3. 写入长度前缀
-// 4. 使用缓冲写入
-// 5. 刷新缓冲区
-// 参数:
-//   - segmentID: 分片ID
-//   - conn: 连接
-//   - reader: 读取器
-//   - writer: 写入器
-func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn) error {
+// sendSegmentWithHandler 使用已存在的协议处理器发送单个分片
+func (t *UploadTask) sendSegmentWithHandler(peerID peer.ID, segmentID string, protocolHandler *ProtocolHandler) error {
 	// 获取分片数据
 	storage, segment, fileRecord, err := t.getSegmentData(segmentID)
 	if err != nil {
@@ -620,17 +613,14 @@ func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn
 	logger.Infof("发送分片[%d] - 准备发送: 大小=%d bytes, 校验和=%d, 接收节点=%s",
 		segment.SegmentIndex, len(storage.SegmentContent), segment.Crc32Checksum, peerID.String())
 
-	// 创建StreamUtils实例
-	streamUtils := NewStreamUtils(conn)
-
 	// 写入数据
-	if err := streamUtils.WriteSegmentData(storage); err != nil {
+	if err := protocolHandler.WriteSegmentData(storage); err != nil {
 		logger.Errorf("写入数据失败: %v", err)
 		return err
 	}
 
 	// 读取响应
-	if err := streamUtils.ReadResponse(); err != nil {
+	if err := protocolHandler.ReadResponse(); err != nil {
 		logger.Errorf("读取响应失败: %v", err)
 		return err
 	}
@@ -648,7 +638,7 @@ func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn
 
 	// 发送成功后通知片段完成
 	t.NotifySegmentStatus(&pb.UploadChan{
-		TaskId:         t.taskId,
+		TaskId:         t.TaskID(),
 		IsComplete:     progress == 100,
 		UploadProgress: progress,
 		TotalShards:    int64(len(fileRecord.SliceTable)),
@@ -661,6 +651,15 @@ func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn
 	})
 
 	return nil
+}
+
+// sendSegment 发送单个分片 (保留向后兼容，但实际使用sendSegmentWithHandler)
+func (t *UploadTask) sendSegment(peerID peer.ID, segmentID string, conn net.Conn) error {
+	// 创建协议处理器
+	protocolHandler := NewProtocolHandler(conn)
+	defer protocolHandler.Close()
+
+	return t.sendSegmentWithHandler(peerID, segmentID, protocolHandler)
 }
 
 // handleSegmentVerify 处理片段验证
@@ -797,15 +796,15 @@ func (t *UploadTask) handleFileFinalize() error {
 		return err
 	}
 
-	// 4. 按顺序清理所有临时文件
+	// 4. 清理临时文件
 	// 4.1 清理加密临时文件
 	if err := tempfile.CleanupTempFiles(); err != nil {
 		logger.Warnf("清理加密临时文件失败: err=%v", err)
 	}
 
-	// 4.2 清理分片临时文件
-	if err := CleanupSegmentTempFiles(); err != nil {
-		logger.Warnf("清理分片临时文件失败: err=%v", err)
+	// 4.2 清理该任务的分片临时文件
+	if err := CleanupTaskSegmentFiles(t.TaskID()); err != nil {
+		logger.Warnf("清理任务[%s]分片临时文件失败: err=%v", t.TaskID(), err)
 	}
 
 	// 4.3 强制执行一次GC

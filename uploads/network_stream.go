@@ -2,13 +2,13 @@
 package uploads
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"net"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +20,7 @@ import (
 	"github.com/bpfs/defs/v2/pb"
 	"github.com/bpfs/defs/v2/segment"
 	"github.com/bpfs/defs/v2/utils/paths"
+	defsproto "github.com/bpfs/defs/v2/utils/protocol"
 	"github.com/dep2p/pointsub"
 	"github.com/dep2p/pubsub"
 
@@ -44,6 +45,109 @@ var (
 	// 工作通道
 	workChan = make(chan *processTask, maxWorkers*10)
 )
+
+// 定义用于文件分片传输的消息类型
+type SegmentMessage interface {
+	defsproto.Message
+	GetSegmentId() string
+}
+
+// SegmentDataMessage 表示要发送的分片数据
+type SegmentDataMessage struct {
+	Payload *pb.FileSegmentStorage
+}
+
+// Marshal 将消息序列化为字节数组
+func (m *SegmentDataMessage) Marshal() ([]byte, error) {
+	if m.Payload == nil {
+		return nil, fmt.Errorf("payload is nil")
+	}
+
+	// 添加日志记录序列化前的数据
+	logger.Infof("序列化分片数据: segmentID=%s, size=%d bytes, checksum=%d",
+		m.Payload.SegmentId,
+		len(m.Payload.SegmentContent),
+		m.Payload.Crc32Checksum)
+
+	// 直接序列化payload即可，protocol.Handler会负责包装
+	return m.Payload.Marshal()
+}
+
+// Unmarshal 从字节数组反序列化消息
+func (m *SegmentDataMessage) Unmarshal(data []byte) error {
+	// 确保payload已初始化
+	if m.Payload == nil {
+		m.Payload = &pb.FileSegmentStorage{}
+	}
+
+	// 解析消息包装器
+	wrapper := &defsproto.MessageWrapper{}
+	if err := wrapper.Unmarshal(data); err != nil {
+		logger.Errorf("解析消息包装器失败: %v, 数据前50字节(hex): %x", err, data[:min(50, len(data))])
+		return err
+	}
+
+	// 使用包装器中的实际负载
+	return m.Payload.Unmarshal(wrapper.Payload)
+}
+
+// GetSegmentId 获取分片ID
+func (m *SegmentDataMessage) GetSegmentId() string {
+	if m.Payload == nil || m.Payload.SegmentId == "" {
+		return "unknown"
+	}
+	return m.Payload.SegmentId
+}
+
+// SegmentResponseMessage 表示分片传输的响应
+type SegmentResponseMessage struct {
+	Success bool
+	Message string
+	Error   string
+}
+
+// Marshal 将响应消息序列化为字节数组
+func (m *SegmentResponseMessage) Marshal() ([]byte, error) {
+	// 使用简单格式: "success:message"或"error:message"
+	var status string
+	if m.Success {
+		status = "success:" + m.Message
+	} else {
+		status = "error:" + m.Error
+	}
+
+	// 不需要创建MessageWrapper，protocol.Handler会自动处理
+	return []byte(status), nil
+}
+
+// Unmarshal 从字节数组反序列化响应消息
+func (m *SegmentResponseMessage) Unmarshal(data []byte) error {
+	// 解析消息包装器
+	wrapper := &defsproto.MessageWrapper{}
+	if err := wrapper.Unmarshal(data); err != nil {
+		logger.Errorf("解析消息包装器失败: %v, 数据前50字节(hex): %x", err, data[:min(50, len(data))])
+		return err
+	}
+
+	// 解析格式: "success:message"或"error:message"
+	parts := strings.SplitN(string(wrapper.Payload), ":", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("无效的响应格式")
+	}
+
+	m.Success = parts[0] == "success"
+	if m.Success {
+		m.Message = parts[1]
+	} else {
+		m.Error = parts[1]
+	}
+	return nil
+}
+
+// GetSegmentId 实现SegmentMessage接口
+func (m *SegmentResponseMessage) GetSegmentId() string {
+	return "response"
+}
 
 type processTask struct {
 	payload *pb.FileSegmentStorage
@@ -188,94 +292,100 @@ func RegisterUploadStreamProtocol(lc fx.Lifecycle, input RegisterStreamProtocolI
 	})
 }
 
-// handleSegmentData 处理分片数据的通用函数
+// handleConnection 统一的连接处理函数
 // 参数:
-//   - reader: *bufio.Reader 读取器，用于读取数据
-//   - writer: *bufio.Writer 写入器，用于写入数据
+//   - ctx: context.Context 上下文，用于管理连接的生命周期
+//   - conn: net.Conn 连接实例
+//   - usp: *StreamProtocol 流协议实例
+func handleConnection(ctx context.Context, conn net.Conn, usp *StreamProtocol) {
+	defer conn.Close()
+
+	// 创建协议处理器
+	handler := defsproto.NewHandler(conn, &defsproto.Options{
+		MaxRetries:     3,
+		RetryDelay:     time.Second,
+		HeartBeat:      30 * time.Second,
+		DialTimeout:    ConnTimeout,
+		WriteTimeout:   ConnTimeout * 2, // 增加写超时
+		ReadTimeout:    ConnTimeout * 2, // 增加读超时
+		ProcessTimeout: ConnTimeout * 2, // 增加处理超时
+		MaxConns:       100,
+		Rate:           50 * 1024 * 1024, // 50MB/s
+		Window:         20 * 1024 * 1024, // 20MB window
+		Threshold:      10 * 1024 * 1024, // 10MB threshold
+		QueueSize:      1000,
+		QueuePolicy:    defsproto.PolicyBlock,
+	})
+	defer func() {
+		handler.StopHeartbeat() // 确保心跳停止
+		handler.Close()
+	}()
+
+	// 启动心跳
+	handler.StartHeartbeat()
+
+	// 启动消息处理
+	handler.StartQueueProcessor(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// 处理分片数据
+			if err := handleSegmentData(handler, usp); err != nil {
+				if err != io.EOF {
+					logger.Errorf("处理分片数据失败: %v", err)
+				}
+				return
+			}
+		}
+	}
+}
+
+// handleSegmentData 处理分片数据
+// 参数:
+//   - handler: *defsproto.Handler 协议处理器实例
 //   - usp: *StreamProtocol 流协议实例
 //
 // 返回值:
-//   - error: 如果在处理过程中发生错误，返回相应的错误信息
-func handleSegmentData(reader *bufio.Reader, writer *bufio.Writer, usp *StreamProtocol) error {
-	// 读取4字节的长度前缀
-	lenBuf := make([]byte, 4)
-	if _, err := io.ReadFull(reader, lenBuf); err != nil {
+//   - error: 处理过程中的错误信息
+func handleSegmentData(handler *defsproto.Handler, usp *StreamProtocol) error {
+	// 接收分片数据
+	dataMsg := &SegmentDataMessage{
+		Payload: &pb.FileSegmentStorage{},
+	}
+
+	if err := handler.ReceiveMessage(dataMsg); err != nil {
+		// 如果是EOF，属于正常连接关闭
 		if err == io.EOF {
-			return io.EOF
+			return err
 		}
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			logger.Warnf("读取消息超时，将重试: %v", err)
-			return nil
-		}
-		logger.Errorf("读取消息长度失败: %v", err)
-		sendErrorResponse(writer, "读取消息失败")
-		return err
+		logger.Errorf("接收分片数据失败: %v", err)
+		return sendErrorResponse(handler, "接收分片数据失败: "+err.Error())
 	}
 
-	// 解析消息长度
-	msgLen := int(lenBuf[0])<<24 | int(lenBuf[1])<<16 | int(lenBuf[2])<<8 | int(lenBuf[3])
-
-	// 验证消息长度
-	if msgLen <= 0 || msgLen > MaxBlockSize {
-		logger.Errorf("无效的消息长度: %d", msgLen)
-		sendErrorResponse(writer, fmt.Sprintf("无效的消息长度: %d", msgLen))
-		return fmt.Errorf("无效的消息长度: %d", msgLen)
-	}
-
-	// 读取消息内容
-	msgBuf := make([]byte, msgLen)
-	if _, err := io.ReadFull(reader, msgBuf); err != nil {
-		if err == io.EOF {
-			return io.EOF
-		}
-		logger.Errorf("读取消息内容失败: %v", err)
-		sendErrorResponse(writer, "读取消息失败")
-		return err
-	}
-
-	// 解析载荷
-	payload := new(pb.FileSegmentStorage)
-	if err := payload.Unmarshal(msgBuf); err != nil {
-		logger.Errorf("解码请求载荷失败: %v", err)
-		sendErrorResponse(writer, "解码失败")
-		return err
-	}
-
-	// 打印接收到的数据信息
-	logger.Infof("接收分片[%d] - 数据接收: 大小=%d bytes, 校验和=%d, 发送节点=%s",
-		payload.SegmentIndex, len(payload.SegmentContent), payload.Crc32Checksum, usp.host.ID().String())
-
-	// 验证载荷
-	if err := validatePayload(payload, usp); err != nil {
-		logger.Errorf("验证载荷失败: %v", err)
-		sendErrorResponse(writer, err.Error())
-		return err
-	}
-
-	// 立即发送成功响应，不等待处理完成
-	response := "success\n"
-	if _, err := writer.WriteString(response); err != nil {
-		logger.Errorf("发送成功响应失败: %v", err)
-		return err
-	}
-	if err := writer.Flush(); err != nil {
-		logger.Errorf("刷新缓冲区失败: %v", err)
-		return err
+	// 验证payload
+	if err := validatePayload(dataMsg.Payload, usp); err != nil {
+		logger.Errorf("验证分片数据失败: %v", err)
+		return sendErrorResponse(handler, "验证分片数据失败: "+err.Error())
 	}
 
 	// 异步处理数据
 	select {
-	case workChan <- &processTask{payload: payload, usp: usp}:
-		// 成功加入工作队列
+	case workChan <- &processTask{payload: dataMsg.Payload, usp: usp}:
+		// 成功加入工作队列，直接返回成功响应
+		return sendSuccessResponse(handler, "分片数据已加入处理队列")
 	default:
 		logger.Warnf("工作队列已满，直接处理")
 		// 队列满时直接处理
-		if err := processPayload(payload, usp); err != nil {
+		if err := processPayload(dataMsg.Payload, usp); err != nil {
 			logger.Errorf("处理数据失败: %v", err)
+			return sendErrorResponse(handler, "处理数据失败: "+err.Error())
 		}
+		// 处理成功
+		return sendSuccessResponse(handler, "分片数据处理成功")
 	}
-
-	return nil
 }
 
 // validatePayload 验证载荷数据
@@ -340,7 +450,7 @@ func processPayload(payload *pb.FileSegmentStorage, usp *StreamProtocol) error {
 	payload.SegmentContent = nil
 
 	// 将payload发送到转发通道
-	//	usp.upload.TriggerForward(payload)
+	usp.upload.TriggerForward(payload)
 
 	// 清空数据和请求载荷以释放内存
 	payload = nil
@@ -349,68 +459,52 @@ func processPayload(payload *pb.FileSegmentStorage, usp *StreamProtocol) error {
 	return nil
 }
 
-// handleSendingConnection 和 handleForwardConnection 现在可以简化为：
-func handleSendingConnection(ctx context.Context, conn net.Conn, usp *StreamProtocol) {
-	handleConnection(ctx, conn, usp)
-}
-
-func handleForwardConnection(ctx context.Context, conn net.Conn, usp *StreamProtocol) {
-	handleConnection(ctx, conn, usp)
-}
-
-// handleConnection 统一的连接处理函数
+// handleSendingConnection 处理发送连接
 // 参数:
 //   - ctx: context.Context 上下文，用于管理连接的生命周期
 //   - conn: net.Conn 连接实例
 //   - usp: *StreamProtocol 流协议实例
-func handleConnection(ctx context.Context, conn net.Conn, usp *StreamProtocol) {
-	defer conn.Close()
+func handleSendingConnection(ctx context.Context, conn net.Conn, usp *StreamProtocol) {
+	handleConnection(ctx, conn, usp)
+}
 
-	reader := bufio.NewReader(conn)
-	writer := bufio.NewWriter(conn)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			// 每次处理前重置超时
-			conn.SetDeadline(time.Now().Add(ConnTimeout))
-
-			if err := handleSegmentData(reader, writer, usp); err != nil {
-				if err != io.EOF {
-					logger.Errorf("处理分片数据失败: %v", err)
-				}
-				return
-			}
-		}
-	}
+// handleForwardConnection 处理转发连接
+// 参数:
+//   - ctx: context.Context 上下文，用于管理连接的生命周期
+//   - conn: net.Conn 连接实例
+//   - usp: *StreamProtocol 流协议实例
+func handleForwardConnection(ctx context.Context, conn net.Conn, usp *StreamProtocol) {
+	handleConnection(ctx, conn, usp)
 }
 
 // 辅助函数：发送错误响应
 // 参数:
-//   - writer: *bufio.Writer 写入器，用于写入错误响应
+//   - handler: *defsproto.Handler 协议处理器实例
 //   - msg: string 错误消息
 //
 // 返回值:
 //   - error: 如果在发送过程中发生错误，返回相应的错误信息
-func sendErrorResponse(writer *bufio.Writer, msg string) error {
-	return sendResponse(writer, fmt.Sprintf("错误: %s\n", msg))
+func sendErrorResponse(handler *defsproto.Handler, msg string) error {
+	respMsg := &SegmentResponseMessage{
+		Success: false,
+		Error:   msg,
+	}
+	return handler.SendMessage(respMsg)
 }
 
-// 辅助函数：发送响应
+// 辅助函数：发送成功响应
 // 参数:
-//   - writer: *bufio.Writer 写入器，用于写入响应
-//   - msg: string 响应消息
+//   - handler: *defsproto.Handler 协议处理器实例
+//   - msg: string 成功消息
 //
 // 返回值:
 //   - error: 如果在发送过程中发生错误，返回相应的错误信息
-func sendResponse(writer *bufio.Writer, msg string) error {
-	if _, err := writer.WriteString(msg); err != nil {
-		logger.Errorf("发送响应失败: %v", err)
-		return err
+func sendSuccessResponse(handler *defsproto.Handler, msg string) error {
+	respMsg := &SegmentResponseMessage{
+		Success: true,
+		Message: msg,
 	}
-	return writer.Flush()
+	return handler.SendMessage(respMsg)
 }
 
 // buildAndStoreFileSegment 构建文件片段存储map并将其存储为文件
@@ -618,4 +712,12 @@ func buildFileSegmentStorageMap(payload *pb.FileSegmentStorage) (map[string][]by
 	result["VERSION"] = version
 
 	return result, nil
+}
+
+// 辅助函数，获取两个数的最小值
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

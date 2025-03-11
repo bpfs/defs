@@ -52,6 +52,7 @@ func GenerateFileID(privateKey *ecdsa.PrivateKey, checksum []byte) (string, erro
 	// 对生成的秘密进行再次哈希，以生成FileID
 	hasher := sha256.New()
 	if _, err := hasher.Write(combined); err != nil {
+		logger.Errorf("生成随机数时出错: %v", err)
 		return "", err
 	}
 
@@ -74,6 +75,7 @@ func GenerateSegmentID(fileID string, index int64) (string, error) {
 	// 使用SHA-256对组合后的字节进行哈希，生成SegmentID
 	hasher := sha256.New()
 	if _, err := hasher.Write(input); err != nil {
+		logger.Errorf("生成文件ID失败: %v", err)
 		return "", err
 	}
 

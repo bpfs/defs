@@ -24,8 +24,15 @@ import (
 
 	"github.com/bpfs/defs/v2/files/tempfile"
 
-	"bytes"
 	"hash/crc32"
+	"path/filepath"
+	"time"
+)
+
+const (
+	// 上传临时文件前缀
+	ProcessSegmentPrefix = "segment_process_" // 处理过程中的分片临时文件前缀
+	SegmentDataPrefix    = "segment_data_"    // 分片数据临时文件前缀
 )
 
 // SafeHashTableMap 线程安全的哈希表映射
@@ -82,28 +89,32 @@ func (m *SafeHashTableMap) ToMap() map[int64]*pb.HashTable {
 
 // 临时文件类型常量
 const (
-	TempFileData    = "data"    // 数据分片临时文件
-	TempFileParity  = "parity"  // 校验分片临时文件
-	TempFileProcess = "process" // 处理过程临时文件
+	TempFileData     = "data"     // 数据分片临时文件
+	TempFileParity   = "parity"   // 校验分片临时文件
+	TempFileProcess  = "process"  // 处理过程临时文件
+	TempFileCompress = "compress" // 压缩临时文件
 )
 
 // TempFileManager 临时文件管理器
 type TempFileManager struct {
 	files        map[string]*os.File
 	mu           sync.RWMutex
-	delayCleanup bool // 是否延迟清理
+	delayCleanup bool   // 是否延迟清理
+	taskID       string // 任务ID，用于隔离不同上传任务的临时文件
 }
 
 // NewTempFileManager 创建临时文件管理器
 // 参数:
 //   - delayCleanup: 是否延迟清理
+//   - taskID: 任务ID，用于隔离不同上传任务的临时文件
 //
 // 返回值:
 //   - *TempFileManager: 临时文件管理器
-func NewTempFileManager(delayCleanup bool) *TempFileManager {
+func NewTempFileManager(delayCleanup bool, taskID string) *TempFileManager {
 	return &TempFileManager{
 		files:        make(map[string]*os.File),
 		delayCleanup: delayCleanup,
+		taskID:       taskID,
 	}
 }
 
@@ -118,14 +129,37 @@ func NewTempFileManager(delayCleanup bool) *TempFileManager {
 func (tm *TempFileManager) CreateTempFile(fileType string, index int64) (*os.File, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
+
 	key := fmt.Sprintf("%s_%d", fileType, index)
-	file, err := os.CreateTemp("", fmt.Sprintf("segment_%s_", key))
-	if err != nil {
-		logger.Errorf("创建临时文件失败: type=%s index=%d %v", fileType, index, err)
+
+	// 确保上传临时目录存在
+	if err := CreateUploadsTempDir(); err != nil {
 		return nil, err
 	}
+
+	// 生成临时文件路径，添加taskID作为隔离标识
+	tempDir := GetUploadsTempDir()
+	randNum := crc32.ChecksumIEEE([]byte(fmt.Sprintf("%s_%d", key, time.Now().UnixNano())))
+	filename := filepath.Join(tempDir, fmt.Sprintf("segment_%s_%s_%d", tm.taskID, key, randNum))
+
+	// 创建文件
+	file, err := os.Create(filename)
+	if err != nil {
+		logger.Errorf("创建临时文件失败: %v", err)
+		return nil, err
+	}
+
+	// 保存到映射
 	tm.files[key] = file
+
 	return file, nil
+}
+
+// GetTaskTempDir 获取任务专用的临时目录
+// 返回值:
+//   - string: 任务专用的临时目录
+func (tm *TempFileManager) GetTaskTempDir() string {
+	return filepath.Join(GetUploadsTempDir(), tm.taskID)
 }
 
 // CleanupFiles 清理所有临时文件
@@ -161,7 +195,7 @@ func (tm *TempFileManager) doCleanup() {
 	tm.files = make(map[string]*os.File)
 }
 
-// CleanupFilesByType 清理指定类型的临时文件
+// CleanupFilesByType 根据文件类型清理临时文件
 // 参数:
 //   - fileType: 文件类型
 //
@@ -190,27 +224,53 @@ func (tm *TempFileManager) CleanupFilesByType(fileType string) error {
 	return nil
 }
 
-// CleanupSegmentTempFiles 清理分片相关的临时文件
-func CleanupSegmentTempFiles() error {
-	// 创建不延迟清理的临时文件管理器
-	tempManager := NewTempFileManager(false)
+// CleanupTaskSegmentFiles 清理特定任务的所有临时文件
+// 参数:
+//   - taskID: 任务ID
+//
+// 返回值:
+//   - error: 清理失败错误
+func CleanupTaskSegmentFiles(taskID string) error {
+	// 尝试清理该任务的临时文件
+	logger.Infof("开始清理任务[%s]的临时文件", taskID)
 
-	// 清理数据分片临时文件
-	if err := tempManager.CleanupFilesByType(TempFileData); err != nil {
-		logger.Warnf("清理数据分片临时文件失败: %v", err)
+	// 清理该任务在临时文件管理器中的文件
+	tempManager := NewTempFileManager(false, taskID)
+	tempManager.ForceCleanup()
+
+	// 在文件系统中查找并清理该任务的其他临时文件
+	uploadsDir := GetUploadsTempDir()
+	pattern := filepath.Join(uploadsDir, fmt.Sprintf("segment_%s_*", taskID))
+
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		logger.Warnf("查找任务临时文件失败: taskID=%s pattern=%s err=%v",
+			taskID, pattern, err)
+		return err
 	}
 
-	// 清理校验分片临时文件
-	if err := tempManager.CleanupFilesByType(TempFileParity); err != nil {
-		logger.Warnf("清理校验分片临时文件失败: %v", err)
+	// 删除匹配的文件
+	for _, file := range files {
+		if err := os.Remove(file); err != nil {
+			logger.Warnf("删除任务临时文件失败: taskID=%s file=%s err=%v",
+				taskID, file, err)
+		} else {
+			logger.Infof("成功删除任务临时文件: taskID=%s file=%s", taskID, file)
+		}
 	}
 
-	// 清理处理过程临时文件
-	if err := tempManager.CleanupFilesByType(TempFileProcess); err != nil {
-		logger.Warnf("清理处理过程临时文件失败: %v", err)
-	}
-
+	logger.Infof("任务[%s]临时文件清理完成，共清理%d个文件", taskID, len(files))
 	return nil
+}
+
+// CleanupSegmentTempFiles 清理所有临时文件（慎用！）
+// 返回值:
+//   - error: 清理失败错误
+func CleanupSegmentTempFiles() error {
+	logger.Warn("清理所有上传临时文件，这可能会影响正在进行的上传任务！")
+
+	// 清理整个上传临时目录
+	return CleanupUploadsTempDir()
 }
 
 // NewFileSegment 创建并初始化一个新的 FileSegment 实例
@@ -227,7 +287,7 @@ func CleanupSegmentTempFiles() error {
 //   - error: 如果处理过程中发生错误，返回错误信息
 func NewFileSegment(db *badgerhold.Store, taskID string, fileID string, file *os.File, pk []byte, dataShards, parityShards int64) error {
 	// 创建不延迟清理的临时文件管理器
-	tempManager := NewTempFileManager(false)
+	tempManager := NewTempFileManager(false, taskID)
 	defer func() {
 		tempManager.CleanupFiles() // 确保清理
 
@@ -262,7 +322,8 @@ func NewFileSegment(db *badgerhold.Store, taskID string, fileID string, file *os
 		logger.Errorf("准备Reed-Solomon编码失败: %v", err)
 		return err
 	}
-	defer cleanupTempFiles(tempFiles)
+	// defer cleanupTempFiles(tempFiles)
+	// 在processShardContent中处理所有分片(压缩、加密、存储)清理
 
 	// 3. 分割文件到数据分片
 	if err := splitFileToShards(file, enc, tempFiles, dataShards, fileSize, tempManager); err != nil {
@@ -270,7 +331,9 @@ func NewFileSegment(db *badgerhold.Store, taskID string, fileID string, file *os
 		logger.Errorf("分割文件到数据分片失败: %v", err)
 		return err
 	}
-	file.Close() // 分片完成后立即关闭原始文件
+	file.Close()         // 分片完成后立即关闭原始文件
+	runtime.GC()         // 原始文件处理完毕后立即回收
+	debug.FreeOSMemory() // 强制将内存归还给操作系统
 
 	// 4. 生成奇偶校验分片
 	if err := generateParityShards(enc, tempFiles, dataShards, parityShards, tempManager); err != nil {
@@ -439,6 +502,10 @@ func generateParityShards(enc reedsolomon.StreamEncoder16, tempFiles []*os.File,
 				Global().PutWriter(w)
 			}
 		}
+
+		// 强制进行内存回收
+		runtime.GC()
+		debug.FreeOSMemory() // 强制将内存归还给操作系统
 	}()
 
 	for i := range dataInputs {
@@ -527,6 +594,10 @@ func processShards(db *badgerhold.Store, taskID, fileID string, pk []byte, tempF
 	// 每处理4个分片执行一次GC
 	gcCounter := 0
 	for i := range tempFiles {
+		if tempFiles[i] == nil {
+			continue // 跳过空文件
+		}
+
 		gcCounter++
 		if gcCounter >= 4 {
 			runtime.GC()
@@ -539,7 +610,12 @@ func processShards(db *badgerhold.Store, taskID, fileID string, pk []byte, tempF
 			defer func() {
 				<-sem // 释放信号量
 				wg.Done()
-				f.Close()
+
+				// 立即清理资源
+				if f != nil {
+					f.Close()
+				}
+
 				tempFiles[int(index)] = nil
 			}()
 
@@ -548,13 +624,20 @@ func processShards(db *badgerhold.Store, taskID, fileID string, pk []byte, tempF
 				logger.Errorf("处理分片失败: index=%d %v", index, err)
 			}
 		}(int64(i), tempFiles[i])
+
+		// 每处理一批次分片就尝试一次内存回收
+		if i > 0 && i%maxWorkers == 0 {
+			// 等待一小段时间让goroutines完成工作
+			time.Sleep(100 * time.Millisecond)
+			runtime.GC()
+		}
 	}
 
 	wg.Wait()
 
-	// 处理完成后执行一次完整的内存回收
+	// 处理完成后执行完整的内存回收
 	runtime.GC()
-	debug.FreeOSMemory()
+	debug.FreeOSMemory() // 强制将内存归还给操作系统
 
 	return hashTables.ToMap(), nil
 }
@@ -573,10 +656,19 @@ func processShards(db *badgerhold.Store, taskID, fileID string, pk []byte, tempF
 // 返回值:
 //   - error: 如果处理失败，返回错误信息
 func processShardContent(db *badgerhold.Store, taskID, fileID string, file *os.File, secret []byte, index int64, dataShards int64, hashTables *SafeHashTableMap) error {
-	procTempManager := NewTempFileManager(false)
+	// 创建临时文件管理器
+	procTempManager := NewTempFileManager(false, taskID)
 	defer procTempManager.CleanupFiles()
 
-	// 创建处理文件
+	// 创建处理文件 - 用于压缩内容
+	compressedFile, err := procTempManager.CreateTempFile(TempFileCompress, index)
+	if err != nil {
+		logger.Errorf("创建压缩文件失败: %v", err)
+		return err
+	}
+	defer compressedFile.Close()
+
+	// 创建处理文件 - 用于加密结果
 	processedFile, err := procTempManager.CreateTempFile(TempFileProcess, index)
 	if err != nil {
 		logger.Errorf("创建处理文件失败: %v", err)
@@ -599,31 +691,58 @@ func processShardContent(db *badgerhold.Store, taskID, fileID string, file *os.F
 		return err
 	}
 
-	// 先压缩
-	compressedBuffer := &bytes.Buffer{}
+	// 先压缩 - 从原始文件读取数据
 	compressPipe := &ProcessPipeline{
 		reader: file,
-		writer: compressedBuffer,
+		writer: compressedFile,
 		processors: []ProcessFunc{
 			compressChunk(),
 		},
 	}
+
+	file.Close()           // 压缩完成后立即关闭原始文件
+	os.Remove(file.Name()) // 删除原始文件
+
 	// 流式处理
 	if err := compressPipe.Process(); err != nil {
 		logger.Errorf("流式处理失败: %v", err)
 		return err
 	}
 
-	// 计算压缩后的校验和
-	compressedData := compressedBuffer.Bytes()
-	compressedSize := len(compressedData)
-	checksum := crc32.ChecksumIEEE(compressedData)
+	// 获取压缩后的文件大小
+	compressedInfo, err := compressedFile.Stat()
+	if err != nil {
+		logger.Errorf("获取压缩文件信息失败: %v", err)
+		return err
+	}
+	compressedSize := compressedInfo.Size()
+
+	// 重置文件指针用于计算校验和
+	if _, err := compressedFile.Seek(0, 0); err != nil {
+		logger.Errorf("重置压缩文件指针失败: %v", err)
+		return err
+	}
+
+	// 计算校验和 - 流式计算
+	checksumHash := crc32.NewIEEE()
+	if _, err := io.Copy(checksumHash, compressedFile); err != nil {
+		logger.Errorf("计算校验和失败: %v", err)
+		return err
+	}
+	checksum := checksumHash.Sum32()
+
 	logger.Infof("处理分片[%d] - 压缩后大小: %d bytes (压缩率: %.2f%%), 校验和: %d",
 		index, compressedSize, float64(compressedSize)/float64(originalSize)*100, checksum)
 
+	// 重置压缩文件指针用于加密
+	if _, err := compressedFile.Seek(0, 0); err != nil {
+		logger.Errorf("重置压缩文件指针失败: %v", err)
+		return err
+	}
+
 	// 再加密
 	pipe := &ProcessPipeline{
-		reader: bytes.NewReader(compressedData),
+		reader: compressedFile,
 		writer: processedFile,
 		processors: []ProcessFunc{
 			encryptChunk(secret),
@@ -636,34 +755,29 @@ func processShardContent(db *badgerhold.Store, taskID, fileID string, file *os.F
 		return err
 	}
 
-	// 重置处理文件指针进行验证
-	if _, err := processedFile.Seek(0, 0); err != nil {
-		logger.Errorf("重置处理文件指针失败: %v", err)
-		return err
-	}
-
-	// 读取加密后的数据进行验证
-	encryptedData, err := io.ReadAll(processedFile)
+	// 获取加密后文件大小
+	encryptedInfo, err := processedFile.Stat()
 	if err != nil {
-		logger.Errorf("读取加密数据失败: %v", err)
+		logger.Errorf("获取加密文件信息失败: %v", err)
 		return err
 	}
-	encryptedSize := len(encryptedData)
+	encryptedSize := encryptedInfo.Size()
+
 	logger.Infof("处理分片[%d] - 加密后大小: %d bytes (膨胀率: %.2f%%)",
 		index, encryptedSize, float64(encryptedSize)/float64(compressedSize)*100)
 
 	// 验证加密数据的基本格式
 	minGCMSize := 12 + 16 // Nonce(12字节) + 最小AuthTag(16字节)
-	if len(encryptedData) < minGCMSize {
+	if encryptedSize < int64(minGCMSize) {
 		logger.Errorf("处理分片[%d] - 加密数据大小异常: %d bytes, 最小需要: %d bytes",
-			index, len(encryptedData), minGCMSize)
+			index, encryptedSize, minGCMSize)
 		return fmt.Errorf("invalid encrypted data size: too small")
 	}
 
 	// 验证加密后数据大小关系
-	if len(encryptedData) <= compressedSize {
+	if encryptedSize <= compressedSize {
 		logger.Errorf("处理分片[%d] - 加密数据大小异常: 加密后(%d bytes) <= 压缩后(%d bytes)",
-			index, len(encryptedData), compressedSize)
+			index, encryptedSize, compressedSize)
 		return fmt.Errorf("invalid encrypted data size: smaller than compressed data")
 	}
 
@@ -682,7 +796,7 @@ func processShardContent(db *badgerhold.Store, taskID, fileID string, file *os.F
 
 	// 写入临时存储
 	isRsCodes := index >= dataShards
-	readKey, err := tempfile.WriteEncryptedSegment(segmentID, processedFile, isRsCodes)
+	readKey, err := tempfile.WriteEncryptedSegment(segmentID, processedFile, isRsCodes, taskID)
 	if err != nil {
 		logger.Errorf("写入加密分片失败: %v", err)
 		return err
@@ -804,4 +918,83 @@ func encryptChunk(key []byte) ProcessFunc {
 
 		return encryptedData, nil
 	}
+}
+
+// GetUploadsTempDir 返回上传文件的临时目录
+// 返回值:
+//   - string: 上传文件的临时目录路径
+func GetUploadsTempDir() string {
+	return filepath.Join(os.TempDir(), "bpfs_uploads")
+}
+
+// CreateUploadsTempDir 创建上传文件的临时目录
+// 返回值:
+//   - error: 如果创建失败则返回错误
+func CreateUploadsTempDir() error {
+	dir := GetUploadsTempDir()
+	return os.MkdirAll(dir, 0755)
+}
+
+// CleanupUploadsTempDir 清理上传文件的临时目录
+// 返回值:
+//   - error: 如果清理失败则返回错误
+func CleanupUploadsTempDir() error {
+	return tempfile.CleanupTempFiles(GetUploadsTempDir())
+}
+
+// CreateProcessTempFile 创建处理分片的临时文件
+// 参数:
+//   - segmentID: 分片ID
+//
+// 返回值:
+//   - string: 临时文件路径
+//   - error: 如果创建失败则返回错误
+func CreateProcessTempFile(segmentID string) (string, error) {
+	// 确保上传临时目录存在
+	if err := CreateUploadsTempDir(); err != nil {
+		return "", err
+	}
+
+	// 生成随机数
+	randNum := crc32.ChecksumIEEE([]byte(fmt.Sprintf("%s_%d", segmentID, time.Now().UnixNano())))
+
+	// 创建临时文件路径
+	tempDir := GetUploadsTempDir()
+	filename := filepath.Join(tempDir, fmt.Sprintf("%s%s_%d", ProcessSegmentPrefix, segmentID, randNum))
+
+	// 创建文件
+	file, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	return filename, nil
+}
+
+// CreateSegmentDataTempFile 创建分片数据的临时文件
+// 参数:
+//   - segmentID: 分片ID
+//
+// 返回值:
+//   - string: 临时文件路径
+//   - error: 如果创建失败则返回错误
+func CreateSegmentDataTempFile(segmentID string) (string, error) {
+	// 确保上传临时目录存在
+	if err := CreateUploadsTempDir(); err != nil {
+		return "", err
+	}
+
+	// 创建临时文件路径
+	tempDir := GetUploadsTempDir()
+	filename := filepath.Join(tempDir, fmt.Sprintf("%s%s", SegmentDataPrefix, segmentID))
+
+	// 创建文件
+	file, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	return filename, nil
 }

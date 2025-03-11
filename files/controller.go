@@ -129,6 +129,7 @@ type ControllerError struct {
 //   - string: 格式化的错误信息
 func (e *ControllerError) Error() string {
 	if e.Err != nil {
+
 		return fmt.Sprintf("%s: %v", e.Message, e.Err)
 	}
 	return e.Message
@@ -250,6 +251,7 @@ func NewController(opts ...func(*ControllerOption)) (*ConcurrencyController, err
 
 	// 验证配置
 	if err := validateOption(option); err != nil {
+		logger.Errorf("验证配置失败: %v", err)
 		return nil, err
 	}
 
@@ -270,6 +272,7 @@ func NewController(opts ...func(*ControllerOption)) (*ConcurrencyController, err
 
 	// 初始化控制器
 	if err := cc.init(); err != nil {
+		logger.Errorf("初始化控制器失败: %v", err)
 		return nil, err
 	}
 
@@ -369,6 +372,7 @@ func (cc *ConcurrencyController) ExecuteTaskWithPriority(
 
 	// 添加任务
 	if err := cc.addTask(taskInfo); err != nil {
+		logger.Errorf("添加任务失败: %v", err)
 		cancel()
 		return err
 	}
@@ -403,6 +407,7 @@ func (cc *ConcurrencyController) waitForTaskComplete(ctx context.Context, taskID
 		case <-ticker.C:
 			task, err := cc.getTask(taskID)
 			if err != nil {
+				logger.Errorf("获取任务失败: %v", err)
 				return err
 			}
 
@@ -474,6 +479,7 @@ func (cc *ConcurrencyController) executeTask(task *TaskInfo) error {
 
 		// 执行任务处理函数
 		if err := task.handler(task.ctx, task); err != nil {
+			logger.Errorf("执行任务失败: %v", err)
 			task.Status = TaskStatusFailed
 			task.ErrorMessage = err.Error()
 			return err

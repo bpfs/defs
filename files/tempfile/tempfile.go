@@ -704,42 +704,52 @@ func writeBatchLarge(segments map[string][]byte) error {
 	return nil
 }
 
+// GetUploadsDir 返回上传文件的临时目录
+// 返回值:
+//   - string: 上传文件的临时目录路径
+func GetUploadsDir() string {
+	uploadsDir := filepath.Join(os.TempDir(), "bpfs_uploads")
+	return uploadsDir
+}
+
 // WriteEncryptedSegment 写入加密的分片数据
 // 参数:
 //   - segmentID: string 分片ID
 //   - reader: io.Reader 要写入的数据读取器
 //   - isRsCodes: bool 是否是RsCodes
+//   - taskID: string (可选) 任务ID，用于隔离不同上传任务的临时文件
 //
 // 返回值:
 //   - string: 读取标识
-func WriteEncryptedSegment(segmentID string, reader io.Reader, isRsCodes bool) (string, error) {
+func WriteEncryptedSegment(segmentID string, reader io.Reader, isRsCodes bool, taskID ...string) (string, error) {
 	// 生成唯一的读取标识
 	readKey := fmt.Sprintf("segment_%s_%v", segmentID, isRsCodes)
 
-	// 创建临时文件
-	filename, err := generateTempFilename()
-	if err != nil {
-		logger.Errorf("生成临时文件名失败: %v", err)
+	// 确保上传临时目录存在
+	uploadsDir := GetUploadsDir()
+	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
+		logger.Errorf("创建上传临时目录失败: %v", err)
 		return "", err
 	}
 
-	// 创建目录
-	dir := filepath.Dir(filename)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		logger.Errorf("创建目录失败: %v", err)
-		return "", err
+	// 处理任务ID
+	filePrefix := "segment_"
+	if len(taskID) > 0 && taskID[0] != "" {
+		filePrefix = fmt.Sprintf("segment_%s_", taskID[0])
 	}
 
-	// 创建文件
-	file, err := os.Create(filename)
+	// 在上传临时目录中创建临时文件
+	tempFile, err := os.CreateTemp(uploadsDir, filePrefix+segmentID+"_*")
 	if err != nil {
-		logger.Errorf("创建文件失败: %v", err)
+		logger.Errorf("创建临时文件失败: %v", err)
 		return "", err
 	}
-	defer file.Close()
+	defer tempFile.Close()
+
+	filename := tempFile.Name()
 
 	// 使用缓冲写入
-	bufWriter := bufio.NewWriterSize(file, streamBufferSize)
+	bufWriter := bufio.NewWriterSize(tempFile, streamBufferSize)
 
 	// 复制数据
 	written, err := io.Copy(bufWriter, reader)
@@ -757,7 +767,7 @@ func WriteEncryptedSegment(segmentID string, reader io.Reader, isRsCodes bool) (
 	}
 
 	// 同步到磁盘
-	if err := file.Sync(); err != nil {
+	if err := tempFile.Sync(); err != nil {
 		os.Remove(filename)
 		logger.Errorf("同步文件失败: %v", err)
 		return "", err
@@ -772,6 +782,8 @@ func WriteEncryptedSegment(segmentID string, reader io.Reader, isRsCodes bool) (
 
 	// 记录映射关系
 	addKeyToFileMapping(readKey, filename)
+
+	logger.Infof("加密分片数据写入成功: key=%s, file=%s, size=%d", readKey, filename, written)
 
 	return readKey, nil
 }
@@ -788,23 +800,52 @@ func ReadEncryptedSegment(readKey string) ([]byte, error) {
 }
 
 // CleanupTempFiles 清理所有临时文件
-func CleanupTempFiles() error {
-	// 获取临时目录
-	tempDir := os.TempDir()
+// 参数:
+//   - dirPath: string (可选) 指定要清理的临时目录，如果为空则清理系统临时目录中的defs_tempfile_*文件
+//
+// 返回值:
+//   - error: 如果清理过程中发生错误，返回相应的错误信息
+func CleanupTempFiles(dirPath ...string) error {
+	var patterns []string
 
-	// 查找所有defs_tempfile_*文件
-	pattern := filepath.Join(tempDir, "defs_tempfile_*")
-	files, err := filepath.Glob(pattern)
-	if err != nil {
-		logger.Errorf("查找临时文件失败: %v", err)
-		return err
+	// 处理特定目录清理
+	if len(dirPath) > 0 && dirPath[0] != "" {
+		// 清理指定目录下的所有文件
+		if err := os.RemoveAll(dirPath[0]); err != nil {
+			logger.Errorf("清理指定临时目录失败: path=%s err=%v", dirPath[0], err)
+			return err
+		}
+		// 重新创建目录以保证存在
+		if err := os.MkdirAll(dirPath[0], 0755); err != nil {
+			logger.Errorf("重新创建临时目录失败: path=%s err=%v", dirPath[0], err)
+			return err
+		}
+		logger.Infof("成功清理临时目录: %s", dirPath[0])
+		return nil
 	}
 
-	// 删除文件
-	for _, file := range files {
-		if err := os.Remove(file); err != nil {
-			logger.Warnf("删除临时文件失败: file=%s err=%v", file, err)
+	// 默认清理系统临时目录中的defs_tempfile_*文件
+	tempDir := os.TempDir()
+	patterns = append(patterns, filepath.Join(tempDir, "defs_tempfile_*"))
+
+	// 清理所有匹配的文件
+	for _, pattern := range patterns {
+		files, err := filepath.Glob(pattern)
+		if err != nil {
+			logger.Errorf("查找临时文件失败: pattern=%s err=%v", pattern, err)
+			continue
 		}
+
+		// 删除文件
+		for _, file := range files {
+			if err := os.Remove(file); err != nil {
+				logger.Warnf("删除临时文件失败: file=%s err=%v", file, err)
+			} else {
+				logger.Debugf("成功删除临时文件: %s", file)
+			}
+		}
+
+		logger.Infof("临时文件清理完成: 模式=%s 文件数=%d", pattern, len(files))
 	}
 
 	return nil
