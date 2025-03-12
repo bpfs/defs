@@ -112,5 +112,5 @@ func HandleRenameFileSegmentRequestPubSub(
 	}
 
 	// 记录重命名成功的日志
-	logger.Infof("成功重命名文件: fileID=%s, newName=%s", request.FileId, request.NewName)
+	// logger.Infof("成功重命名文件: fileID=%s, newName=%s", request.FileId, request.NewName)
 }

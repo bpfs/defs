@@ -543,7 +543,7 @@ func TruncateTable(db *sql.DB, tableName string, vacuum bool) (int64, error) {
 	}
 
 	// 记录成功删除记录的信息
-	logger.Infof("成功删除表 %s 中的 %d 条记录", tableName, rowsAffected)
+	// logger.Infof("成功删除表 %s 中的 %d 条记录", tableName, rowsAffected)
 	return rowsAffected, nil
 }
 
@@ -575,7 +575,7 @@ func TruncateTableTx(db *sql.DB, tx *sql.Tx, tableName string) (int64, error) {
 	}
 
 	// 记录成功删除记录的信息
-	logger.Infof("成功删除表 %s 中的 %d 条记录", tableName, rowsAffected)
+	// logger.Infof("成功删除表 %s 中的 %d 条记录", tableName, rowsAffected)
 	return rowsAffected, nil
 }
 

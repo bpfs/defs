@@ -126,7 +126,7 @@ func (m *DownloadManager) addTask(task *DownloadTask) error {
 
 	// 存储任务
 	m.tasks.Store(task.TaskID(), task)
-	logger.Infof("成功添加任务: taskID=%s", task.TaskID())
+	// logger.Infof("成功添加任务: taskID=%s", task.TaskID())
 	return nil
 }
 
@@ -152,7 +152,7 @@ func (m *DownloadManager) removeTask(taskID string) {
 	if task, exists := m.tasks.Load(taskID); exists {
 		task.(*DownloadTask).Close() // 关闭任务并清理资源
 		m.tasks.Delete(taskID)
-		logger.Infof("成功移除任务: %s", taskID)
+		// logger.Infof("成功移除任务: %s", taskID)
 	}
 }
 
@@ -328,8 +328,8 @@ func (m *DownloadManager) IsFileDownloading(fileID string) bool {
 			pb.DownloadStatus_DOWNLOAD_STATUS_PENDING,     // 待下载
 			pb.DownloadStatus_DOWNLOAD_STATUS_DOWNLOADING, // 下载中
 			pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED:      // 已暂停
-			logger.Infof("文件 %s 正在下载中，状态: %s, 任务ID: %s",
-				fileID, record.Status.String(), record.TaskId)
+			// logger.Infof("文件 %s 正在下载中，状态: %s, 任务ID: %s",
+			// 	fileID, record.Status.String(), record.TaskId)
 			return true
 		}
 	}
@@ -381,8 +381,8 @@ func (m *DownloadManager) LoadExistingTasks() error {
 
 		case pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED: // 已暂停
 			// 已完成或已暂停状态的任务无需修改
-			logger.Infof("文件状态为已完成或已暂停，无需修改: taskID=%s, status=%s",
-				downloadFile.TaskId, downloadFile.Status)
+			// logger.Infof("文件状态为已完成或已暂停，无需修改: taskID=%s, status=%s",
+			// 	downloadFile.TaskId, downloadFile.Status)
 
 		default:
 			// 其他状态（未指定、失败等）修改为异常状态
@@ -424,7 +424,7 @@ func (m *DownloadManager) LoadExistingTasks() error {
 			continue
 		}
 
-		logger.Infof("已加载下载任务: taskID=%s", downloadFile.TaskId)
+		// logger.Infof("已加载下载任务: taskID=%s", downloadFile.TaskId)
 	}
 
 	var taskCount int
@@ -432,7 +432,7 @@ func (m *DownloadManager) LoadExistingTasks() error {
 		taskCount++
 		return true
 	})
-	logger.Infof("成功加载 %d 个下载任务", taskCount)
+	// logger.Infof("成功加载 %d 个下载任务", taskCount)
 
 	return nil
 }

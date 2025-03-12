@@ -125,6 +125,6 @@ func AddDirectory(dirNames string) error {
 	}
 
 	// 记录成功日志
-	logger.Infof("目录添加成功: %s", dirNames)
+	// logger.Infof("目录添加成功: %s", dirNames)
 	return nil
 }

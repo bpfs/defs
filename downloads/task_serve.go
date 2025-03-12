@@ -70,7 +70,7 @@ func (t *DownloadTask) Start() error {
 
 			case peerSegments := <-t.chNetworkTransfer:
 				// 网络传输：向目标节点传输文件片段
-				logger.Infof("收到网络传输请求: segments=%d", len(peerSegments))
+				// logger.Infof("收到网络传输请求: segments=%d", len(peerSegments))
 
 				if err := t.handleNetworkTransfer(peerSegments); err != nil {
 					logger.Errorf("处理网络传输请求失败: %v", err)
@@ -79,7 +79,7 @@ func (t *DownloadTask) Start() error {
 
 			case <-t.chSegmentVerify:
 				// 片段验证：验证已传输片段的完整性
-				logger.Info("收到片段验证请求")
+				// logger.Info("收到片段验证请求")
 				if err := t.handleSegmentVerify(); err != nil {
 					logger.Errorf("处理片段验证失败: %v", err)
 					t.NotifyTaskError(err)
@@ -87,7 +87,7 @@ func (t *DownloadTask) Start() error {
 
 			case <-t.chSegmentMerge:
 				// 处理片段合并
-				logger.Info("收到片段合并请求")
+				// logger.Info("收到片段合并请求")
 				if err := t.handleSegmentMerge(); err != nil {
 					logger.Errorf("处理片段合并失败: %v", err)
 					t.NotifyTaskError(err)

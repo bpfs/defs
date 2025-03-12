@@ -26,7 +26,7 @@ func (t *DownloadTask) HandleRecoverySegments(ctx context.Context) error {
 
 	// 如果没有需要恢复的片段，直接返回
 	if len(segmentsToDownload) == 0 {
-		logger.Infof("没有需要恢复的片段: taskID=%s", t.taskId)
+		// logger.Infof("没有需要恢复的片段: taskID=%s", t.taskId)
 		return nil
 	}
 
@@ -100,10 +100,10 @@ func (t *DownloadTask) HandleRecoverySegments(ctx context.Context) error {
 			IsComplete:       progress == 100,
 		})
 
-		logger.Infof("成功下载并保存恢复片段: taskID=%s, segmentID=%s, index=%d",
-			t.taskId, segmentID, segmentIndex)
+		// logger.Infof("成功下载并保存恢复片段: taskID=%s, segmentID=%s, index=%d",
+		// 	t.taskId, segmentID, segmentIndex)
 	}
 
-	logger.Infof("订阅恢复处理完成: taskID=%s", t.taskId)
+	// logger.Infof("订阅恢复处理完成: taskID=%s", t.taskId)
 	return nil
 }

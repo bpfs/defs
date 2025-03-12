@@ -146,7 +146,7 @@ func UpdateDownloadFileStatus(db *badgerhold.Store, taskID string, status pb.Dow
 
 	// 更新状态
 	fileRecord.Status = status
-	logger.Infof("更新文件 %s 状态为: %s", taskID, status.String())
+	// logger.Infof("更新文件 %s 状态为: %s", taskID, status.String())
 
 	// 将更新后的记录保存到数据库
 	if err := store.Update(fileRecord); err != nil {
@@ -179,7 +179,6 @@ func QueryDownloadTask(db *badgerhold.Store, start, pageSize int, options ...dat
 	err := db.Badger().View(func(txn *badger.Txn) error {
 		var err error
 		tasks, totalCount, err = fileStore.QueryDownloadTaskRecordsTx(txn, start, pageSize, options...)
-		logger.Infof("查询下载任务成功, 总数: %d", totalCount)
 		return err
 	})
 
@@ -188,6 +187,6 @@ func QueryDownloadTask(db *badgerhold.Store, start, pageSize int, options ...dat
 		return nil, 0, err
 	}
 
-	logger.Infof("成功查询下载任务, 总数: %d", totalCount)
+	// logger.Infof("成功查询下载任务, 总数: %d", totalCount)
 	return tasks, totalCount, nil
 }

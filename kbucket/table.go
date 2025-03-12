@@ -75,7 +75,7 @@ func NewRoutingTable(bucketsize int, localID ID, latency time.Duration, m peerst
 
 	// 使用 context.WithCancel 函数创建一个后台上下文 ctx 和相应的取消函数 ctxCancel。
 	rt.ctx, rt.ctxCancel = context.WithCancel(context.Background())
-	logger.Infof("路由表创建成功,桶大小为:%d", bucketsize)
+	// logger.Infof("路由表创建成功,桶大小为:%d", bucketsize)
 	return rt, nil
 }
 
@@ -271,7 +271,7 @@ func (rt *RoutingTable) addPeer(p peer.ID, mode int, queryPeer bool, isReplaceab
 		})
 		// 更新路由表的相关状态。
 		rt.PeerAdded(p)
-		logger.Infof("成功将对等节点添加到桶 %d", bucketID)
+		// logger.Infof("成功将对等节点添加到桶 %d", bucketID)
 		return true, nil
 	}
 
@@ -296,7 +296,7 @@ func (rt *RoutingTable) addPeer(p peer.ID, mode int, queryPeer bool, isReplaceab
 			})
 			// 更新路由表的相关状态。
 			rt.PeerAdded(p)
-			logger.Infof("成功将对等节点添加到拆分后的桶 %d", bucketID)
+			// logger.Infof("成功将对等节点添加到拆分后的桶 %d", bucketID)
 			return true, nil
 		}
 	}
@@ -326,7 +326,7 @@ func (rt *RoutingTable) addPeer(p peer.ID, mode int, queryPeer bool, isReplaceab
 
 		// 移除被替换的对等节点。
 		rt.removePeer(replaceablePeer.Id)
-		logger.Infof("成功用对等节点替换了可替换节点")
+		// logger.Infof("成功用对等节点替换了可替换节点")
 		return true, nil
 	}
 

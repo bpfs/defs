@@ -64,10 +64,10 @@ func (m *SegmentDataMessage) Marshal() ([]byte, error) {
 	}
 
 	// 添加日志记录序列化前的数据
-	logger.Infof("序列化分片数据: segmentID=%s, size=%d bytes, checksum=%d",
-		m.Payload.SegmentId,
-		len(m.Payload.SegmentContent),
-		m.Payload.Crc32Checksum)
+	// logger.Infof("序列化分片数据: segmentID=%s, size=%d bytes, checksum=%d",
+	// 	m.Payload.SegmentId,
+	// 	len(m.Payload.SegmentContent),
+	// 	m.Payload.Crc32Checksum)
 
 	// 直接序列化payload即可，protocol.Handler会负责包装
 	return m.Payload.Marshal()
@@ -446,14 +446,43 @@ func processPayload(payload *pb.FileSegmentStorage, usp *StreamProtocol) error {
 		return err
 	}
 
-	// 清空分片内容防止通道内容过大，在转发时重新查询
+	// 记录转发前的重要字段，确保转发正常进行
+	if len(payload.SliceTable) == 0 {
+		logger.Warnf("警告: 转发前 SliceTable 为空，可能导致转发失败，segmentID=%s", payload.SegmentId)
+		return fmt.Errorf("转发前 SliceTable 为空，可能导致转发失败，segmentID=%s", payload.SegmentId)
+	}
+
+	// 保存完整的元数据副本用于转发，不包含大型内容
+	forwardPayload := &pb.FileSegmentStorage{
+		SegmentId:     payload.SegmentId,
+		FileId:        payload.FileId,
+		Name:          payload.Name,
+		Extension:     payload.Extension,
+		Size_:         payload.Size_,
+		ContentType:   payload.ContentType,
+		Sha256Hash:    payload.Sha256Hash,
+		UploadTime:    payload.UploadTime,
+		P2PkhScript:   payload.P2PkhScript,
+		P2PkScript:    payload.P2PkScript,
+		SliceTable:    payload.SliceTable, // 关键字段，确保它不为空
+		SegmentIndex:  payload.SegmentIndex,
+		Crc32Checksum: payload.Crc32Checksum,
+		EncryptionKey: payload.EncryptionKey,
+		Signature:     payload.Signature,
+		Shared:        payload.Shared,
+		Version:       payload.Version,
+		// 不包含 SegmentContent
+	}
+
+	// 触发转发请求，传递完整的元数据
+	if forwardPayload.SegmentId != "" {
+		logger.Debugf("触发转发: segmentID=%s, fileId=%s",
+			forwardPayload.SegmentId, forwardPayload.FileId)
+		usp.upload.TriggerForward(forwardPayload)
+	}
+
+	// 清空原始数据以释放内存
 	payload.SegmentContent = nil
-
-	// 将payload发送到转发通道
-	usp.upload.TriggerForward(payload)
-
-	// 清空数据和请求载荷以释放内存
-	payload = nil
 	runtime.GC()
 
 	return nil

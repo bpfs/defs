@@ -31,7 +31,7 @@ func (s *DownloadFileStore) InsertTx(txn *badger.Txn, record *pb.DownloadFileRec
 				return updateErr
 			}
 			// 更新成功,记录日志
-			logger.Infof("下载文件记录 %s 已存在，已更新", record.TaskId)
+			// logger.Infof("下载文件记录 %s 已存在，已更新", record.TaskId)
 			return nil
 		}
 		// 如果是其他错误,记录错误日志并返回

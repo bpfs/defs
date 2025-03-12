@@ -2,7 +2,6 @@ package uploads
 
 import (
 	"crypto/ecdsa"
-	"encoding/hex"
 	"os"
 	"time"
 
@@ -79,7 +78,7 @@ func NewUploadFile(opt *fscfg.Options, db *database.DB, scheme *shamir.ShamirSch
 		return nil, err
 	}
 
-	logger.Infof("生成秘密: %s", hex.EncodeToString(secret))
+	// logger.Infof("生成秘密: %s", hex.EncodeToString(secret))
 
 	// 创建并初始化 FileSecurity 实例
 	fileSecurity, err := NewFileSecurity(fileID, ownerPriv, secret)
@@ -88,22 +87,22 @@ func NewUploadFile(opt *fscfg.Options, db *database.DB, scheme *shamir.ShamirSch
 		return nil, err
 	}
 
-	logger.Infof("生成FileSecurity: secret=%s",
-		hex.EncodeToString(fileSecurity.GetSecret()))
+	// logger.Infof("生成FileSecurity: secret=%s",
+	// 	hex.EncodeToString(fileSecurity.GetSecret()))
 
-	logger.Infof("P2PK脚本: %s",
-		hex.EncodeToString(fileSecurity.GetP2PkScript()))
+	// logger.Infof("P2PK脚本: %s",
+	// 	hex.EncodeToString(fileSecurity.GetP2PkScript()))
 
-	logger.Infof("P2PKH脚本: %s",
-		hex.EncodeToString(fileSecurity.GetP2PkhScript()))
+	// logger.Infof("P2PKH脚本: %s",
+	// 	hex.EncodeToString(fileSecurity.GetP2PkhScript()))
 
-	logger.Infof("所有者私钥: %s",
-		hex.EncodeToString(fileSecurity.GetOwnerPriv()))
+	// logger.Infof("所有者私钥: %s",
+	// 	hex.EncodeToString(fileSecurity.GetOwnerPriv()))
 
-	logger.Infof("加密密钥列表:")
-	for i, key := range fileSecurity.GetEncryptionKey() {
-		logger.Infof("  密钥[%d]: %s", i, hex.EncodeToString(key))
-	}
+	// logger.Infof("加密密钥列表:")
+	// for i, key := range fileSecurity.GetEncryptionKey() {
+	// 	logger.Infof("  密钥[%d]: %s", i, hex.EncodeToString(key))
+	// }
 
 	// 计算分片数量
 	dataShards, parityShards, err := CalculateShards(fileMeta.Size_, opt)

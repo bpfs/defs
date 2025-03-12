@@ -16,7 +16,7 @@ type RecoveryHandler struct {
 
 // SafeHandle 安全处理通信
 func (h *Handler) SafeHandle(operation func() error) (err error) {
-	logger.Infof("开始安全处理操作")
+	// logger.Infof("开始安全处理操作")
 	defer func() {
 		if r := recover(); r != nil {
 			// 获取堆栈信息

@@ -148,7 +148,7 @@ func Handshake(ctx context.Context, h host.Host, pi peer.AddrInfo) ([]peer.AddrI
 		}
 
 		// 如果执行到这里，说明握手成功，处理响应并返回
-		logger.Infof("成功与节点 %s 完成握手 (尝试 %d/%d)", pi.ID, attempt+1, maxRetries)
+		// logger.Infof("成功与节点 %s 完成握手 (尝试 %d/%d)", pi.ID, attempt+1, maxRetries)
 		return response.KnownPeers, nil
 	}
 

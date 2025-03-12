@@ -50,5 +50,16 @@ func (m *UploadManager) NotifyError(err string, args ...interface{}) {
 // 参数:
 //   - payload: *pb.FileSegmentStorage 要转发的文件段存储信息
 func (m *UploadManager) TriggerForward(payload *pb.FileSegmentStorage) {
-	m.forwardChan <- payload
+	// 验证输入
+	if payload == nil || payload.SegmentId == "" {
+		logger.Warn("无法触发转发：payload为空或SegmentID为空")
+		return
+	}
+
+	// 传递完整的 payload（包含 SliceTable 等元数据但不包含内容）
+	// 内容将在转发队列处理时重新加载
+	m.forwardQueue.Submit(payload)
+
+	// 清空SegmentContent，帮助GC回收内存
+	payload.SegmentContent = nil
 }

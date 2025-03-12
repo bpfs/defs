@@ -15,7 +15,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-var logger = logging.Logger("protocol")
+var logger = logging.Logger("utils/protocol")
 
 const (
 	// 协议常量定义
@@ -474,7 +474,7 @@ func truncateForLog(data []byte) string {
 // ReceiveMessage 接收消息
 func (h *Handler) ReceiveMessage(msg Message) error {
 	return h.SafeHandle(func() error {
-		logger.Infof("开始接收消息: type=%T", msg)
+		// logger.Infof("开始接收消息: type=%T", msg)
 
 		// 读取长度头
 		buf := bufferPool.Get().([]byte)
@@ -523,7 +523,7 @@ func (h *Handler) ReceiveMessage(msg Message) error {
 		copy(data, buf[:length])
 
 		// 修改日志记录
-		logger.Infof("接收到的原始数据: %s", truncateForLog(data))
+		// logger.Infof("接收到的原始数据: %s", truncateForLog(data))
 
 		// 反序列化消息
 		if err := msg.Unmarshal(data); err != nil {
@@ -535,7 +535,7 @@ func (h *Handler) ReceiveMessage(msg Message) error {
 		h.metrics.MessagesReceived.Add(1)
 		h.metrics.BufferUsage.Add(int64(length + HeaderSize))
 
-		logger.Infof("接收消息: size=%d", length)
+		// logger.Infof("接收消息: size=%d", length)
 
 		return nil
 	})

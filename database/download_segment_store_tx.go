@@ -31,7 +31,7 @@ func (s *DownloadSegmentStore) InsertTx(txn *badger.Txn, record *pb.DownloadSegm
 				return updateErr
 			}
 			// 更新成功,记录日志
-			logger.Infof("下载片段记录 %s 已存在，已更新", record.SegmentId)
+			// logger.Infof("下载片段记录 %s 已存在，已更新", record.SegmentId)
 			return nil
 		}
 		// 如果是其他错误,记录错误日志并返回

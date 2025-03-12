@@ -3,7 +3,6 @@ package uploads
 
 import (
 	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -218,7 +217,7 @@ func (tm *TempFileManager) CleanupFilesByType(fileType string) {
 //   - error: 清理失败错误
 func CleanupTaskSegmentFiles(taskID string) error {
 	// 尝试清理该任务的临时文件
-	logger.Infof("开始清理任务[%s]的临时文件", taskID)
+	// logger.Infof("开始清理任务[%s]的临时文件", taskID)
 
 	// 清理该任务在临时文件管理器中的文件
 	tempManager := NewTempFileManager(false, taskID)
@@ -237,15 +236,10 @@ func CleanupTaskSegmentFiles(taskID string) error {
 
 	// 删除匹配的文件
 	for _, file := range files {
-		if err := os.Remove(file); err != nil {
-			logger.Warnf("删除任务临时文件失败: taskID=%s file=%s err=%v",
-				taskID, file, err)
-		} else {
-			logger.Infof("成功删除任务临时文件: taskID=%s file=%s", taskID, file)
-		}
+		_ = os.Remove(file)
 	}
 
-	logger.Infof("任务[%s]临时文件清理完成，共清理%d个文件", taskID, len(files))
+	// logger.Infof("任务[%s]临时文件清理完成，共清理%d个文件", taskID, len(files))
 	return nil
 }
 
@@ -664,7 +658,7 @@ func processShardContent(db *badgerhold.Store, taskID, fileID string, file *os.F
 		return err
 	}
 	originalSize := fileInfo.Size()
-	logger.Infof("处理分片[%d] - 原始大小: %d bytes", index, originalSize)
+	// logger.Infof("处理分片[%d] - 原始大小: %d bytes", index, originalSize)
 
 	// 重置源文件指针
 	if _, err := file.Seek(0, 0); err != nil {
@@ -712,8 +706,8 @@ func processShardContent(db *badgerhold.Store, taskID, fileID string, file *os.F
 	}
 	checksum := checksumHash.Sum32()
 
-	logger.Infof("处理分片[%d] - 压缩后大小: %d bytes (压缩率: %.2f%%), 校验和: %d",
-		index, compressedSize, float64(compressedSize)/float64(originalSize)*100, checksum)
+	// logger.Infof("处理分片[%d] - 压缩后大小: %d bytes (压缩率: %.2f%%), 校验和: %d",
+	// 	index, compressedSize, float64(compressedSize)/float64(originalSize)*100, checksum)
 
 	// 重置压缩文件指针用于加密
 	if _, err := compressedFile.Seek(0, 0); err != nil {
@@ -744,8 +738,8 @@ func processShardContent(db *badgerhold.Store, taskID, fileID string, file *os.F
 	}
 	encryptedSize := encryptedInfo.Size()
 
-	logger.Infof("处理分片[%d] - 加密后大小: %d bytes (膨胀率: %.2f%%)",
-		index, encryptedSize, float64(encryptedSize)/float64(compressedSize)*100)
+	// logger.Infof("处理分片[%d] - 加密后大小: %d bytes (膨胀率: %.2f%%)",
+	// 	index, encryptedSize, float64(encryptedSize)/float64(compressedSize)*100)
 
 	// 验证加密数据的基本格式
 	minGCMSize := 12 + 16 // Nonce(12字节) + 最小AuthTag(16字节)
@@ -807,8 +801,8 @@ func processShardContent(db *badgerhold.Store, taskID, fileID string, file *os.F
 		IsRsCodes:     isRsCodes,
 	})
 
-	logger.Infof("处理分片[%d] - 处理完成: 原始大小=%d bytes -> 压缩后=%d bytes -> 加密后=%d bytes",
-		index, originalSize, compressedSize, encryptedSize)
+	// logger.Infof("处理分片[%d] - 处理完成: 原始大小=%d bytes -> 压缩后=%d bytes -> 加密后=%d bytes",
+	// 	index, originalSize, compressedSize, encryptedSize)
 
 	return nil
 }
@@ -879,12 +873,12 @@ func compressChunk() ProcessFunc {
 func encryptChunk(key []byte) ProcessFunc {
 	return func(data []byte) ([]byte, error) {
 		// 添加输入数据的详细日志
-		logger.Infof("开始加密数据块: 大小=%d bytes", len(data))
-		logger.Infof("使用的加密密钥: %s", hex.EncodeToString(key))
+		// logger.Infof("开始加密数据块: 大小=%d bytes", len(data))
+		// logger.Infof("使用的加密密钥: %s", hex.EncodeToString(key))
 
 		// 计算AES密钥
 		aesKey := md5.Sum(key)
-		logger.Infof("计算得到的AES密钥: %s", hex.EncodeToString(aesKey[:]))
+		// logger.Infof("计算得到的AES密钥: %s", hex.EncodeToString(aesKey[:]))
 
 		// 加密数据
 		encryptedData, err := gcm.EncryptData(data, aesKey[:])
@@ -894,8 +888,8 @@ func encryptChunk(key []byte) ProcessFunc {
 		}
 
 		// 添加加密结果的日志
-		logger.Infof("数据加密完成: 原始大小=%d bytes, 加密后大小=%d bytes",
-			len(data), len(encryptedData))
+		// logger.Infof("数据加密完成: 原始大小=%d bytes, 加密后大小=%d bytes",
+		// 	len(data), len(encryptedData))
 
 		return encryptedData, nil
 	}

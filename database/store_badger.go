@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"runtime"
-	"time"
 
 	"github.com/bpfs/defs/v2/badgerhold"
 
@@ -103,7 +102,7 @@ func NewBadgerDB(ctx context.Context) (*badgerhold.Store, error) {
 			logger.Errorf(" 数据库恢复后打开失败: %v", err)
 			return nil, err
 		}
-		logger.Infof(" 数据库已成功从备份恢复并打开")
+		// logger.Infof(" 数据库已成功从备份恢复并打开")
 	}
 
 	return store, nil
@@ -174,8 +173,8 @@ func ForceCleanup(db *badgerhold.Store) error {
 // 返回值:
 //   - error: 如果GC过程中发生错误，返回错误信息
 func AggressiveValueLogGC(db *badgerhold.Store) error {
-	startTime := time.Now() // 记录开始时间
-	totalGCCount := 0       // 初始化总GC次数计数器
+	// startTime := time.Now() // 记录开始时间
+	totalGCCount := 0 // 初始化总GC次数计数器
 
 	// 从大到小的阈值列表
 	ratios := []float64{0.7, 0.5, 0.3, 0.1} // 定义GC阈值列表
@@ -184,8 +183,8 @@ func AggressiveValueLogGC(db *badgerhold.Store) error {
 
 	// 遍历所有阈值
 	for _, ratio := range ratios {
-		gcCount := 0                 // 当前阈值的GC次数计数器
-		ratioStartTime := time.Now() // 记录当前阈值开始时间
+		gcCount := 0 // 当前阈值的GC次数计数器
+		// ratioStartTime := time.Now() // 记录当前阈值开始时间
 
 		// 循环执行GC直到没有数据可清理
 		for {
@@ -193,10 +192,10 @@ func AggressiveValueLogGC(db *badgerhold.Store) error {
 
 			// 如果没有数据需要清理
 			if err == badger.ErrNoRewrite {
-				if gcCount > 0 {
-					logger.Infof("阈值 %.2f 完成GC，执行次数: %d, 耗时: %v",
-						ratio, gcCount, time.Since(ratioStartTime))
-				}
+				// if gcCount > 0 {
+				// 	logger.Infof("阈值 %.2f 完成GC，执行次数: %d, 耗时: %v",
+				// 		ratio, gcCount, time.Since(ratioStartTime))
+				// }
 				break // 退出当前阈值的循环
 			}
 
@@ -217,12 +216,12 @@ func AggressiveValueLogGC(db *badgerhold.Store) error {
 	}
 
 	// 输出总结日志
-	if totalGCCount > 0 {
-		logger.Infof("完成激进值日志GC，总执行次数: %d, 总耗时: %v",
-			totalGCCount, time.Since(startTime))
-	} else {
-		logger.Info("激进值日志GC未发现需要清理的数据")
-	}
+	// if totalGCCount > 0 {
+	// 	logger.Infof("完成激进值日志GC，总执行次数: %d, 总耗时: %v",
+	// 		totalGCCount, time.Since(startTime))
+	// } else {
+	// 	logger.Info("激进值日志GC未发现需要清理的数据")
+	// }
 
 	// 手动触发Go的垃圾回收
 	runtime.GC()

@@ -39,8 +39,8 @@ func (w *MessageWrapper) Marshal() ([]byte, error) {
 	binary.BigEndian.PutUint32(buf[2:], w.Checksum)
 
 	// 添加调试日志
-	logger.Infof("消息封装: version=%d, checksum=%d, timestamp=%d, sequence=%d, payload_size=%d, checksum_data_size=%d",
-		w.Version, w.Checksum, w.Timestamp, w.Sequence, len(w.Payload), len(checksumData))
+	// logger.Infof("消息封装: version=%d, checksum=%d, timestamp=%d, sequence=%d, payload_size=%d, checksum_data_size=%d",
+	// 	w.Version, w.Checksum, w.Timestamp, w.Sequence, len(w.Payload), len(checksumData))
 
 	return buf, nil
 }
@@ -80,8 +80,8 @@ func (w *MessageWrapper) Unmarshal(data []byte) error {
 	copy(w.Payload, data[22:])
 
 	// 添加调试日志
-	logger.Infof("消息解析: version=%d, checksum=%d, timestamp=%d, sequence=%d, payload_size=%d, checksum_data_size=%d",
-		w.Version, w.Checksum, w.Timestamp, w.Sequence, len(w.Payload), len(checksumData))
+	// logger.Infof("消息解析: version=%d, checksum=%d, timestamp=%d, sequence=%d, payload_size=%d, checksum_data_size=%d",
+	// 	w.Version, w.Checksum, w.Timestamp, w.Sequence, len(w.Payload), len(checksumData))
 
 	return nil
 }

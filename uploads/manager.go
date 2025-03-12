@@ -39,10 +39,11 @@ type UploadManager struct {
 	tasks           sync.Map                  // 上传任务映射，存储所有正在进行的上传任务
 	segmentStatuses map[string]*SegmentStatus // 使用 taskID 作为键存储状态
 
-	uploadChan  chan string                 // 上传操作通知通道，传递任务ID以触发新的上传任务
-	forwardChan chan *pb.FileSegmentStorage // 用于接收转发请求的通道
-	statusChan  chan *pb.UploadChan         // 上传状态和进度通知通道，用于实时更新上传进度
-	errChan     chan error                  // 错误通道，用于将错误信息传递到外部
+	uploadChan   chan string                 // 上传操作通知通道，传递任务ID以触发新的上传任务
+	forwardChan  chan *pb.FileSegmentStorage // 用于接收转发请求的通道，传递完整的payload（不含内容）
+	forwardQueue *ForwardQueueManager        // 转发队列管理器，处理文件片段转发
+	statusChan   chan *pb.UploadChan         // 上传状态和进度通知通道，用于实时更新上传进度
+	errChan      chan error                  // 错误通道，用于将错误信息传递到外部
 }
 
 // Context 获取任务的上下文
@@ -130,7 +131,7 @@ func (m *UploadManager) addTask(task *UploadTask) error {
 
 	// 存储任务
 	m.tasks.Store(task.TaskID(), task)
-	logger.Infof("成功添加任务: taskID=%s", task.TaskID())
+	// logger.Infof("成功添加任务: taskID=%s", task.TaskID())
 	return nil
 }
 
@@ -156,7 +157,7 @@ func (m *UploadManager) removeTask(taskID string) {
 	if task, exists := m.tasks.Load(taskID); exists {
 		task.(*UploadTask).Close() // 关闭任务并清理资源
 		m.tasks.Delete(taskID)
-		logger.Infof("成功移除任务: %s", taskID)
+		// logger.Infof("成功移除任务: %s", taskID)
 	}
 }
 
@@ -206,10 +207,19 @@ func NewUploadManager(lc fx.Lifecycle, input NewUploadManagerInput) (out NewUplo
 		tasks:           sync.Map{},
 		segmentStatuses: make(map[string]*SegmentStatus),
 		uploadChan:      make(chan string, 5),                   // 上传操作通知通道，传递任务ID以触发新的上传任务
-		forwardChan:     make(chan *pb.FileSegmentStorage, 100), // 用于接收转发请求的通道
+		forwardChan:     make(chan *pb.FileSegmentStorage, 200), // 用于接收转发请求的通道，传递完整payload
 		statusChan:      make(chan *pb.UploadChan, 1),           // 上传状态和进度通知通道，用于实时更新上传进度
 		errChan:         make(chan error, 1),                    // 初始化错误通道，设置合适的缓冲区大小
 	}
+
+	// 初始化转发队列管理器，设置适当的工作协程数量
+	upload.forwardQueue = NewForwardQueueManager(
+		ctx,
+		10, // 工作协程数量
+		input.DB,
+		input.RoutingTable,
+		input.Host,
+	)
 
 	// 将创建的 UploadManager 实例赋值给输出
 	out.Upload = upload

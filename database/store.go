@@ -73,7 +73,7 @@ func NewDB(lc fx.Lifecycle, input NewDBInput) (out NewDBOutput, err error) {
 	// 注册关闭数据库的钩子
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
-			logger.Infof("关闭数据库")
+			// logger.Infof("关闭数据库")
 			badgerDB.Close()
 			sqliteDB.Close()
 			return nil

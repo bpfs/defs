@@ -252,5 +252,5 @@ func HandleSetFileSegmentRequestPubSub(
 		return
 	}
 
-	logger.Infof("设置文件共享状态成功, fileID: %s", request.FileId)
+	// logger.Infof("设置文件共享状态成功, fileID: %s", request.FileId)
 }

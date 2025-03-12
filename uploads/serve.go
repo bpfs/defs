@@ -81,7 +81,7 @@ func (m *UploadManager) NewUpload(
 
 	// 创建回调函数
 	onSegmentsReady := func(taskID string) {
-		logger.Infof("进入分片准备完成回调函数, taskID: %s", taskID)
+		// logger.Infof("进入分片准备完成回调函数, taskID: %s", taskID)
 
 		m.mu.Lock()
 		// 在回调函数中设置状态
@@ -117,7 +117,7 @@ func (m *UploadManager) NewUpload(
 // 返回值:
 //   - error: 如果触发过程中发生错误,返回错误信息;否则返回 nil
 func (m *UploadManager) TriggerUpload(taskID string, checkNodesAndSend bool) error {
-	logger.Infof("开始触发上传任务: %s", taskID)
+	// logger.Infof("开始触发上传任务: %s", taskID)
 
 	// 检查任务状态是否存在
 	if status, exists := m.segmentStatuses[taskID]; exists {
@@ -187,7 +187,7 @@ func (m *UploadManager) TriggerUpload(taskID string, checkNodesAndSend bool) err
 		select {
 		case m.uploadChan <- taskID:
 			// 成功将任务ID发送到上传通道
-			logger.Infof("已触发任务 %s 的上传", taskID)
+			// logger.Infof("已触发任务 %s 的上传", taskID)
 			return nil
 		case <-time.After(5 * time.Second):
 			// 发送超时,需要清理已创建的任务
@@ -241,7 +241,7 @@ func (m *UploadManager) PauseUpload(taskID string) error {
 
 		// 取消上下文
 		task.cancel()
-		logger.Infof("处理暂停请求: taskID=%s", task.taskId)
+		// logger.Infof("处理暂停请求: taskID=%s", task.taskId)
 
 		// 更新文件状态为暂停
 		uploadFileStore := database.NewUploadFileStore(task.db)

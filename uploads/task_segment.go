@@ -82,7 +82,7 @@ func (e *UploadError) Error() string {
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *UploadTask) handleSegmentProcess() error {
-	logger.Infof("处理片段请求: taskID=%s", t.taskId)
+	// logger.Infof("处理片段请求: taskID=%s", t.taskId)
 
 	// 创建上传片段存储实例
 	uploadSegmentStore := database.NewUploadSegmentStore(t.db)
@@ -99,7 +99,7 @@ func (t *UploadTask) handleSegmentProcess() error {
 
 	// 如果没有待上传的片段，直接触发片段验证
 	if len(segments) == 0 {
-		logger.Infof("没有待上传的片段: taskID=%s", t.taskId)
+		logger.Warnf("没有待上传的片段: taskID=%s", t.taskId)
 		// 强制触发片段验证
 		return t.ForceSegmentVerify()
 	}
@@ -185,7 +185,7 @@ func (t *UploadTask) handleSegmentProcess() error {
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *UploadTask) handleNodeDispatch() error {
-	logger.Infof("处理节点分发: taskID=%s", t.taskId)
+	// logger.Infof("处理节点分发: taskID=%s", t.taskId)
 
 	totalProcessed := 0 // 处理的总片段数
 	totalSuccess := 0   // 成功处理的片段数
@@ -225,8 +225,8 @@ func (t *UploadTask) handleNodeDispatch() error {
 	}
 
 	// 记录处理结果统计
-	logger.Infof("完成片段分发处理: 总数=%d, 成功=%d, 失败=%d, taskID=%s",
-		totalProcessed, totalSuccess, totalFailed, t.taskId)
+	// logger.Infof("完成片段分发处理: 总数=%d, 成功=%d, 失败=%d, taskID=%s",
+	// 	totalProcessed, totalSuccess, totalFailed, t.taskId)
 
 	// 强制触发片段验证
 	// return t.ForceSegmentVerify()
@@ -271,7 +271,7 @@ func countSegments(peerSegments map[peer.ID][]string) int {
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) error {
-	logger.Infof("处理网络传输: taskID=%s, peerCount=%d", t.taskId, len(peerSegments))
+	// logger.Infof("处理网络传输: taskID=%s, peerCount=%d", t.taskId, len(peerSegments))
 
 	// 创建一个全局等待组
 	var globalWg sync.WaitGroup
@@ -612,8 +612,8 @@ func (t *UploadTask) sendSegmentWithHandler(peerID peer.ID, segmentID string, pr
 	}
 
 	// 打印发送前的数据信息
-	logger.Infof("发送分片[%d] - 准备发送: 大小=%d bytes, 校验和=%d, 接收节点=%s",
-		segment.SegmentIndex, len(storage.SegmentContent), segment.Crc32Checksum, peerID.String())
+	// logger.Infof("发送分片[%d] - 准备发送: 大小=%d bytes, 校验和=%d, 接收节点=%s",
+	// 	segment.SegmentIndex, len(storage.SegmentContent), segment.Crc32Checksum, peerID.String())
 
 	// 写入数据
 	if err := protocolHandler.WriteSegmentData(storage); err != nil {
@@ -688,7 +688,7 @@ func (t *UploadTask) handleSegmentVerify() error {
 	// 检查重试次数和时间间隔
 	if t.verifyRetryCount > 0 {
 		if time.Since(t.lastVerifyTime) < verifyRetryDelay {
-			logger.Infof("验证请求太频繁，跳过本次验证: taskID=%s, retryCount=%d",
+			logger.Warnf("验证请求太频繁，跳过本次验证: taskID=%s, retryCount=%d",
 				t.taskId, t.verifyRetryCount)
 			return nil
 		}
@@ -736,9 +736,9 @@ func (t *UploadTask) handleSegmentVerify() error {
 			return fmt.Errorf("验证重试次数超过限制")
 		}
 
-		logger.Infof("存在未完成片段，触发重试: taskID=%s, retryCount=%d, "+
-			"completed=%d, total=%d",
-			t.taskId, t.verifyRetryCount, completedCount, totalSegments)
+		// logger.Infof("存在未完成片段，触发重试: taskID=%s, retryCount=%d, "+
+		// 	"completed=%d, total=%d",
+		// 	t.taskId, t.verifyRetryCount, completedCount, totalSegments)
 
 		return t.ForceSegmentProcess()
 	}
@@ -746,7 +746,7 @@ func (t *UploadTask) handleSegmentVerify() error {
 	// 验证成功，重置重试计数
 	t.verifyRetryCount = 0
 
-	logger.Infof("所有片段验证完成: taskID=%s", t.taskId)
+	// logger.Infof("所有片段验证完成: taskID=%s", t.taskId)
 	return t.ForceFileFinalize()
 }
 
@@ -759,7 +759,7 @@ func (t *UploadTask) handleSegmentVerify() error {
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *UploadTask) handleFileFinalize() error {
-	logger.Infof("处理文件完成: taskID=%s", t.taskId)
+	// logger.Infof("处理文件完成: taskID=%s", t.taskId)
 
 	// 创建存储实例
 	uploadFileStore := database.NewUploadFileStore(t.db)
@@ -813,7 +813,7 @@ func (t *UploadTask) handleFileFinalize() error {
 	runtime.GC()
 	debug.FreeOSMemory()
 
-	logger.Infof("文件上传完成: taskID=%s, fileID=%s", t.taskId, fileRecord.FileId)
+	// logger.Infof("文件上传完成: taskID=%s, fileID=%s", t.taskId, fileRecord.FileId)
 	return nil
 }
 
@@ -851,8 +851,8 @@ func (t *UploadTask) getSegmentData(segmentID string) (*pb.FileSegmentStorage, *
 	}
 
 	// 添加日志记录读取到的数据大小和对应的校验和
-	logger.Infof("读取分片[%d] - 从临时文件读取: 大小=%d bytes, 原始校验和=%d",
-		segment.SegmentIndex, len(encryptedData), segment.Crc32Checksum)
+	// logger.Infof("读取分片[%d] - 从临时文件读取: 大小=%d bytes, 原始校验和=%d",
+	// 	segment.SegmentIndex, len(encryptedData), segment.Crc32Checksum)
 
 	// 构造签名数据
 	signatureData := &pb.SignatureData{

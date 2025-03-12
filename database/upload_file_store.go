@@ -36,7 +36,7 @@ func (s *UploadFileStore) CreateUploadFile(file *pb.UploadFileRecord) error {
 		logger.Errorf("创建上传文件记录失败: %v", err) // 记录错误日志
 		return err
 	}
-	logger.Infof("成功创建上传文件记录: %s", file.TaskId) // 记录成功日志
+	// logger.Infof("成功创建上传文件记录: %s", file.TaskId) // 记录成功日志
 	return nil
 }
 
@@ -73,7 +73,7 @@ func (s *UploadFileStore) UpdateUploadFile(file *pb.UploadFileRecord) error {
 		logger.Errorf("更新上传文件记录失败: %v", err) // 记录错误日志
 		return err
 	}
-	logger.Infof("成功更新上传文件记录: %s", file.TaskId) // 记录成功日志
+	// logger.Infof("成功更新上传文件记录: %s", file.TaskId) // 记录成功日志
 	return nil
 }
 
@@ -107,7 +107,7 @@ func (s *UploadFileStore) UpdateUploadFileStatus(taskID string, status pb.Upload
 		return err
 	}
 
-	logger.Infof("成功更新文件状态: taskID=%s, status=%v", taskID, status)
+	// logger.Infof("成功更新文件状态: taskID=%s, status=%v", taskID, status)
 	return nil
 }
 
@@ -123,7 +123,7 @@ func (s *UploadFileStore) DeleteUploadFile(taskID string) error {
 		logger.Errorf("删除上传文件记录失败: %v", err) // 记录错误日志
 		return err
 	}
-	logger.Infof("成功删除上传文件记录: %s", taskID) // 记录成功日志
+	// logger.Infof("成功删除上传文件记录: %s", taskID) // 记录成功日志
 	return nil
 }
 

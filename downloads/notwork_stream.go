@@ -145,17 +145,17 @@ type SegmentRequestMessage struct {
 // 实现 Message 接口
 func (m *SegmentRequestMessage) Marshal() ([]byte, error) {
 	// 添加日志记录序列化前的数据
-	logger.Infof("序列化请求消息: taskID=%s, fileID=%s, segmentID=%s",
-		m.Request.TaskId,
-		m.Request.FileId,
-		m.Request.SegmentId)
+	// logger.Infof("序列化请求消息: taskID=%s, fileID=%s, segmentID=%s",
+	// 	m.Request.TaskId,
+	// 	m.Request.FileId,
+	// 	m.Request.SegmentId)
 
 	data, err := m.Request.Marshal()
 	if err != nil {
 		logger.Errorf("序列化请求消息失败: %v", err)
 		return nil, err
 	}
-	logger.Infof("序列化后的数据(hex): %x", data)
+	// logger.Infof("序列化后的数据(hex): %x", data)
 	return data, nil
 }
 
@@ -165,7 +165,7 @@ func (m *SegmentRequestMessage) Unmarshal(data []byte) error {
 	}
 
 	// 添加反序列化前数据的十六进制打印
-	logger.Infof("准备反序列化的数据(hex): %x", data)
+	// logger.Infof("准备反序列化的数据(hex): %x", data)
 
 	// 解析消息包装器
 	wrapper := &defsproto.MessageWrapper{}
@@ -185,10 +185,10 @@ func (m *SegmentRequestMessage) Unmarshal(data []byte) error {
 	}
 
 	// 添加日志记录反序列化后的数据
-	logger.Infof("反序列化请求消息: taskID=%s, fileID=%s, segmentID=%s",
-		m.Request.TaskId,
-		m.Request.FileId,
-		m.Request.SegmentId)
+	// logger.Infof("反序列化请求消息: taskID=%s, fileID=%s, segmentID=%s",
+	// 	m.Request.TaskId,
+	// 	m.Request.FileId,
+	// 	m.Request.SegmentId)
 
 	return nil
 }
@@ -216,7 +216,7 @@ func (m *SegmentResponseMessage) Unmarshal(data []byte) error {
 	}
 
 	// 添加调试日志
-	logger.Infof("开始反序列化响应消息, 数据长度=%d", len(data))
+	// logger.Infof("开始反序列化响应消息, 数据长度=%d", len(data))
 
 	// 解析消息包装器
 	wrapper := &defsproto.MessageWrapper{}
@@ -242,15 +242,15 @@ func (m *SegmentResponseMessage) Unmarshal(data []byte) error {
 	}
 
 	// 添加成功日志
-	if m.Response.HasError {
-		logger.Infof("响应消息反序列化成功: 错误信息=%s, 错误码=%v",
-			m.Response.ErrorMessage,
-			m.Response.ErrorCode)
-	} else {
-		logger.Infof("响应消息反序列化成功: segmentID=%s, dataSize=%d",
-			m.Response.SegmentId,
-			len(m.Response.SegmentContent))
-	}
+	// if m.Response.HasError {
+	// 	logger.Infof("响应消息反序列化成功: 错误信息=%s, 错误码=%v",
+	// 		m.Response.ErrorMessage,
+	// 		m.Response.ErrorCode)
+	// } else {
+	// 	logger.Infof("响应消息反序列化成功: segmentID=%s, dataSize=%d",
+	// 		m.Response.SegmentId,
+	// 		len(m.Response.SegmentContent))
+	// }
 
 	return nil
 }

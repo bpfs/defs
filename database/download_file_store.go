@@ -40,7 +40,7 @@ func (s *DownloadFileStore) Insert(record *pb.DownloadFileRecord) error {
 				return updateErr
 			}
 			// 更新成功,记录日志
-			logger.Infof("下载文件记录 %s 已存在，已更新", record.TaskId)
+			// logger.Infof("下载文件记录 %s 已存在，已更新", record.TaskId)
 			return nil
 		}
 		// 如果是其他错误,记录错误日志并返回
@@ -208,6 +208,6 @@ func (s *DownloadSegmentStore) DeleteDownloadSegmentByTaskID(taskID string) erro
 		logger.Errorf("删除下载文件记录失败: %v", err) // 记录错误日志
 		return err
 	}
-	logger.Infof("成功删除下载文件记录: %s", taskID) // 记录成功日志
+	// logger.Infof("成功删除下载文件记录: %s", taskID) // 记录成功日志
 	return nil
 }

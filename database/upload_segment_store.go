@@ -429,11 +429,11 @@ func (s *UploadSegmentStore) DeleteUploadSegmentByTaskID(taskID string) error {
 			totalDeleted++
 		}
 
-		logger.Infof("任务 %s: 已删除 %d 个片段记录，总计: %d",
-			taskID, len(segments), totalDeleted)
+		// logger.Infof("任务 %s: 已删除 %d 个片段记录，总计: %d",
+		// 	taskID, len(segments), totalDeleted)
 	}
 
-	logger.Infof("任务 %s 的所有片段记录删除完成，共删除 %d 条记录", taskID, totalDeleted)
+	// logger.Infof("任务 %s 的所有片段记录删除完成，共删除 %d 条记录", taskID, totalDeleted)
 	return nil
 }
 

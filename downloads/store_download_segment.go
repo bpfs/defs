@@ -243,11 +243,11 @@ func GetSegmentStorageData(db *database.DB, hostID string, taskID string, fileID
 	segmentContent := contentDecodeDecode.([]byte)
 
 	// 打印片段信息
-	logger.Infof("读取分片[%d] - 从存储读取: 大小=%d bytes, 校验和=%d, 片段ID=%s",
-		segmentStorage.SegmentIndex,
-		len(segmentContent),
-		segmentStorage.Crc32Checksum,
-		segmentStorage.SegmentId)
+	// logger.Infof("读取分片[%d] - 从存储读取: 大小=%d bytes, 校验和=%d, 片段ID=%s",
+	// 	segmentStorage.SegmentIndex,
+	// 	len(segmentContent),
+	// 	segmentStorage.Crc32Checksum,
+	// 	segmentStorage.SegmentId)
 
 	// 获取并验证签名
 	signature, exists := segmentResults["SIGNATURE"]

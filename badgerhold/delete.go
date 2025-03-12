@@ -144,11 +144,11 @@ func (s *Store) DeleteMatching(dataType interface{}, query *Query) error {
 		}
 
 		// 输出进度日志
-		logger.Infof("批次删除进度: 成功=%d, 失败=%d, 总计=%d",
-			len(keys)-failed, failed, totalDeleted)
+		// logger.Infof("批次删除进度: 成功=%d, 失败=%d, 总计=%d",
+		// 	len(keys)-failed, failed, totalDeleted)
 	}
 
-	logger.Infof("删除完成: 总计删除=%d, 耗时=%v", totalDeleted, time.Since(start))
+	// logger.Infof("删除完成: 总计删除=%d, 耗时=%v", totalDeleted, time.Since(start))
 	return nil
 }
 

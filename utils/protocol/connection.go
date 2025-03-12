@@ -10,13 +10,13 @@ import (
 
 // connect 重新建立连接
 func (h *Handler) connect() error {
-	logger.Infof("开始建立连接: network=%s, address=%s", h.network, h.address)
+	// logger.Infof("开始建立连接: network=%s, address=%s", h.network, h.address)
 	// 获取连接信号量
 	if err := h.acquireConn(); err != nil {
 		logger.Errorf("获取连接信号量失败: %v", err)
 		return err
 	}
-	logger.Infof("成功获取连接信号量")
+	// logger.Infof("成功获取连接信号量")
 	defer h.releaseConn()
 
 	// 关闭现有连接

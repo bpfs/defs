@@ -64,7 +64,7 @@ func (t *DownloadTask) handleSegmentIndex() error {
 	// 加锁保护共享资源
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	logger.Infof("处理索引清单更新: taskID=%s", t.TaskID())
+	// logger.Infof("处理索引清单更新: taskID=%s", t.TaskID())
 
 	// 创建存储实例
 	fileStore := database.NewDownloadFileStore(t.db)
@@ -126,7 +126,7 @@ func (t *DownloadTask) handleSegmentIndex() error {
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *DownloadTask) handleSegmentProcess() error {
-	logger.Infof("处理片段请求: taskID=%s", t.taskId)
+	// logger.Infof("处理片段请求: taskID=%s", t.taskId)
 
 	// 创建下载片段存储实例
 	downloadSegmentStore := database.NewDownloadSegmentStore(t.db)
@@ -143,7 +143,7 @@ func (t *DownloadTask) handleSegmentProcess() error {
 
 	// 如果没有待下载的片段，直接触发片段验证
 	if len(segments) == 0 {
-		logger.Infof("没有待下载的片段: taskID=%s", t.taskId)
+		logger.Warnf("没有待下载的片段: taskID=%s", t.taskId)
 		return t.ForceNodeDispatch()
 	}
 
@@ -207,7 +207,7 @@ func (t *DownloadTask) handleSegmentProcess() error {
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *DownloadTask) handleNodeDispatch() error {
-	logger.Infof("处理节点分发: taskID=%s", t.taskId)
+	// logger.Infof("处理节点分发: taskID=%s", t.taskId)
 
 	totalProcessed := 0 // 处理的总片段数
 	totalSuccess := 0   // 成功处理的片段数
@@ -225,7 +225,7 @@ func (t *DownloadTask) handleNodeDispatch() error {
 		// 获取下一个待处理的分配
 		peerSegments, ok := t.distribution.GetNextDistribution()
 		if !ok {
-			logger.Infof("没有更多的分配任务: taskID=%s", t.taskId)
+			// logger.Infof("没有更多的分配任务: taskID=%s", t.taskId)
 			break
 		}
 
@@ -285,7 +285,7 @@ func countSegments(peerSegments map[peer.ID][]string) int {
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) error {
-	logger.Infof("处理网络传输: taskID=%s", t.taskId)
+	// logger.Infof("处理网络传输: taskID=%s", t.taskId)
 
 	// 创建存储实例
 	downloadFileStore := database.NewDownloadFileStore(t.db)
@@ -584,7 +584,7 @@ func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, peerID pee
 	}
 
 	// 打印请求消息的详细内容
-	logger.Infof("准备发送请求消息: %+v", segmentContentRequest)
+	// logger.Infof("准备发送请求消息: %+v", segmentContentRequest)
 
 	// 发送请求
 	reqMsg := &SegmentRequestMessage{
@@ -592,19 +592,19 @@ func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, peerID pee
 	}
 
 	// 序列化测试
-	testData, err := reqMsg.Marshal()
-	if err != nil {
-		logger.Errorf("测试序列化失败: %v", err)
-		return err
-	}
-	logger.Infof("测试序列化数据(hex): %x", testData)
+	// testData, err := reqMsg.Marshal()
+	// if err != nil {
+	// 	logger.Errorf("测试序列化失败: %v", err)
+	// 	return err
+	// }
+	// logger.Infof("测试序列化数据(hex): %x", testData)
 
 	// 添加详细的请求日志
-	logger.Infof("发送分片请求: taskID=%s, fileID=%s, segmentID=%s, peerID=%s",
-		segmentContentRequest.TaskId,
-		segmentContentRequest.FileId,
-		segmentContentRequest.SegmentId,
-		peerID)
+	// logger.Infof("发送分片请求: taskID=%s, fileID=%s, segmentID=%s, peerID=%s",
+	// 	segmentContentRequest.TaskId,
+	// 	segmentContentRequest.FileId,
+	// 	segmentContentRequest.SegmentId,
+	// 	peerID)
 
 	if err := defsproto.NewHandler(conn, &defsproto.Options{
 		MaxRetries:     3,
@@ -827,7 +827,7 @@ func (t *DownloadTask) handleSegmentVerify() error {
 	// 检查重试次数和时间间隔
 	if t.verifyRetryCount > 0 {
 		if time.Since(t.lastVerifyTime) < verifyRetryDelay {
-			logger.Infof("验证请求太频繁，跳过本次验证: taskID=%s, retryCount=%d",
+			logger.Warnf("验证请求太频繁，跳过本次验证: taskID=%s, retryCount=%d",
 				t.taskId, t.verifyRetryCount)
 			return nil
 		}
@@ -836,7 +836,7 @@ func (t *DownloadTask) handleSegmentVerify() error {
 	// 更新验证时间
 	t.lastVerifyTime = time.Now()
 
-	logger.Infof("验证片段下载状态: taskID=%s", t.taskId)
+	// logger.Infof("验证片段下载状态: taskID=%s", t.taskId)
 
 	// 创建存储实例
 	downloadFileStore := database.NewDownloadFileStore(t.db)
@@ -872,8 +872,8 @@ func (t *DownloadTask) handleSegmentVerify() error {
 	requiredShards := getRequiredDataShards(fileRecord.SliceTable)
 
 	// 打印片段统计信息
-	logger.Infof("片段统计: 已下载数=%d, 所需片段数=%d, 总片段数=%d",
-		len(segments), requiredShards, len(fileRecord.SliceTable))
+	// logger.Infof("片段统计: 已下载数=%d, 所需片段数=%d, 总片段数=%d",
+	// 	len(segments), requiredShards, len(fileRecord.SliceTable))
 
 	// 检查是否有足够的片段
 	if len(segments) < requiredShards {
@@ -912,7 +912,7 @@ func (t *DownloadTask) handleSegmentMerge() error {
 	}
 	defer t.mergeInProgress.Store(false)
 
-	logger.Infof("开始合并文件片段: taskID=%s", t.taskId)
+	// logger.Infof("开始合并文件片段: taskID=%s", t.taskId)
 
 	// 创建存储实例
 	downloadFileStore := database.NewDownloadFileStore(t.db)
@@ -1057,7 +1057,7 @@ func (t *DownloadTask) handleFileFinalize() error {
 		}
 	}
 
-	logger.Infof("文件下载完成: taskID=%s", t.taskId)
+	// logger.Infof("文件下载完成: taskID=%s", t.taskId)
 	// 发送成功后通知片段完成
 	t.NotifySegmentStatus(&pb.DownloadChan{
 		TaskId:           t.taskId,          // 设置任务ID
@@ -1255,7 +1255,7 @@ func (t *DownloadTask) adjustIndexInterval() {
 	}
 
 	t.indexTicker = time.NewTicker(interval)
-	logger.Infof("调整索引请求间隔: taskID=%s, 新间隔=%v", t.TaskID(), interval)
+	// logger.Infof("调整索引请求间隔: taskID=%s, 新间隔=%v", t.TaskID(), interval)
 }
 
 // 添加自定义错误类型

@@ -3,7 +3,6 @@ package uploads
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/bpfs/defs/v2/files"
@@ -42,7 +41,7 @@ func NewFileSecurity(fileID string, privKey *ecdsa.PrivateKey, secret []byte) (*
 		logger.Errorf("构建P2PK脚本失败: %v, fileID: %s", err, fileID)
 		return nil, err
 	}
-	logger.Infof("P2PK 十六进制脚本: %s", hex.EncodeToString(p2pk))
+	// logger.Infof("P2PK 十六进制脚本: %s", hex.EncodeToString(p2pk))
 
 	// 通过私钥生成公钥哈希
 	pubKeyHash, ok := files.PrivateKeyToPublicKeyHash(privKey)
@@ -50,7 +49,7 @@ func NewFileSecurity(fileID string, privKey *ecdsa.PrivateKey, secret []byte) (*
 		logger.Errorf("通过私钥生成公钥哈希失败, fileID: %s", fileID)
 		return nil, fmt.Errorf("通过私钥生成公钥哈希失败")
 	}
-	logger.Infof("pubKeyHash 公钥哈希: %s", hex.EncodeToString(pubKeyHash))
+	// logger.Infof("pubKeyHash 公钥哈希: %s", hex.EncodeToString(pubKeyHash))
 
 	// 构建P2PKH脚本
 	p2pkh, err := script.NewScriptBuilder().

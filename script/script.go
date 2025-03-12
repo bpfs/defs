@@ -10,11 +10,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	logging "github.com/dep2p/log"
-	"golang.org/x/crypto/ripemd160"
 	"log"
 	"math/big"
 	"strings"
+
+	logging "github.com/dep2p/log"
+	"golang.org/x/crypto/ripemd160"
 )
 
 var logger = logging.Logger("script")
@@ -130,8 +131,8 @@ func ExtractPubKeyFromP2PKScriptToECDSA(p2pkScript []byte) (*ecdsa.PublicKey, er
 //  4. 对SHA256哈希结果进行RIPEMD160哈希
 func ExtractPubKeyHashFromP2PKScript(p2pkScript []byte) ([]byte, error) {
 	// 调用 DisassembleScript 来反汇编脚本
-	disassembledScript := DisassembleScript(p2pkScript)
-	logger.Infof("反汇编脚本:\t%s\n", disassembledScript)
+	// disassembledScript := DisassembleScript(p2pkScript)
+	// logger.Infof("反汇编脚本:\t%s\n", disassembledScript)
 
 	if len(p2pkScript) < 2 || p2pkScript[len(p2pkScript)-1] != OP_CHECKSIG { // 验证脚本结构
 		return nil, fmt.Errorf("无效的 P2PK 脚本") // 返回错误

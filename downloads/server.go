@@ -210,7 +210,7 @@ func (m *DownloadManager) NewShareDownload(
 //   - 创建并初始化新的下载任务
 //   - 将任务添加到下载队列并触发下载
 func (m *DownloadManager) TriggerDownload(taskID string) error {
-	logger.Infof("开始触发下载任务: %s", taskID)
+	// logger.Infof("开始触发下载任务: %s", taskID)
 
 	// 检查服务端节点数量是否足够
 	minNodes := m.opt.GetMinDownloadServerNodes()
@@ -258,7 +258,7 @@ func (m *DownloadManager) TriggerDownload(taskID string) error {
 	select {
 	case m.downloadChan <- taskID:
 		// 成功将任务ID发送到下载通道
-		logger.Infof("已触发任务 %s 的下载", taskID)
+		// logger.Infof("已触发任务 %s 的下载", taskID)
 		return nil
 	case <-time.After(5 * time.Second):
 		m.removeTask(taskID)
@@ -478,7 +478,7 @@ func (m *DownloadManager) DeleteDownload(taskID string) error {
 	case pb.DownloadStatus_DOWNLOAD_STATUS_DOWNLOADING:
 		return fmt.Errorf("任务正在下载中，无法删除: %s", taskID)
 	default:
-		logger.Infof("处理删除请求: taskID=%s", task.taskId)
+		// logger.Infof("处理删除请求: taskID=%s", task.taskId)
 
 		// 创建存储实例
 		downloadFileStore := database.NewDownloadFileStore(task.db)

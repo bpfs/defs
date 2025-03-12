@@ -236,7 +236,7 @@ func WriteStream(key string, reader io.Reader) error {
 		return err
 	}
 
-	logger.Infof("写入临时文件成功: key=%s, filename=%s, size=%d", key, filename, written)
+	// logger.Infof("写入临时文件成功: key=%s, filename=%s, size=%d", key, filename, written)
 
 	// 检查写入的文件大小是否为0
 	if written == 0 {
@@ -783,7 +783,7 @@ func WriteEncryptedSegment(segmentID string, reader io.Reader, isRsCodes bool, t
 	// 记录映射关系
 	addKeyToFileMapping(readKey, filename)
 
-	logger.Infof("加密分片数据写入成功: key=%s, file=%s, size=%d", readKey, filename, written)
+	// logger.Infof("加密分片数据写入成功: key=%s, file=%s, size=%d", readKey, filename, written)
 
 	return readKey, nil
 }
@@ -820,7 +820,7 @@ func CleanupTempFiles(dirPath ...string) error {
 			logger.Errorf("重新创建临时目录失败: path=%s err=%v", dirPath[0], err)
 			return err
 		}
-		logger.Infof("成功清理临时目录: %s", dirPath[0])
+		// logger.Infof("成功清理临时目录: %s", dirPath[0])
 		return nil
 	}
 
@@ -845,7 +845,7 @@ func CleanupTempFiles(dirPath ...string) error {
 			}
 		}
 
-		logger.Infof("临时文件清理完成: 模式=%s 文件数=%d", pattern, len(files))
+		// logger.Infof("临时文件清理完成: 模式=%s 文件数=%d", pattern, len(files))
 	}
 
 	return nil

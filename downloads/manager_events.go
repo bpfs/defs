@@ -14,12 +14,12 @@ func (m *DownloadManager) ManagerChannelEvents() {
 			select {
 			case <-m.ctx.Done():
 				// 如果上下文被取消，记录日志并退出函数
-				logger.Info("下载管理器上下文已取消,退出事件监听")
+				// logger.Info("下载管理器上下文已取消,退出事件监听")
 				return
 
 			case taskID := <-m.downloadChan:
 				// 从下载通道接收到新的任务ID
-				logger.Infof("收到新的下载任务请求: %s", taskID)
+				// logger.Infof("收到新的下载任务请求: %s", taskID)
 				// 处理新的下载任务请求
 				m.handleNewDownloadTask(taskID)
 			}

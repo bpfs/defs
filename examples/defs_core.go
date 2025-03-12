@@ -72,7 +72,7 @@ func NewDefsCore() (*DefsCore, error) {
 		logger.Errorf("获取MAC地址失败: %v", err)
 		return nil, fmt.Errorf("获取MAC地址失败")
 	}
-	logger.Infof("获取到MAC地址: %s", macAddr)
+	// logger.Infof("获取到MAC地址: %s", macAddr)
 
 	// 生成密钥对
 	logger.Info("正在生成密钥对...")
@@ -118,11 +118,11 @@ func NewDefsCore() (*DefsCore, error) {
 	logger.Infof("libp2p host 创建成功，节点ID: %s", h.ID().String())
 	logger.Infof("libp2p host 创建成功，节点地址: %s", h.Addrs())
 	// 创建并启动 DHT
-	logger.Info("正在创建并启动 DHT...")
+	// logger.Info("正在创建并启动 DHT...")
 	kadDHT, err := createDHT(ctx, h, dht.ModeClient)
 	if err != nil {
 		logger.Errorf("创建 DHT 失败: %v", err)
-		return nil, fmt.Errorf("创建 DHT 失败")
+		return nil, err
 	}
 	logger.Info("DHT 创建并启动成功")
 

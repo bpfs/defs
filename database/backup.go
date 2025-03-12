@@ -24,7 +24,7 @@ const (
 // 返回值：
 //   - error: 如果数据库损坏或无法访问，返回错误信息
 func CheckDatabaseStatus(store *badgerhold.Store) error {
-	logger.Infof("开始检查数据库状态...")
+	// logger.Infof("开始检查数据库状态...")
 
 	if store == nil {
 		return fmt.Errorf("数据库实例为空")
@@ -72,7 +72,7 @@ func CheckDatabaseStatus(store *badgerhold.Store) error {
 		return fmt.Errorf("数据库状态异常: %v", err)
 	}
 
-	logger.Infof("数据库状态检查完成，状态正常")
+	// logger.Infof("数据库状态检查完成，状态正常")
 	return nil
 }
 
@@ -84,7 +84,7 @@ func CheckDatabaseStatus(store *badgerhold.Store) error {
 // 返回值：
 //   - error: 如果备份过程中出现错误，返回错误信息
 func BackupDatabase(store *badgerhold.Store, backupDir string) error {
-	logger.Infof("开始备份数据库到目录: %s", backupDir)
+	// logger.Infof("开始备份数据库到目录: %s", backupDir)
 
 	// 1. 验证输入参数
 	if store == nil {
@@ -102,7 +102,7 @@ func BackupDatabase(store *badgerhold.Store, backupDir string) error {
 
 	// 3. 生成备份文件路径
 	backupPath := filepath.Join(backupDir, BackupFileName)
-	logger.Infof("备份文件路径: %s", backupPath)
+	// logger.Infof("备份文件路径: %s", backupPath)
 
 	// 4. 检查数据库状态
 	if err := CheckDatabaseStatus(store); err != nil {
@@ -130,13 +130,13 @@ func BackupDatabase(store *badgerhold.Store, backupDir string) error {
 	}()
 
 	// 6. 执行备份
-	logger.Infof("开始执行数据库备份...")
+	// logger.Infof("开始执行数据库备份...")
 	written, err := store.Badger().Backup(backupFile, 0)
 	if err != nil {
 		logger.Errorf("备份数据库失败: %v, 已写入: %d bytes", err, written)
 		return fmt.Errorf("备份数据库失败: %v", err)
 	}
-	logger.Infof("成功写入备份数据: %d bytes", written)
+	// logger.Infof("成功写入备份数据: %d bytes", written)
 
 	// 7. 同步文件
 	if err := backupFile.Sync(); err != nil {
@@ -147,13 +147,13 @@ func BackupDatabase(store *badgerhold.Store, backupDir string) error {
 	// 8. 使用重试机制替换旧备份文件
 	const maxRetries = 3
 	for i := 0; i < maxRetries; i++ {
-		if i > 0 {
-			logger.Infof("第 %d 次尝试替换备份文件", i+1)
-		}
+		// if i > 0 {
+		// logger.Infof("第 %d 次尝试替换备份文件", i+1)
+		// }
 
 		err := os.Rename(tempBackupPath, backupPath)
 		if err == nil {
-			logger.Infof("备份完成，文件已保存到: %s", backupPath)
+			// logger.Infof("备份完成，文件已保存到: %s", backupPath)
 			return nil
 		}
 
@@ -163,7 +163,7 @@ func BackupDatabase(store *badgerhold.Store, backupDir string) error {
 		}
 
 		waitTime := time.Second * time.Duration(1<<i)
-		logger.Infof("文件被锁定，等待 %v 后重试", waitTime)
+		// logger.Infof("文件被锁定，等待 %v 后重试", waitTime)
 		time.Sleep(waitTime)
 	}
 
@@ -251,6 +251,6 @@ func RestoreDatabaseFromBackup(options badgerhold.Options, store *badgerhold.Sto
 		return err
 	}
 
-	logger.Infof(" 数据库恢复成功！")
+	// logger.Infof(" 数据库恢复成功！")
 	return nil
 }

@@ -134,8 +134,8 @@ func RequestManifestPubSub(
 	}
 
 	// 打印参数信息
-	logger.Infof("构造索引清单请求数据, TaskID=%s, FileID=%s, PubkeyHash=%x, RequestedSegmentIds=%d - %v",
-		taskID, fileID, pubkeyHash, len(requestedSegmentIds), requestedSegmentIds)
+	// logger.Infof("构造索引清单请求数据, TaskID=%s, FileID=%s, PubkeyHash=%x, RequestedSegmentIds=%d - %v",
+	// 	taskID, fileID, pubkeyHash, len(requestedSegmentIds), requestedSegmentIds)
 
 	// 构造索引清单请求数据
 	requestData := &pb.DownloadPubSubManifestRequest{
@@ -216,8 +216,8 @@ func HandleDownloadManifestResponsePubSub(
 		return
 	}
 
-	logger.Infof("解析的索引清单响应数据: From=%s, TaskId=%s, AvailableSlices=%d -%+v",
-		fromPeerInfo.ID.String(), payload.TaskId, len(payload.AvailableSlices), payload.AvailableSlices)
+	// logger.Infof("解析的索引清单响应数据: From=%s, TaskId=%s, AvailableSlices=%d -%+v",
+	// 	fromPeerInfo.ID.String(), payload.TaskId, len(payload.AvailableSlices), payload.AvailableSlices)
 
 	// 获取对应的下载任务
 	task, ok := download.getTask(payload.TaskId)
@@ -226,7 +226,7 @@ func HandleDownloadManifestResponsePubSub(
 		return
 	}
 
-	logger.Infof("fromPeerID.String()=%s, res.ReceivedFrom=%s", fromPeerInfo.ID.String(), res.ReceivedFrom)
+	// logger.Infof("fromPeerID.String()=%s, res.ReceivedFrom=%s", fromPeerInfo.ID.String(), res.ReceivedFrom)
 
 	// 更新片段的节点信息并返回未完成的片段索引
 	pendingSlices, err := UpdateSegmentNodes(db.BadgerDB, task.TaskID(), fromPeerInfo.ID.String(), payload.AvailableSlices)
@@ -246,11 +246,11 @@ func HandleDownloadManifestResponsePubSub(
 		task.distribution.AddDistribution(distribution)
 	}
 
-	logger.Infof("\n已更新下载任务的索引清单信息: taskID=%s, 节点=%s, 未完成片段数=%d",
-		task.TaskID(),
-		fromPeerInfo.ID.String(),
-		len(pendingSlices),
-	)
+	// logger.Infof("\n已更新下载任务的索引清单信息: taskID=%s, 节点=%s, 未完成片段数=%d",
+	// 	task.TaskID(),
+	// 	fromPeerInfo.ID.String(),
+	// 	len(pendingSlices),
+	// )
 
 	// 强制触发节点分发
 	if err := task.ForceNodeDispatch(); err != nil {

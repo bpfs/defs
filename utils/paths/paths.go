@@ -1,10 +1,11 @@
 package paths
 
 import (
-	logging "github.com/dep2p/log"
 	"os"
 	"path/filepath"
 	"strings"
+
+	logging "github.com/dep2p/log"
 )
 
 var logger = logging.Logger("paths")
@@ -94,7 +95,7 @@ func InitializePaths(opts *PathOptions) error {
 		}
 	}
 
-	logger.Infof("所有路径初始化完成")
+	// logger.Infof("所有路径初始化完成")
 	return nil
 }
 
@@ -113,7 +114,7 @@ func createDirectoryIfNotExists(dir string) error {
 			logger.Errorf("创建目录失败 %s: %v", dir, err)
 			return err
 		}
-		logger.Infof("成功创建目录 %s", dir)
+		// logger.Infof("成功创建目录 %s", dir)
 	}
 	return nil
 }
