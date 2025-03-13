@@ -397,7 +397,8 @@ func (m *UploadManager) DeleteUpload(taskID string) error {
 
 	// 创建存储实例
 	uploadFileStore := database.NewUploadFileStore(task.db)
-
+	// 删除所有文件片段
+	uploadSegmentStore := database.NewUploadSegmentStore(task.db)
 	// 获取上传文件记录
 	fileRecord, exists, err := uploadFileStore.GetUploadFile(taskID)
 	if err != nil {
@@ -414,6 +415,11 @@ func (m *UploadManager) DeleteUpload(taskID string) error {
 		return err
 	}
 
+	// 从数据库中删除任务
+	if err := uploadSegmentStore.DeleteUploadSegmentByTaskID(fileRecord.TaskId); err != nil {
+		logger.Errorf("从数据库删除任务片段失败: %v", err)
+		return err
+	}
 	// 从任务管理器中移除任务
 	m.tasks.Delete(taskID)
 	return nil
