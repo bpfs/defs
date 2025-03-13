@@ -254,6 +254,18 @@ func (m *DownloadManager) TriggerDownload(taskID string) error {
 		return err
 	}
 
+	// 创建存储实例
+	downloadFileStore := database.NewDownloadFileStore(m.db.BadgerDB)
+	// 1. 更新文件状态为上传中
+	if err := downloadFileStore.UpdateDownloadFileStatus(
+		taskID,
+		pb.DownloadStatus_DOWNLOAD_STATUS_DOWNLOADING,
+		time.Now().Unix(),
+	); err != nil {
+		logger.Errorf("更新文件状态失败: taskID=%s, err=%v", taskID, err)
+		return err
+	}
+
 	// 使用 select 语句尝试将任务ID发送到下载通道
 	select {
 	case m.downloadChan <- taskID:

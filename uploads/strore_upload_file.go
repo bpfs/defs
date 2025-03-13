@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/bpfs/defs/v2/badgerhold"
-	"github.com/bpfs/defs/v2/bitset"
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/pb"
 )
@@ -138,71 +137,6 @@ func UpdateUploadFileHashTable(db *badgerhold.Store, taskID string, sliceTable m
 	if err := store.UpdateUploadFile(fileRecord); err != nil {
 		logger.Errorf("更新文件哈希表失败: taskID=%s, err=%v", taskID, err)
 		return err
-	}
-
-	return nil
-}
-
-// ValidateAndUpdateUploadStatus 校验并更新上传状态
-// 该方法用于开始上传前的状态校验，会根据实际进度强制更新任务状态：
-// 1. 如果所有分片已完成，则更新为已完成状态并返回错误
-// 2. 如果还有未完成分片，则更新为上传中状态
-//
-// 参数:
-//   - db: *badgerhold.Store 数据库存储接口
-//   - fileRecord: *pb.UploadFileRecord 文件记录
-//   - progress: bitset.BitSet 上传进度位图
-//
-// 返回值:
-//   - error: 如果所有分片已完成或发生其他错误则返回错误信息，否则返回 nil
-func ValidateAndUpdateUploadStatus(db *badgerhold.Store, fileRecord *pb.UploadFileRecord, progress bitset.BitSet) error {
-	// 检查参数
-	if fileRecord == nil {
-		logger.Error("文件记录为空")
-		return fmt.Errorf("文件记录为空")
-	}
-
-	// 获取总分片数
-	totalShards := progress.Len()
-	if totalShards == 0 {
-		logger.Error("进度位图为空")
-		return fmt.Errorf("进度位图为空")
-	}
-
-	// 创建文件存储接口
-	store := database.NewUploadFileStore(db)
-
-	// 计算已完成的分片数
-	completedShards := progress.Count()
-	isCompleted := completedShards == uint(totalShards)
-
-	if isCompleted {
-		// 如果所有分片都已完成，更新为已完成状态并返回错误
-		if fileRecord.Status != pb.UploadStatus_UPLOAD_STATUS_COMPLETED {
-			logger.Infof("检测到任务所有分片已完成，更新状态为已完成: taskID=%s", fileRecord.TaskId)
-			fileRecord.Status = pb.UploadStatus_UPLOAD_STATUS_COMPLETED
-			fileRecord.FinishedAt = time.Now().Unix()
-			if err := store.UpdateUploadFile(fileRecord); err != nil {
-				logger.Errorf("更新文件状态为已完成失败: taskID=%s, err=%v", fileRecord.TaskId, err)
-				return err
-			}
-		}
-		logger.Errorf("所有分片已完成，无需继续上传: taskID=%s", fileRecord.TaskId)
-		return fmt.Errorf("所有分片已完成，无需继续上传")
-	}
-
-	// 如果还有未完成分片，强制更新为上传中状态
-	if fileRecord.Status != pb.UploadStatus_UPLOAD_STATUS_UPLOADING {
-		if fileRecord.Status != pb.UploadStatus_UPLOAD_STATUS_PAUSED {
-			logger.Infof("更新任务状态为上传中: taskID=%s, oldStatus=%s",
-				fileRecord.TaskId, fileRecord.Status.String())
-			fileRecord.Status = pb.UploadStatus_UPLOAD_STATUS_UPLOADING
-			fileRecord.FinishedAt = 0 // 清除完成时间
-			if err := store.UpdateUploadFile(fileRecord); err != nil {
-				logger.Errorf("更新文件状态为上传中失败: taskID=%s, err=%v", fileRecord.TaskId, err)
-				return err
-			}
-		}
 	}
 
 	return nil

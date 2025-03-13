@@ -267,10 +267,10 @@ func (t *DownloadTask) Cleanup() {
 		safeClose(t.chSegmentStatus)
 		t.chSegmentStatus = nil
 	}
-	if t.chError != nil {
-		safeClose(t.chError)
-		t.chError = nil
-	}
+	// if t.chError != nil {
+	// 	safeClose(t.chError)
+	// 	t.chError = nil
+	// }
 
 }
 

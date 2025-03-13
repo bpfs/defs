@@ -172,7 +172,7 @@ func (m *UploadManager) TriggerUpload(taskID string, checkNodesAndSend bool) err
 	// 创建存储实例
 	uploadFileStore := database.NewUploadFileStore(m.db.BadgerDB)
 
-	// 1. 更新文件状态为完成
+	// 1. 更新文件状态为上传中
 	if err := uploadFileStore.UpdateUploadFileStatus(
 		taskID,
 		pb.UploadStatus_UPLOAD_STATUS_UPLOADING,

@@ -194,20 +194,36 @@ func (s *DownloadFileStore) FindByFileID(fileID string) ([]*pb.DownloadFileRecor
 	return records, nil
 }
 
-// DeleteDownloadSegmentByTaskID 删除下载切片文件记录
+// UpdateDownloadFileStatus 根据任务ID更新文件状态
 // 参数:
-//   - taskID: string 要删除的任务ID
+//   - taskID: string 任务的唯一标识符
+//   - status: pb.DownloadStatus 要更新的状态
+//   - completedAt: int64 完成时间戳
 //
 // 返回值:
-//   - error: 如果删除成功返回nil，否则返回错误信息
-func (s *DownloadSegmentStore) DeleteDownloadSegmentByTaskID(taskID string) error {
-	// 从数据库中删除指定taskID的文件记录
-	if err := s.store.DeleteMatching(&pb.DownloadSegmentRecord{}, badgerhold.
-		Where("TaskId").Eq(taskID).
-		Index("TaskId")); err != nil {
-		logger.Errorf("删除下载文件记录失败: %v", err) // 记录错误日志
+//   - error: 如果更新成功返回nil，否则返回错误信息
+func (s *DownloadFileStore) UpdateDownloadFileStatus(taskID string, status pb.DownloadStatus, completedAt int64) error {
+	// 获取文件记录
+	fileRecord, exists, err := s.Get(taskID)
+	if err != nil {
+		logger.Errorf("获取文件记录失败: taskID=%s, err=%v", taskID, err)
 		return err
 	}
-	// logger.Infof("成功删除下载文件记录: %s", taskID) // 记录成功日志
+	if !exists {
+		return fmt.Errorf("文件记录不存在: taskID=%s", taskID)
+	}
+
+	// 更新状态和完成时间
+	fileRecord.Status = status
+	fileRecord.FinishedAt = completedAt
+
+	// 更新数据库记录
+	err = s.store.Update(taskID, fileRecord)
+	if err != nil {
+		logger.Errorf("更新文件状态失败: taskID=%s, err=%v", taskID, err)
+		return err
+	}
+
+	// logger.Infof("成功更新文件状态: taskID=%s, status=%v", taskID, status)
 	return nil
 }

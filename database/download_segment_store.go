@@ -437,3 +437,71 @@ func (s *DownloadSegmentStore) UpdateDownloadSegment(segment *pb.DownloadSegment
 	// logger.Infof("成功更新下载片段记录: %s", segment.SegmentId) // 记录更新成功的日志
 	return nil
 }
+
+// DeleteDownloadSegmentByTaskID 删除下载切片文件记录
+// 参数:
+//   - taskID: string 要删除的任务ID
+//
+// 返回值:
+//   - error: 如果删除成功返回nil，否则返回错误信息
+func (s *DownloadSegmentStore) DeleteDownloadSegmentByTaskID(taskID string) error {
+	// 先检查 s.db 是否为 nil
+	if s.store == nil {
+		return fmt.Errorf("数据库连接为空")
+	}
+
+	const batchSize = 100 // 每批处理的记录数
+	var totalDeleted int
+
+	for {
+		// 1. 先查询一批记录的ID
+		var segments []*pb.DownloadSegmentRecord
+		// 使用更安全的查询方式
+		query := badgerhold.Where("TaskId").Eq(taskID).Limit(batchSize)
+		err := s.store.Find(&segments, query)
+		if err != nil {
+			logger.Errorf("查询上传文件记录失败: taskID=%s, err=%v", taskID, err)
+			return fmt.Errorf("查询上传文件记录失败: %v", err)
+		}
+
+		// 如果没有更多记录，退出循环
+		if len(segments) == 0 {
+			break
+		}
+
+		// 2. 逐个删除记录，避免批量删除可能导致的问题
+		for _, segment := range segments {
+			if err := s.DeleteDownloadSegment(segment.SegmentId); err != nil {
+				logger.Errorf("删除片段记录失败 taskID=%s, segmentId=%s: %v",
+					taskID, segment.SegmentId, err)
+				// 继续处理其他记录
+				continue
+			}
+			totalDeleted++
+		}
+
+		// logger.Infof("任务 %s: 已删除 %d 个片段记录，总计: %d",
+		// 	taskID, len(segments), totalDeleted)
+	}
+
+	// logger.Infof("任务 %s 的所有片段记录删除完成，共删除 %d 条记录", taskID, totalDeleted)
+	return nil
+}
+
+// DeleteDownloadSegment 删除下载片段记录
+// 参数:
+//   - segmentID: string 要删除的片段ID
+//
+// 返回值:
+//   - error: 如果删除成功返回nil，否则返回错误信息
+func (s *DownloadSegmentStore) DeleteDownloadSegment(segmentID string) error {
+	// 从数据库中删除指定segmentID的片段记录
+	err := s.store.Delete(segmentID, &pb.DownloadSegmentRecord{})
+	if err != nil {
+		logger.Errorf("删除下载片段记录失败: %v", err) // 记录删除失败的错误日志
+		return err
+	}
+
+	// logger.Infof("成功删除下载片段记录: %s", segmentID) // 记录删除成功的日志
+	return nil
+}
