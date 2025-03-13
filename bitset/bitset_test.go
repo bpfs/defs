@@ -52,7 +52,7 @@ func TestStringLong(t *testing.T) {
 		} else if progress < 0 {
 			progress = 0
 		}
-		fmt.Println("=========", progress)
+
 	}
 
 }

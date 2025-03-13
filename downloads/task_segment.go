@@ -416,7 +416,7 @@ func (t *DownloadTask) sendToPeer(peerID peer.ID, fileRecord *pb.DownloadFileRec
 	for i := 0; i < workerCount; i++ {
 		select {
 		case <-t.ctx.Done():
-			fmt.Println("========")
+
 			return fmt.Errorf("任务已取消")
 		default:
 		}
@@ -437,7 +437,7 @@ func (t *DownloadTask) sendToPeer(peerID peer.ID, fileRecord *pb.DownloadFileRec
 			defer func() { <-sem }()
 			select {
 			case <-t.ctx.Done():
-				fmt.Println("========")
+
 				return
 			default:
 			}
@@ -512,7 +512,7 @@ func (t *DownloadTask) workerSendSegments(peerID peer.ID, fileRecord *pb.Downloa
 	for _, segmentID := range segments {
 		select {
 		case <-t.ctx.Done():
-			fmt.Println("========")
+
 			return fmt.Errorf("任务已取消")
 		default:
 		}
@@ -594,7 +594,7 @@ func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, peerID pee
 
 	select {
 	case <-t.ctx.Done():
-		fmt.Println("========")
+
 		return fmt.Errorf("任务已取消")
 	default:
 	}

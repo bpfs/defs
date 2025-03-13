@@ -271,7 +271,7 @@ func countSegments(peerSegments map[peer.ID][]string) int {
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) error {
 	// logger.Infof("处理网络传输: taskID=%s, peerCount=%d", t.taskId, len(peerSegments))
-	fmt.Println("=======", t.taskId)
+
 	// 创建一个全局等待组
 	var globalWg sync.WaitGroup
 	errChan := make(chan error, len(peerSegments))
@@ -282,7 +282,11 @@ func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) er
 
 	// 遍历所有需要发送的节点
 	for peerID, segmentIDs := range peerSegments {
-
+		select {
+		case <-t.ctx.Done():
+			return fmt.Errorf("任务已取消")
+		default:
+		}
 		// 过滤掉已处理的片段
 		var unprocessedSegments []string
 		processedMu.Lock()
@@ -372,6 +376,11 @@ func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) er
 // 返回值:
 //   - error: 如果发送过程中发生错误，返回相应的错误信息
 func (t *UploadTask) sendToPeer(peerID peer.ID, segments []string) error {
+	select {
+	case <-t.ctx.Done():
+		return fmt.Errorf("任务已取消")
+	default:
+	}
 	maxRetries := 3
 	retryDelay := time.Second
 
@@ -430,6 +439,11 @@ func (t *UploadTask) doSendToPeer(peerID peer.ID, segments []string) error {
 
 	// 启动worker处理分片
 	for i := 0; i < workerCount; i++ {
+		select {
+		case <-t.ctx.Done():
+			return fmt.Errorf("任务已取消")
+		default:
+		}
 		startIdx := i * segmentsPerGoroutine
 		endIdx := min((i+1)*segmentsPerGoroutine, segmentCount)
 
@@ -549,6 +563,11 @@ func (t *UploadTask) establishConnection(peerID peer.ID) (net.Conn, error) {
 // 返回值:
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *UploadTask) processSegments(peerID peer.ID, conn net.Conn, segments []string) error {
+	select {
+	case <-t.ctx.Done():
+		return fmt.Errorf("任务已取消")
+	default:
+	}
 	// 设置缓冲区
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
 		tcpConn.SetWriteBuffer(MaxBlockSize)
