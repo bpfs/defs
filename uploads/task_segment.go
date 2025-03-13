@@ -14,7 +14,6 @@ import (
 	"github.com/bpfs/defs/v2/files/tempfile"
 	"github.com/bpfs/defs/v2/kbucket"
 	"github.com/bpfs/defs/v2/pb"
-
 	"github.com/dep2p/go-dep2p/core/peer"
 	"github.com/dep2p/go-dep2p/core/protocol"
 	"github.com/dep2p/pointsub"
@@ -272,7 +271,7 @@ func countSegments(peerSegments map[peer.ID][]string) int {
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) error {
 	// logger.Infof("处理网络传输: taskID=%s, peerCount=%d", t.taskId, len(peerSegments))
-
+	fmt.Println("=======", t.taskId)
 	// 创建一个全局等待组
 	var globalWg sync.WaitGroup
 	errChan := make(chan error, len(peerSegments))
@@ -283,11 +282,6 @@ func (t *UploadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) er
 
 	// 遍历所有需要发送的节点
 	for peerID, segmentIDs := range peerSegments {
-		select {
-		case <-t.ctx.Done():
-			return fmt.Errorf("任务已取消")
-		default:
-		}
 
 		// 过滤掉已处理的片段
 		var unprocessedSegments []string
@@ -604,6 +598,13 @@ func isConnectionError(err error) bool {
 
 // sendSegmentWithHandler 使用已存在的协议处理器发送单个分片
 func (t *UploadTask) sendSegmentWithHandler(peerID peer.ID, segmentID string, protocolHandler *ProtocolHandler) error {
+
+	select {
+	case <-t.ctx.Done():
+		return fmt.Errorf("任务已取消")
+	default:
+	}
+
 	// 获取分片数据
 	storage, segment, fileRecord, err := t.getSegmentData(segmentID)
 	if err != nil {
@@ -626,15 +627,16 @@ func (t *UploadTask) sendSegmentWithHandler(peerID peer.ID, segmentID string, pr
 		logger.Errorf("读取响应失败: %v", err)
 		return err
 	}
+	// 更新切片状态为已完成
+	if err := t.updateSegmentStatus(segmentID); err != nil {
+		logger.Errorf("更新分片状态失败: segmentID=%s, err=%v", segmentID, err)
+		return err
+	}
 
 	// 获取上传进度并更新状态
 	progress, err := t.GetProgress()
 	if err != nil {
 		logger.Errorf("获取上传进度失败: taskID=%s, err=%v", t.TaskID(), err)
-		return err
-	}
-	if err := t.updateSegmentStatus(segmentID); err != nil {
-		logger.Errorf("更新分片状态失败: segmentID=%s, err=%v", segmentID, err)
 		return err
 	}
 

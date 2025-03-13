@@ -170,6 +170,15 @@ func handleCommand(core *DefsCore, args []string) {
 		if err := handleCancelUpload(core, args[1]); err != nil {
 			pterm.Error.Printf("取消上传失败: %v\n", err)
 		}
+
+	case "deleteUpload":
+		if len(args) < 2 {
+			pterm.Error.Println("用法: deleteUpload <taskID>")
+			return
+		}
+		if err := handleDeleteUpload(core, args[1]); err != nil {
+			pterm.Error.Printf("删除上传失败: %v\n", err)
+		}
 	case "pauseDownload":
 		if len(args) < 2 {
 			pterm.Error.Println("用法: pauseDownload <taskID>")
@@ -610,6 +619,23 @@ func handleCancelUpload(core *DefsCore, taskID string) error {
 		return err
 	}
 	fmt.Printf("成功取消上传任务: %s\n", taskID)
+	return nil
+}
+
+// handleDeleteUpload 处理删除上传任务的请求
+// 参数:
+//   - core: DeFS核心实例
+//   - taskID: 要删除的上传任务ID
+//
+// 返回值:
+//   - error: 操作过程中的错误，如果成功则为nil
+func handleDeleteUpload(core *DefsCore, taskID string) error {
+	// 调用文件系统的删除上传方法
+	if err := core.fs.Upload().DeleteUpload(taskID); err != nil {
+		logger.Errorf("删除上传失败: %v", err)
+		return err
+	}
+	fmt.Printf("成功删除上传任务: %s\n", taskID)
 	return nil
 }
 

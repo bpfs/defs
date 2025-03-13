@@ -318,6 +318,8 @@ func (m *DownloadManager) PauseDownload(taskID string) error {
 			logger.Errorf("更新文件状态失败: taskID=%s, err=%v", task.taskId, err)
 			return err
 		}
+		// 取消上下文
+		task.cancel()
 		return nil
 
 	case pb.DownloadStatus_DOWNLOAD_STATUS_PAUSED:

@@ -30,8 +30,8 @@ func (h *Handler) SafeHandle(operation func() error) (err error) {
 				Message: fmt.Sprintf("协议处理panic: %v", r),
 			}
 
-			// 触发panic回调
-			if h.recovery.OnPanic != nil {
+			// 增加 recovery 空值检查
+			if h != nil && h.recovery != nil && h.recovery.OnPanic != nil {
 				h.recovery.OnPanic(r, buf[:n])
 			}
 		}

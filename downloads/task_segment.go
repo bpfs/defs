@@ -286,7 +286,7 @@ func countSegments(peerSegments map[peer.ID][]string) int {
 //   - error: 如果处理过程中发生错误，返回相应的错误信息
 func (t *DownloadTask) handleNetworkTransfer(peerSegments map[peer.ID][]string) error {
 	// logger.Infof("处理网络传输: taskID=%s", t.taskId)
-
+	fmt.Println(t.taskId)
 	// 创建存储实例
 	downloadFileStore := database.NewDownloadFileStore(t.db)
 
@@ -414,6 +414,13 @@ func (t *DownloadTask) sendToPeer(peerID peer.ID, fileRecord *pb.DownloadFileRec
 	segmentsPerGoroutine := (segmentCount + workerCount - 1) / workerCount
 
 	for i := 0; i < workerCount; i++ {
+		select {
+		case <-t.ctx.Done():
+			fmt.Println("========")
+			return fmt.Errorf("任务已取消")
+		default:
+		}
+
 		startIdx := i * segmentsPerGoroutine
 		endIdx := min((i+1)*segmentsPerGoroutine, segmentCount)
 
@@ -428,6 +435,12 @@ func (t *DownloadTask) sendToPeer(peerID peer.ID, fileRecord *pb.DownloadFileRec
 		go func(workerID int, start, end int) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			select {
+			case <-t.ctx.Done():
+				fmt.Println("========")
+				return
+			default:
+			}
 
 			// 添加错误重试
 			for retries := 0; retries < 3; retries++ {
@@ -497,6 +510,13 @@ func (t *DownloadTask) workerSendSegments(peerID peer.ID, fileRecord *pb.Downloa
 	maxBackoff := 5 * time.Second
 
 	for _, segmentID := range segments {
+		select {
+		case <-t.ctx.Done():
+			fmt.Println("========")
+			return fmt.Errorf("任务已取消")
+		default:
+		}
+
 		success := false
 		retries := 0
 		for !success && retries < 3 {
@@ -571,6 +591,14 @@ func isConnectionError(err error) bool {
 // 返回值:
 //   - error: 如果发送过程中发生错误，返回相应的错误信息
 func (t *DownloadTask) sendSegment(fileRecord *pb.DownloadFileRecord, peerID peer.ID, segmentID string, conn net.Conn) error {
+
+	select {
+	case <-t.ctx.Done():
+		fmt.Println("========")
+		return fmt.Errorf("任务已取消")
+	default:
+	}
+
 	// 开始下载时设置状态为下载中
 	if err := t.updateSegmentStatus(segmentID, pb.SegmentDownloadStatus_SEGMENT_DOWNLOAD_STATUS_DOWNLOADING, peerID.String()); err != nil {
 		logger.Warnf("更新片段状态为下载中失败: %v", err)
