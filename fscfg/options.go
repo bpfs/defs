@@ -85,7 +85,8 @@ func DefaultOptions() *Options {
 		localStorage:         true,                        // 默认使用本地存储
 		routingTableLow:      2,                           // 路由表最小节点数为2
 		maxXrefTable:         10000,                       // 最大交叉引用表大小为10000
-		maxUploadSize:        10 << 30,                    // 最大上传大小为10GB
+		//maxUploadSize:        10 << 30,                    // 最大上传大小为10GB
+		maxUploadSize: 1 << 30, // 最大上传大小为1GB
 		// minUploadSize:        1 << 20,                     // 最小上传大小为1MB
 		minUploadSize:          1 << 19,               // 最小上传大小为512KB
 		maxPeersPerCpl:         3,                     // CPL(Common Prefix Length)是指两个节点ID的共同前缀长度，用于衡量节点间的距离。每个CPL值最多允许3个节点，可以防止路由表被某个特定距离的节点占据，提高网络的多样性和稳定性
