@@ -9,6 +9,7 @@ import (
 
 	"github.com/bpfs/defs/v2/utils/paths"
 	"github.com/dep2p/pubsub"
+	"github.com/dep2p/pubsub/logger"
 )
 
 const (
@@ -66,6 +67,13 @@ type Options struct {
 
 // DefaultOptions 设置一个推荐选项列表以获得良好的性能。
 func DefaultOptions() *Options {
+
+	// 获取系统默认的下载文件保存路径
+	downloadPath, err := paths.DefaultDownloadPath()
+	if err != nil {
+		logger.Errorf("获取系统默认的下载文件保存路径失败: %v", err)
+		return nil
+	}
 	return &Options{
 		storageMode:    RS_Proportion, // 默认使用纠删码(比例)模式
 		defaultBufSize: 1 << 12,       // 默认缓冲区大小为4KB
@@ -73,18 +81,18 @@ func DefaultOptions() *Options {
 		maxSliceSize:   1 << 25,       // 最大切片大小为32MB
 		minSliceSize:   1 << 10,       // 最小切片大小为1KB
 		// shardSize:            1 << 19,                     // 分片大小为512KB
-		shardSize:            1 << 20,                     // 分片大小为1MB
-		parityRatio:          0.3,                         // 校验比例为30%
-		maxConcurrentUploads: 5,                           // 设置默认的最大并发上传数量
-		maxUploadRetries:     3,                           // 设置默认的最大重试次数
-		rootPath:             paths.GetRootPath(),         // 获取根路径
-		downloadPath:         paths.DefaultDownloadPath(), // 获取默认下载路径
-		downloadMaximumSize:  2 * 1024 * 1024,             // 最大下载大小为2MB
-		maxRetries:           5,                           // 最大重试次数为5次
-		retryInterval:        50 * time.Second,            // 重试间隔为50秒
-		localStorage:         true,                        // 默认使用本地存储
-		routingTableLow:      2,                           // 路由表最小节点数为2
-		maxXrefTable:         10000,                       // 最大交叉引用表大小为10000
+		shardSize:            1 << 20,             // 分片大小为1MB
+		parityRatio:          0.3,                 // 校验比例为30%
+		maxConcurrentUploads: 5,                   // 设置默认的最大并发上传数量
+		maxUploadRetries:     3,                   // 设置默认的最大重试次数
+		rootPath:             paths.GetRootPath(), // 获取根路径
+		downloadPath:         downloadPath,        // 获取默认下载路径
+		downloadMaximumSize:  2 * 1024 * 1024,     // 最大下载大小为2MB
+		maxRetries:           5,                   // 最大重试次数为5次
+		retryInterval:        50 * time.Second,    // 重试间隔为50秒
+		localStorage:         true,                // 默认使用本地存储
+		routingTableLow:      2,                   // 路由表最小节点数为2
+		maxXrefTable:         10000,               // 最大交叉引用表大小为10000
 		//maxUploadSize:        10 << 30,                    // 最大上传大小为10GB
 		maxUploadSize: 1 << 30, // 最大上传大小为1GB
 		// minUploadSize:        1 << 20,                     // 最小上传大小为1MB

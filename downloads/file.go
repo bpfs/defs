@@ -44,7 +44,11 @@ func NewDownloadFile(ctx context.Context, db *database.DB, h host.Host, nps *pub
 	// 设置下载任务的初始状态为待下载(PENDING)
 	status := pb.DownloadStatus_DOWNLOAD_STATUS_PENDING
 	// 获取系统默认的下载文件保存路径
-	filePath := paths.DefaultDownloadPath()
+	filePath, err := paths.DefaultDownloadPath()
+	if err != nil {
+		logger.Errorf("获取系统默认的下载文件保存路径失败: %v", err)
+		return nil, err
+	}
 
 	// 创建下载文件记录并保存到数据库中
 	_, err = CreateDownloadFileRecord(
