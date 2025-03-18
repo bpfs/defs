@@ -8,9 +8,12 @@ import (
 	"time"
 
 	"github.com/bpfs/defs/v2/utils/paths"
+	logging "github.com/dep2p/log"
 	"github.com/dep2p/pubsub"
-	"github.com/dep2p/pubsub/logger"
 )
+
+// logger 定义配置模块的日志记录器
+var logger = logging.Logger("fscfg")
 
 const (
 	DbFile  = "database.db"
