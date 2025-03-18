@@ -5,7 +5,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/bpfs/defs/v2/badgerhold"
 	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/files"
 	"github.com/bpfs/defs/v2/fscfg"
@@ -176,40 +175,4 @@ func NewUploadFile(opt *fscfg.Options, db *database.DB, scheme *shamir.ShamirSch
 	}()
 
 	return uploadInfo, nil
-}
-
-// ProcessFileSegments 异步处理文件分片
-// 该方法会在后台进行文件的分片、编码和存储操作
-//
-// 参数:
-//   - db: *badgerhold.Store 数据库实例
-//   - taskID: string 任务ID
-//   - fileID: string 文件ID
-//   - file: *os.File 文件对象
-//   - pk: []byte 用于加密的公钥
-//   - dataShards: int64 数据分片数
-//   - parityShards: int64 奇偶校验分片数
-//   - onComplete: func() 完成回调函数
-func ProcessFileSegments(
-	db *badgerhold.Store,
-	taskID string,
-	fileID string,
-	file *os.File,
-	pk []byte,
-	dataShards,
-	parityShards int64,
-	onComplete func(),
-) {
-	go func() {
-		defer func() {
-			if onComplete != nil {
-				onComplete()
-			}
-		}()
-
-		if err := NewFileSegment(db, taskID, fileID, file, pk, dataShards, parityShards); err != nil {
-			logger.Errorf("创建文件分片失败: %v", err)
-			return
-		}
-	}()
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/bpfs/defs/v2/badgerhold"
 	"github.com/bpfs/defs/v2/crypto/gcm"
+	"github.com/bpfs/defs/v2/database"
 	"github.com/bpfs/defs/v2/files"
 	"github.com/bpfs/defs/v2/pb"
 	"github.com/bpfs/defs/v2/reedsolomon"
@@ -775,6 +776,23 @@ func processShardContent(db *badgerhold.Store, taskID, fileID string, file *os.F
 	if err != nil {
 		logger.Errorf("写入加密分片失败: %v", err)
 		return err
+	}
+
+	// 插入之前先判断是否存在如果存在就删除掉
+	uploadSegmentStore := database.NewUploadSegmentStore(db)
+	// 获取分片数据
+	_, exists, err := uploadSegmentStore.GetUploadSegmentBySegmentID(segmentID)
+	if err != nil {
+		logger.Errorf("获取分片数据失败: %v", err)
+		return err
+	}
+	// 如果存在则删除
+	if exists {
+		//  删除上传片段记录
+		if err := uploadSegmentStore.DeleteUploadSegment(segmentID); err != nil {
+			logger.Errorf("删除上传片段记录失败: %v", err)
+			return err
+		}
 	}
 
 	// 创建分片记录
